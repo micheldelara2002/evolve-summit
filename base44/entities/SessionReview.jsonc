@@ -1,0 +1,27 @@
+{
+  "name": "SessionReview",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "rating": {
+      "type": "number",
+      "description": "Nota de 1 a 5"
+    },
+    "comment": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "session_id",
+    "rating"
+  ]
+}

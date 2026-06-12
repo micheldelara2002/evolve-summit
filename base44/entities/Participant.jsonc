@@ -1,0 +1,62 @@
+{
+  "name": "Participant",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Nome completo"
+    },
+    "email": {
+      "type": "string",
+      "description": "E-mail"
+    },
+    "cpf": {
+      "type": "string",
+      "description": "CPF (normalizado, sem pontos/tra\u00e7os)"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Telefone"
+    },
+    "company": {
+      "type": "string",
+      "description": "Empresa"
+    },
+    "role_in_event": {
+      "type": "string",
+      "enum": [
+        "attendee",
+        "vip",
+        "speaker",
+        "organizer"
+      ],
+      "default": "attendee"
+    },
+    "registration_status": {
+      "type": "string",
+      "enum": [
+        "registered",
+        "confirmed",
+        "cancelled"
+      ],
+      "default": "registered"
+    },
+    "import_id": {
+      "type": "string",
+      "description": "ID da importa\u00e7\u00e3o (se veio via CSV)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "full_name",
+    "email"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "Lead",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "participant_name": {
+      "type": "string"
+    },
+    "participant_email": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "booth_scan",
+        "session",
+        "networking",
+        "manual"
+      ],
+      "default": "manual"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "quality": {
+      "type": "string",
+      "enum": [
+        "hot",
+        "warm",
+        "cold"
+      ],
+      "default": "warm"
+    }
+  },
+  "required": [
+    "event_id",
+    "participant_name"
+  ]
+}

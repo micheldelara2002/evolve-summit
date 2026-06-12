@@ -1,0 +1,44 @@
+{
+  "name": "Partner",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do parceiro"
+    },
+    "logo_url": {
+      "type": "string",
+      "description": "Logo do parceiro"
+    },
+    "website": {
+      "type": "string",
+      "description": "Website"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "platinum",
+        "gold",
+        "silver",
+        "bronze",
+        "supporter"
+      ],
+      "default": "supporter"
+    },
+    "contact_email": {
+      "type": "string"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "name"
+  ]
+}

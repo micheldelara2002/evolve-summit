@@ -1,0 +1,37 @@
+{
+  "name": "PartnerRepresentative",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "partner_id": {
+      "type": "string",
+      "description": "ID do parceiro"
+    },
+    "full_name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "description": "Fun\u00e7\u00e3o no parceiro"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "partner_id",
+    "full_name",
+    "email"
+  ]
+}

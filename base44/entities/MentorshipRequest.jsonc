@@ -1,0 +1,37 @@
+{
+  "name": "MentorshipRequest",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "mentor_id": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "accepted",
+        "completed",
+        "cancelled"
+      ],
+      "default": "requested"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "event_id",
+    "participant_id",
+    "topic"
+  ]
+}

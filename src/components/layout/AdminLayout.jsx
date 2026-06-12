@@ -1,0 +1,115 @@
+import { Outlet, Link, useLocation } from "react-router-dom";
+import { useAuth } from "@/lib/AuthContext";
+import { base44 } from "@/api/base44Client";
+import { t } from "@/lib/i18n";
+import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
+const navItems = [
+  { path: "/", icon: LayoutDashboard, label: "nav.home" },
+  { path: "/events", icon: Calendar, label: "nav.events" },
+  { path: "/audit", icon: Shield, label: "nav.audit" },
+];
+
+export default function AdminLayout() {
+  const { pathname } = useLocation();
+  const { user } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleLogout = () => {
+    base44.auth.logout("/login");
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Top bar */}
+      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </Button>
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-display font-bold text-sm">ES</span>
+              </div>
+              <span className="font-display font-bold text-lg hidden sm:block">{t("app.name")}</span>
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-medium leading-none">{user?.full_name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{user?.role === "admin" ? "Admin" : "Manager"}</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleLogout} title={t("nav.logout")}>
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Desktop nav */}
+        <nav className="hidden md:flex items-center gap-1 px-4 pb-2">
+          {navItems.map((item) => {
+            const isActive = pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path));
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {t(item.label)}
+              </Link>
+            );
+          })}
+        </nav>
+      </header>
+
+      {/* Mobile nav overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <nav className="absolute left-0 top-14 w-64 bg-card border-r border-border h-[calc(100vh-3.5rem)] p-3 space-y-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path));
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <item.icon className="w-5 h-5" />
+                    {t(item.label)}
+                  </div>
+                  <ChevronRight className="w-4 h-4 opacity-40" />
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
+      {/* Main content */}
+      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+        <Outlet />
+      </main>
+    </div>
+  );
+}

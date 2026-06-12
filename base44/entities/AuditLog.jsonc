@@ -1,0 +1,52 @@
+{
+  "name": "AuditLog",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento relacionado"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "soft_delete",
+        "status_change",
+        "role_change",
+        "import",
+        "checkin_revert",
+        "export"
+      ],
+      "description": "Tipo de a\u00e7\u00e3o"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Tipo de entidade afetada"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID da entidade afetada"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio que executou"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Nome do usu\u00e1rio"
+    },
+    "details": {
+      "type": "string",
+      "description": "Detalhes da a\u00e7\u00e3o em JSON"
+    },
+    "ip_address": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "entity_type",
+    "user_id"
+  ]
+}

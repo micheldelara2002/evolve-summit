@@ -1,0 +1,31 @@
+{
+  "name": "SessionQuestion",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "is_answered": {
+      "type": "boolean",
+      "default": false
+    },
+    "upvotes": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "event_id",
+    "session_id",
+    "question"
+  ]
+}

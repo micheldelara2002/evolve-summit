@@ -1,0 +1,43 @@
+{
+  "name": "Speaker",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Nome completo"
+    },
+    "email": {
+      "type": "string",
+      "description": "E-mail"
+    },
+    "bio": {
+      "type": "string",
+      "description": "Biografia"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "URL da foto"
+    },
+    "company": {
+      "type": "string",
+      "description": "Empresa"
+    },
+    "title": {
+      "type": "string",
+      "description": "Cargo/t\u00edtulo"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "full_name",
+    "email"
+  ]
+}

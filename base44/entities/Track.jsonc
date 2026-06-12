@@ -1,0 +1,30 @@
+{
+  "name": "Track",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome da trilha"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o da trilha"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor da trilha"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "name"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "manager"
+      ],
+      "default": "manager"
+    },
+    "managed_event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs dos eventos que este manager pode gerenciar"
+    }
+  }
+}

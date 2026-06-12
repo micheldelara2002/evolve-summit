@@ -1,0 +1,65 @@
+{
+  "name": "Session",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "track_id": {
+      "type": "string",
+      "description": "ID da trilha"
+    },
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da sess\u00e3o"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o"
+    },
+    "speaker_id": {
+      "type": "string",
+      "description": "ID do palestrante"
+    },
+    "speaker_name": {
+      "type": "string",
+      "description": "Nome do palestrante"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "location": {
+      "type": "string",
+      "description": "Sala/local"
+    },
+    "capacity": {
+      "type": "number"
+    },
+    "session_type": {
+      "type": "string",
+      "enum": [
+        "talk",
+        "workshop",
+        "panel",
+        "networking",
+        "other"
+      ],
+      "default": "talk"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "title",
+    "start_time"
+  ]
+}
