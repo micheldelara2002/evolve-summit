@@ -18,6 +18,8 @@ import AdminLayout from "@/components/layout/AdminLayout";
 
 // Pages
 import AdminHome from "@/pages/AdminHome";
+import SystemHealth from "@/pages/SystemHealth";
+import BusinessDashboard from "@/pages/BusinessDashboard";
 import EventsList from "@/pages/EventsList";
 import EventCreate from "@/pages/EventCreate";
 import EventEdit from "@/pages/EventEdit";
@@ -58,6 +60,8 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AdminLayout />}>
           <Route path="/" element={<AdminHome />} />
+          <Route path="/health" element={<SystemHealth />} />
+          <Route path="/business" element={<BusinessDashboard />} />
           <Route path="/events" element={<EventsList />} />
           <Route path="/events/new" element={<EventCreate />} />
           <Route path="/events/:eventId" element={<EventDetail />} />

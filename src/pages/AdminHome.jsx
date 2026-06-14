@@ -10,14 +10,14 @@ const NAV_CARDS = [
     icon: Activity,
     color: "bg-emerald-50 text-emerald-700 border-emerald-200",
     iconColor: "text-emerald-600",
-    href: null,
+    href: "/health",
   },
   {
     key: "business",
     icon: TrendingUp,
     color: "bg-sky-50 text-sky-700 border-sky-200",
     iconColor: "text-sky-600",
-    href: null,
+    href: "/business",
   },
   {
     key: "eventManagement",
@@ -62,16 +62,14 @@ export default function AdminHome() {
               <div className="flex-1 min-w-0">
                 <p className="font-display font-semibold text-base">{t(`home.${key}`)}</p>
               </div>
-              {href && <ArrowRight className="w-5 h-5 opacity-60 shrink-0" />}
+              <ArrowRight className="w-5 h-5 opacity-60 shrink-0" />
             </motion.div>
           );
 
-          return href ? (
+          return (
             <Link key={key} to={href} className="no-underline">
               {inner}
             </Link>
-          ) : (
-            <div key={key}>{inner}</div>
           );
         })}
       </div>

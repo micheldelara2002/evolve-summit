@@ -24,6 +24,16 @@ const actionColors = {
   export: "bg-gray-100 text-gray-700",
 };
 
+function parseDetail(details, field) {
+  if (!details) return "—";
+  try {
+    const obj = typeof details === "string" ? JSON.parse(details) : details;
+    return obj[field] !== undefined ? String(obj[field]) : "—";
+  } catch {
+    return "—";
+  }
+}
+
 export default function AuditLog() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
@@ -171,7 +181,10 @@ export default function AuditLog() {
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">{t("audit.event")}</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">{t("audit.action")}</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">{t("audit.entity")}</th>
-                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">{t("audit.details")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">IP</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden xl:table-cell">Campo</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden xl:table-cell">Valor anterior</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden xl:table-cell">Valor novo</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,9 +205,10 @@ export default function AuditLog() {
                       </Badge>
                     </td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{log.entity_type || "—"}</td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden lg:table-cell max-w-[220px] truncate font-mono">
-                      {log.details ? log.details.slice(0, 80) + (log.details.length > 80 ? "…" : "") : "—"}
-                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden lg:table-cell font-mono">{log.ip_address || "—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden xl:table-cell max-w-[120px] truncate">{parseDetail(log.details, "field")}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden xl:table-cell max-w-[120px] truncate">{parseDetail(log.details, "old_value")}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden xl:table-cell max-w-[120px] truncate">{parseDetail(log.details, "new_value")}</td>
                   </tr>
                 ))}
               </tbody>

@@ -10,10 +10,13 @@ import EntityTable from "@/components/admin/EntityTable";
 import EntityFormDialog from "@/components/admin/EntityFormDialog";
 import CsvImport from "@/components/admin/CsvImport";
 import ColorPickerField from "@/components/admin/ColorPickerField";
+import AssociativeRoleTab from "@/components/admin/AssociativeRoleTab";
+import AssociativeRepTab from "@/components/admin/AssociativeRepTab";
+import CpfReuseDialog from "@/components/admin/CpfReuseDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, UserCheck, Upload, DoorOpen, UsersRound } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, UserCheck, Upload, DoorOpen, UsersRound, Mic2 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -28,6 +31,8 @@ export default function EventDetail() {
   const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
+  // CPF reuse dialog state
+  const [cpfReuseData, setCpfReuseData] = useState(null); // { existingPerson, pendingFormData }
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -66,7 +71,7 @@ export default function EventDetail() {
 
   const hasAccess = canManageEvent(user, eventId);
 
-  // Backfill: create default track/room for existing events that don't have them
+  // Backfill: create default track/room for existing events
   useEffect(() => {
     if (!eventId || !event) return;
     const doBackfill = async () => {
@@ -75,12 +80,8 @@ export default function EventDetail() {
         base44.entities.Room.filter({ event_id: eventId, is_deleted: false }),
       ]);
       const ops = [];
-      if (existingTracks.length === 0) {
-        ops.push(base44.entities.Track.create({ event_id: eventId, name: "Principal", color: "#4F46E5", is_deleted: false }));
-      }
-      if (existingRooms.length === 0) {
-        ops.push(base44.entities.Room.create({ event_id: eventId, name: "Plenária", is_deleted: false }));
-      }
+      if (existingTracks.length === 0) ops.push(base44.entities.Track.create({ event_id: eventId, name: "Principal", color: "#4F46E5", is_deleted: false }));
+      if (existingRooms.length === 0) ops.push(base44.entities.Room.create({ event_id: eventId, name: "Plenária", is_deleted: false }));
       if (ops.length > 0) {
         await Promise.all(ops);
         queryClient.invalidateQueries({ queryKey: ["tracks", eventId] });
@@ -96,11 +97,38 @@ export default function EventDetail() {
     room: "Room",
     session: "Session",
     partner: "Partner",
-    rep: "PartnerRepresentative",
+  };
+
+  // Save participant with CPF reuse check
+  const saveParticipant = async (data, id) => {
+    if (!id && data.cpf) {
+      // Check global base for existing CPF
+      const cpfNorm = data.cpf.replace(/\D/g, "");
+      const existing = await base44.entities.Participant.filter({ cpf: cpfNorm, is_deleted: false });
+      // Filter out already linked to this event
+      const notInEvent = existing.filter((p) => p.event_id !== eventId);
+      if (notInEvent.length > 0) {
+        // Show reuse dialog
+        setCpfReuseData({ existingPerson: notInEvent[0], pendingFormData: data });
+        return "cpf_reuse"; // signal to caller
+      }
+    }
+    if (id) {
+      await base44.entities.Participant.update(id, data);
+      return "updated";
+    } else {
+      await base44.entities.Participant.create({ ...data, event_id: eventId, is_deleted: false });
+      return "created";
+    }
   };
 
   const saveMut = useMutation({
     mutationFn: async ({ type, data, id }) => {
+      if (type === "participant") {
+        const result = await saveParticipant(data, id);
+        if (result === "cpf_reuse") return { id: null, action: null, cpf_reuse: true };
+        return { id: id || "new", action: id ? "update" : "create" };
+      }
       const eName = ENTITY_MAP[type];
       if (id) {
         await base44.entities[eName].update(id, data);
@@ -110,9 +138,10 @@ export default function EventDetail() {
         return { id: created.id, action: "create" };
       }
     },
-    onSuccess: ({ id, action }, { type }) => {
-      logAudit({ event_id: eventId, action, entity_type: ENTITY_MAP[type], entity_id: id, user });
-      const qKey = type === "rep" ? "reps" : type + "s";
+    onSuccess: (res, { type }) => {
+      if (res?.cpf_reuse) return; // dialog handled separately
+      if (res?.action) logAudit({ event_id: eventId, action: res.action, entity_type: ENTITY_MAP[type] || type, entity_id: res.id, user });
+      const qKey = type + "s";
       queryClient.invalidateQueries({ queryKey: [qKey, eventId] });
       setFormDialog({ open: false, type: null, item: null });
       setTrackColorEdit(null);
@@ -122,20 +151,46 @@ export default function EventDetail() {
 
   const deleteMut = useMutation({
     mutationFn: async ({ type, id }) => {
-      await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
+      const eName = ENTITY_MAP[type];
+      await base44.entities[eName].update(id, { is_deleted: true });
       return { type, id };
     },
     onSuccess: ({ type, id }) => {
       logAudit({ event_id: eventId, action: "soft_delete", entity_type: ENTITY_MAP[type], entity_id: id, user });
-      const qKey = type === "rep" ? "reps" : type + "s";
-      queryClient.invalidateQueries({ queryKey: [qKey, eventId] });
+      queryClient.invalidateQueries({ queryKey: [type + "s", eventId] });
       toast.success(t("events.deleteSuccess"));
     },
   });
 
-  // Team role toggle
-  const toggleTeamRole = async (participant) => {
-    const newRole = participant.role_in_event === "team" ? "attendee" : "team";
+  // Link existing person to this event (CPF reuse)
+  const handleCpfReuse = async (existingPerson) => {
+    await base44.entities.Participant.create({
+      event_id: eventId,
+      full_name: existingPerson.full_name,
+      email: existingPerson.email,
+      cpf: existingPerson.cpf,
+      phone: existingPerson.phone || "",
+      company: existingPerson.company || "",
+      job_title: existingPerson.job_title || "",
+      linkedin: existingPerson.linkedin || "",
+      instagram: existingPerson.instagram || "",
+      youtube: existingPerson.youtube || "",
+      website: existingPerson.website || "",
+      bio: existingPerson.bio || "",
+      role_in_event: "attendee",
+      registration_status: "registered",
+      is_deleted: false,
+    });
+    logAudit({ event_id: eventId, action: "create", entity_type: "Participant", entity_id: existingPerson.id, user });
+    queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
+    setCpfReuseData(null);
+    setFormDialog({ open: false, type: null, item: null });
+    toast.success("Participante vinculado ao evento com sucesso.");
+  };
+
+  // Role toggle for associative tabs (speaker / team)
+  const toggleRole = async (participant, targetRole) => {
+    const newRole = participant.role_in_event === targetRole ? "attendee" : targetRole;
     await base44.entities.Participant.update(participant.id, { role_in_event: newRole });
     logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: participant.id, user });
     queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
@@ -182,7 +237,6 @@ export default function EventDetail() {
     track: [
       { key: "name", label: "Nome", required: true },
       { key: "description", label: "Descrição", type: "textarea" },
-      // color handled separately via ColorPickerField
     ],
     room: [
       { key: "name", label: "Nome", required: true },
@@ -194,7 +248,7 @@ export default function EventDetail() {
       { key: "title", label: "Título", required: true },
       { key: "description", label: "Descrição", type: "textarea" },
       { key: "speaker_name", label: "Palestrante" },
-      { key: "start_time", label: "Início", type: "datetime-local", required: true },
+      { key: "start_time", label: "Início *", type: "datetime-local", required: true },
       { key: "end_time", label: "Término", type: "datetime-local" },
       { key: "track_id", label: "Trilha *", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
       { key: "room_id", label: "Sala *", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
@@ -213,27 +267,13 @@ export default function EventDetail() {
         { value: "apoiador", label: t("plans.apoiador") },
       ]},
     ],
-    rep: [
-      { key: "partner_id", label: "Parceiro *", type: "select", required: true, options: partners.map((p) => ({ value: p.id, label: p.name })) },
-      { key: "full_name", label: "Nome", required: true },
-      { key: "email", label: "E-mail", type: "email", required: true },
-      { key: "phone", label: "Telefone" },
-      { key: "role", label: "Função" },
-    ],
   };
 
-  const brandStyle = {
-    "--ev-primary": event.color_primary || "#4F46E5",
-    "--ev-secondary": event.color_secondary || "#0D9488",
-    "--ev-accent": event.color_accent || "#F59E0B",
-  };
-
-  const trackName = (id) => tracks.find((t) => t.id === id)?.name || "—";
+  const trackName = (id) => tracks.find((tr) => tr.id === id)?.name || "—";
   const roomName = (id) => rooms.find((r) => r.id === id)?.name || "—";
-  const partnerName = (id) => partners.find((p) => p.id === id)?.name || "—";
 
   return (
-    <div className="space-y-4" style={brandStyle}>
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate("/events")} className="mt-1 shrink-0">
@@ -278,6 +318,12 @@ export default function EventDetail() {
           <TabsTrigger value="participants" className="gap-1">
             <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.participants")}</span><span className="sm:hidden">Part.</span>
           </TabsTrigger>
+          <TabsTrigger value="speakers" className="gap-1">
+            <Mic2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.speakers")}</span><span className="sm:hidden">Pal.</span>
+          </TabsTrigger>
+          <TabsTrigger value="team" className="gap-1">
+            <UsersRound className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.team")}</span><span className="sm:hidden">Eq.</span>
+          </TabsTrigger>
           <TabsTrigger value="tracks" className="gap-1">
             <Route className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.tracks")}</span><span className="sm:hidden">Tri.</span>
           </TabsTrigger>
@@ -292,9 +338,6 @@ export default function EventDetail() {
           </TabsTrigger>
           <TabsTrigger value="reps" className="gap-1">
             <UserCheck className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.representatives")}</span><span className="sm:hidden">Rep.</span>
-          </TabsTrigger>
-          <TabsTrigger value="team" className="gap-1">
-            <UsersRound className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.team")}</span><span className="sm:hidden">Eq.</span>
           </TabsTrigger>
         </TabsList>
 
@@ -327,6 +370,30 @@ export default function EventDetail() {
           )}
         </TabsContent>
 
+        {/* Palestrantes — associativa */}
+        <TabsContent value="speakers" className="mt-4">
+          <AssociativeRoleTab
+            participants={participants}
+            role="speaker"
+            roleLabel={t("roles.speaker")}
+            hasAccess={hasAccess}
+            onToggle={(p) => toggleRole(p, "speaker")}
+            description="Associe participantes cadastrados como Palestrantes. Para cadastrar nova pessoa, use a aba Participantes."
+          />
+        </TabsContent>
+
+        {/* Equipe — associativa */}
+        <TabsContent value="team" className="mt-4">
+          <AssociativeRoleTab
+            participants={participants}
+            role="team"
+            roleLabel={t("roles.team")}
+            hasAccess={hasAccess}
+            onToggle={(p) => toggleRole(p, "team")}
+            description="Associe participantes cadastrados como Equipe. Para cadastrar nova pessoa, use a aba Participantes."
+          />
+        </TabsContent>
+
         {/* Trilhas */}
         <TabsContent value="tracks" className="mt-4">
           <div className="space-y-2">
@@ -351,7 +418,7 @@ export default function EventDetail() {
               </div>
             ))}
             {hasAccess && (
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}>
+              <Button variant="outline" size="sm" className="mt-2 gap-1" onClick={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}>
                 + Nova Trilha
               </Button>
             )}
@@ -411,26 +478,15 @@ export default function EventDetail() {
           />
         </TabsContent>
 
-        {/* Representantes */}
+        {/* Representantes — associativa */}
         <TabsContent value="reps" className="mt-4">
-          <EntityTable
-            items={reps}
-            columns={[
-              { key: "full_name", label: "Nome" },
-              { key: "partner_id", label: "Parceiro", render: (r) => partnerName(r.partner_id) },
-              { key: "email", label: "E-mail" },
-              { key: "role", label: "Função" },
-            ]}
-            onAdd={hasAccess ? () => openForm("rep") : undefined}
-            onEdit={hasAccess ? (item) => openForm("rep", item) : undefined}
-            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "rep", id: item.id }) : undefined}
-            addLabel="Novo"
+          <AssociativeRepTab
+            eventId={eventId}
+            participants={participants}
+            partners={partners}
+            reps={reps}
+            hasAccess={hasAccess}
           />
-        </TabsContent>
-
-        {/* Equipe */}
-        <TabsContent value="team" className="mt-4">
-          <TeamTab participants={participants} hasAccess={hasAccess} onToggle={toggleTeamRole} />
         </TabsContent>
       </Tabs>
 
@@ -447,7 +503,7 @@ export default function EventDetail() {
         />
       )}
 
-      {/* Track color/name dialog */}
+      {/* Track edit dialog */}
       {trackColorEdit !== null && (
         <TrackEditDialog
           item={trackColorEdit}
@@ -456,20 +512,23 @@ export default function EventDetail() {
           isSubmitting={saveMut.isPending}
         />
       )}
+
+      {/* CPF reuse dialog */}
+      <CpfReuseDialog
+        open={!!cpfReuseData}
+        existingPerson={cpfReuseData?.existingPerson}
+        onLink={handleCpfReuse}
+        onCancel={() => setCpfReuseData(null)}
+      />
     </div>
   );
 }
 
-// ── Track edit dialog with color picker ──────────────────────────────────────
+// ── Track edit dialog with color picker ─────────────────────────────────────
 function TrackEditDialog({ item, onSave, onClose, isSubmitting }) {
   const [name, setName] = useState(item.name || "");
   const [description, setDescription] = useState(item.description || "");
   const [color, setColor] = useState(item.color || "#4F46E5");
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave({ name, description, color });
-  };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -477,7 +536,7 @@ function TrackEditDialog({ item, onSave, onClose, isSubmitting }) {
         <DialogHeader>
           <DialogTitle className="font-display">{item.id ? t("common.edit") : "Nova Trilha"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); onSave({ name, description, color }); }} className="space-y-4">
           <div className="space-y-1.5">
             <Label>Nome *</Label>
             <input
@@ -504,59 +563,5 @@ function TrackEditDialog({ item, onSave, onClose, isSubmitting }) {
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── Team tab ──────────────────────────────────────────────────────────────────
-function TeamTab({ participants, hasAccess, onToggle }) {
-  const [search, setSearch] = useState("");
-  const filtered = participants.filter((p) =>
-    p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.email?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Associe ou remova o papel <strong>Equipe</strong> em participantes já cadastrados. Não é possível criar novas pessoas aqui.
-      </p>
-      <input
-        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Buscar participante..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <div className="space-y-2">
-        {filtered.map((p) => {
-          const isTeam = p.role_in_event === "team";
-          return (
-            <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-card">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{p.full_name}</p>
-                <p className="text-xs text-muted-foreground truncate">{p.email}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Badge variant="secondary" className={isTeam ? "bg-indigo-100 text-indigo-700" : "bg-muted text-muted-foreground"}>
-                  {isTeam ? t("roles.team") : t("roles.attendee")}
-                </Badge>
-                {hasAccess && (
-                  <Button
-                    variant={isTeam ? "destructive" : "outline"}
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => onToggle(p)}
-                  >
-                    {isTeam ? "Remover" : "Equipe"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <p className="text-center text-muted-foreground py-6 text-sm">{t("common.noData")}</p>
-        )}
-      </div>
-    </div>
   );
 }
