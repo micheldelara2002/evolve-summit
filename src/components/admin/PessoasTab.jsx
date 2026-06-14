@@ -302,8 +302,13 @@ function AddPersonDialog({ eventId, user, onClose, onSuccess }) {
     e.preventDefault();
     setSaving(true);
     const cpfNorm = form.cpf.replace(/\D/g, "");
-    // Check global base
+    if (!cpfNorm) { toast.error("CPF é obrigatório."); setSaving(false); return; }
+    // Check global base — ALL records with this CPF (any event)
     const existing = await base44.entities.Participant.filter({ cpf: cpfNorm, is_deleted: false });
+    // Already linked to this event?
+    const alreadyInEvent = existing.some((p) => p.event_id === eventId);
+    if (alreadyInEvent) { toast.error("CPF já cadastrado neste evento."); setSaving(false); return; }
+    // Exists in another event → offer link
     const notInEvent = existing.filter((p) => p.event_id !== eventId);
     if (notInEvent.length > 0) {
       setReuseData({ existingPerson: notInEvent[0] });

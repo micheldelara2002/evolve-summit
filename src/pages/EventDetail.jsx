@@ -90,11 +90,17 @@ export default function EventDetail() {
   const saveMut = useMutation({
     mutationFn: async ({ type, data, id }) => {
       const eName = ENTITY_MAP[type];
+      // For sessions: resolve speaker_name from speaker_id
+      let finalData = { ...data };
+      if (type === "session" && data.speaker_id) {
+        const spk = participants.find((p) => p.id === data.speaker_id);
+        if (spk) finalData.speaker_name = spk.full_name;
+      }
       if (id) {
-        await base44.entities[eName].update(id, data);
+        await base44.entities[eName].update(id, finalData);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities[eName].create({ ...data, event_id: eventId, is_deleted: false });
+        const created = await base44.entities[eName].create({ ...finalData, event_id: eventId, is_deleted: false });
         return { id: created.id, action: "create" };
       }
     },
@@ -146,11 +152,11 @@ export default function EventDetail() {
     session: [
       { key: "title", label: "Título", required: true },
       { key: "description", label: "Descrição", type: "textarea" },
-      { key: "speaker_name", label: "Palestrante" },
-      { key: "start_time", label: "Início *", type: "datetime-local", required: true },
+      { key: "speaker_id", label: "Palestrante", type: "select", options: [{ value: "", label: "— nenhum —" }, ...participants.filter((p) => p.role_in_event === "speaker").map((p) => ({ value: p.id, label: p.full_name }))] },
+      { key: "start_time", label: "Início", type: "datetime-local", required: true },
       { key: "end_time", label: "Término", type: "datetime-local" },
-      { key: "track_id", label: "Trilha *", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
-      { key: "room_id", label: "Sala *", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
+      { key: "track_id", label: "Trilha", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
+      { key: "room_id", label: "Sala", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
       { key: "capacity", label: "Capacidade", type: "number" },
       { key: "session_type", label: "Tipo de Sessão", type: "select", options: SESSION_TYPES },
     ],
