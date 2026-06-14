@@ -65,26 +65,6 @@ export default function EventDetail() {
 
   const hasAccess = canManageEvent(user, eventId);
 
-  // Backfill: default track/room for existing events
-  useEffect(() => {
-    if (!eventId || !event) return;
-    const doBackfill = async () => {
-      const [existingTracks, existingRooms] = await Promise.all([
-        base44.entities.Track.filter({ event_id: eventId, is_deleted: false }),
-        base44.entities.Room.filter({ event_id: eventId, is_deleted: false }),
-      ]);
-      const ops = [];
-      if (existingTracks.length === 0) ops.push(base44.entities.Track.create({ event_id: eventId, name: "Principal", color: "#4F46E5", is_deleted: false }));
-      if (existingRooms.length === 0) ops.push(base44.entities.Room.create({ event_id: eventId, name: "Plenária", is_deleted: false }));
-      if (ops.length > 0) {
-        await Promise.all(ops);
-        queryClient.invalidateQueries({ queryKey: ["tracks", eventId] });
-        queryClient.invalidateQueries({ queryKey: ["rooms", eventId] });
-      }
-    };
-    doBackfill();
-  }, [eventId, event]);
-
   const ENTITY_MAP = { track: "Track", room: "Room", session: "Session", partner: "Partner" };
 
   const saveMut = useMutation({
@@ -115,6 +95,17 @@ export default function EventDetail() {
 
   const deleteMut = useMutation({
     mutationFn: async ({ type, id }) => {
+      // Guard: last track/room
+      if (type === "track") {
+        if (tracks.length <= 1) throw new Error("Deve haver pelo menos 1 trilha cadastrada.");
+        const linked = sessions.some((s) => s.track_id === id);
+        if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta trilha.");
+      }
+      if (type === "room") {
+        if (rooms.length <= 1) throw new Error("Deve haver pelo menos 1 sala cadastrada.");
+        const linked = sessions.some((s) => s.room_id === id);
+        if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
+      }
       await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
       return { type, id };
     },
@@ -122,6 +113,9 @@ export default function EventDetail() {
       logAudit({ event_id: eventId, action: "soft_delete", entity_type: ENTITY_MAP[type], entity_id: id, user });
       queryClient.invalidateQueries({ queryKey: [type + "s", eventId] });
       toast.success(t("events.deleteSuccess"));
+    },
+    onError: (err) => {
+      toast.error(err.message || "Erro ao excluir.");
     },
   });
 

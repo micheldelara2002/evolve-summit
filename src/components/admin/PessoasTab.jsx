@@ -457,17 +457,37 @@ function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuc
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(null);
 
+  // Compute which roles should be disabled based on current selection
+  const disabledRoles = useMemo(() => {
+    const disabled = new Set();
+    if (roles.includes("manager")) {
+      disabled.add("team"); disabled.add("speaker"); disabled.add("rep");
+    }
+    if (roles.includes("team")) {
+      disabled.add("manager"); disabled.add("speaker"); disabled.add("rep");
+    }
+    if (roles.includes("speaker")) {
+      disabled.add("manager"); disabled.add("team");
+    }
+    if (roles.includes("rep")) {
+      disabled.add("manager"); disabled.add("team");
+    }
+    return disabled;
+  }, [roles]);
+
   const toggleRole = (role) => {
+    if (roles.includes(role)) {
+      setRoles((prev) => prev.filter((r) => r !== role));
+    } else {
+      if (!disabledRoles.has(role)) {
+        setRoles((prev) => [...prev, role]);
+      }
+    }
     setConflict(null);
-    setRoles((prev) => prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]);
   };
 
   const handleSave = async () => {
-    const err = validateRoles(roles);
-    if (err) { setConflict(err); return; }
-
     if (roles.includes("rep")) {
-      if (partners.length === 0) { onNeedPartner(pessoa); return; }
       if (!partnerId) { setConflict("Selecione um parceiro para o papel de Representante."); return; }
     }
 
@@ -526,12 +546,16 @@ function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuc
           <div className="grid grid-cols-2 gap-2">
             {ROLE_OPTIONS.map(({ value, label }) => {
               const active = roles.includes(value);
+              const disabled = disabledRoles.has(value);
               return (
                 <button
                   key={value}
                   type="button"
                   onClick={() => toggleRole(value)}
-                  className={`rounded-xl border p-3 text-sm font-medium transition-colors text-left ${active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}
+                  disabled={disabled}
+                  className={`rounded-xl border p-3 text-sm font-medium transition-colors text-left
+                    ${active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"}
+                    ${disabled ? "opacity-35 cursor-not-allowed" : "hover:bg-muted/40"}`}
                 >
                   {label}
                   {active && <span className="ml-1 text-xs">✓</span>}
@@ -541,14 +565,9 @@ function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuc
           </div>
 
           {roles.includes("rep") && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>Parceiro *</Label>
-              {partners.length === 0 ? (
-                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
-                  Nenhum parceiro cadastrado.{" "}
-                  <button className="underline font-medium" onClick={() => onNeedPartner(pessoa)}>Cadastrar parceiro</button>
-                </p>
-              ) : (
+              {partners.length > 0 && (
                 <Select value={partnerId} onValueChange={setPartnerId}>
                   <SelectTrigger><SelectValue placeholder="Selecionar parceiro" /></SelectTrigger>
                   <SelectContent>
@@ -556,6 +575,12 @@ function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuc
                   </SelectContent>
                 </Select>
               )}
+              {partners.length === 0 && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">Nenhum parceiro cadastrado ainda.</p>
+              )}
+              <Button type="button" variant="outline" size="sm" className="w-full gap-1" onClick={() => onNeedPartner(pessoa)}>
+                + Cadastrar novo parceiro
+              </Button>
             </div>
           )}
 

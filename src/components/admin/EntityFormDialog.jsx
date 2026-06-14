@@ -9,6 +9,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 
+// Radix Select does not accept empty string as value — use this sentinel instead
+const NONE_VALUE = "__none__";
+
 export default function EntityFormDialog({ open, onOpenChange, title, fields, item, onSubmit, isSubmitting }) {
   const [form, setForm] = useState({});
 
@@ -29,9 +32,20 @@ export default function EntityFormDialog({ open, onOpenChange, title, fields, it
     const data = { ...form };
     fields.forEach((f) => {
       if (f.type === "number" && data[f.key]) data[f.key] = Number(data[f.key]);
+      // Convert sentinel back to empty string
+      if (f.type === "select" && data[f.key] === NONE_VALUE) data[f.key] = "";
     });
     onSubmit(data);
   };
+
+  // Convert stored value to Select display value (sentinel for empty)
+  const selectVal = (key) => {
+    const v = form[key];
+    return v === "" || v === null || v === undefined ? NONE_VALUE : v;
+  };
+
+  // Convert Select choice back to form value
+  const selectChange = (key, v) => update(key, v === NONE_VALUE ? "" : v);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,11 +60,13 @@ export default function EntityFormDialog({ open, onOpenChange, title, fields, it
               {f.type === "textarea" ? (
                 <Textarea value={form[f.key] || ""} onChange={(e) => update(f.key, e.target.value)} rows={3} required={f.required} />
               ) : f.type === "select" ? (
-                <Select value={form[f.key] || ""} onValueChange={(v) => update(f.key, v)}>
+                <Select value={selectVal(f.key)} onValueChange={(v) => selectChange(f.key, v)} required={f.required}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {f.options.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {f.options?.map((o) => (
+                      <SelectItem key={o.value === "" ? NONE_VALUE : o.value} value={o.value === "" ? NONE_VALUE : o.value}>
+                        {o.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
