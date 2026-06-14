@@ -14,8 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 
 export default function EventDetail() {
@@ -27,6 +28,7 @@ export default function EventDetail() {
   const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
+  const [trackDeleteConfirm, setTrackDeleteConfirm] = useState(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -151,7 +153,6 @@ export default function EventDetail() {
       { key: "end_time", label: "Término", type: "datetime-local" },
       { key: "track_id", label: "Trilha", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
       { key: "room_id", label: "Sala", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
-      { key: "capacity", label: "Capacidade", type: "number" },
       { key: "session_type", label: "Tipo de Sessão", type: "select", options: SESSION_TYPES },
     ],
     partner: [
@@ -270,7 +271,7 @@ export default function EventDetail() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteMut.mutate({ type: "track", id: track.id })}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setTrackDeleteConfirm(track)}>
                       <span className="text-xs">✕</span>
                     </Button>
                   </div>
@@ -347,6 +348,15 @@ export default function EventDetail() {
         />
       )}
 
+      {/* Track delete confirm */}
+      {trackDeleteConfirm && (
+        <TrackDeleteDialog
+          track={trackDeleteConfirm}
+          onConfirm={() => { deleteMut.mutate({ type: "track", id: trackDeleteConfirm.id }); setTrackDeleteConfirm(null); }}
+          onClose={() => setTrackDeleteConfirm(null)}
+        />
+      )}
+
       {/* Track edit dialog */}
       {trackColorEdit !== null && (
         <TrackEditDialog
@@ -357,6 +367,28 @@ export default function EventDetail() {
         />
       )}
     </div>
+  );
+}
+
+// ── Track delete confirm dialog ──────────────────────────────────────────────
+function TrackDeleteDialog({ track, onConfirm, onClose }) {
+  return (
+    <AlertDialog open onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <ADT>Confirmar exclusão</ADT>
+          <AlertDialogDescription>
+            Tem certeza que deseja excluir a trilha <strong>{track.name}</strong>?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <ADF>
+          <AlertDialogCancel onClick={onClose}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={onConfirm}>
+            Excluir
+          </AlertDialogAction>
+        </ADF>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

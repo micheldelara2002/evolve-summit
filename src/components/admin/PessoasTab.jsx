@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
 
@@ -96,6 +96,41 @@ export default function PessoasTab({ eventId, participants, reps, partners, hasA
     });
   }, [rows, search, filterRole, filterPartner]);
 
+  const handleExportCsv = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+    const filename = `pessoas_evento_${eventId}_${timestamp}.csv`;
+
+    const headers = ["nome", "cpf", "email", "telefone", "papeis", "parceiro", "status", "data_cadastro"];
+    const rows = filtered.map((p) => [
+      p.full_name || "",
+      p.cpf || "",
+      p.email || "",
+      p.phone || "",
+      p.derivedRoles.join(";"),
+      p.partnerName || "",
+      p.registration_status || "",
+      p.created_date ? new Date(p.created_date).toLocaleDateString("pt-BR") : "",
+    ]);
+
+    if (filtered.length === 0) {
+      toast.info("Nenhuma pessoa encontrada com os filtros atuais. Exportando apenas cabeçalho.");
+    }
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
     queryClient.invalidateQueries({ queryKey: ["reps", eventId] });
@@ -149,6 +184,9 @@ export default function PessoasTab({ eventId, participants, reps, partners, hasA
           </Select>
         )}
         <div className="flex gap-2 ml-auto">
+          <Button variant="outline" size="sm" className="gap-1" onClick={handleExportCsv}>
+            <Download className="w-4 h-4" /> Exportar
+          </Button>
           {hasAccess && (
             <Button variant="outline" size="sm" className="gap-1" onClick={onShowImport}>
               <Upload className="w-4 h-4" /> CSV
