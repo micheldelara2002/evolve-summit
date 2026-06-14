@@ -8,15 +8,11 @@ import { logAudit } from "@/lib/audit";
 import StatusBadge from "@/components/admin/StatusBadge";
 import EntityTable from "@/components/admin/EntityTable";
 import EntityFormDialog from "@/components/admin/EntityFormDialog";
-import CsvImport from "@/components/admin/CsvImport";
 import ColorPickerField from "@/components/admin/ColorPickerField";
-import AssociativeRoleTab from "@/components/admin/AssociativeRoleTab";
-import AssociativeRepTab from "@/components/admin/AssociativeRepTab";
-import CpfReuseDialog from "@/components/admin/CpfReuseDialog";
+import PessoasTab from "@/components/admin/PessoasTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, UserCheck, Upload, DoorOpen, UsersRound, Mic2 } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -27,12 +23,10 @@ export default function EventDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("participants");
+  const [tab, setTab] = useState("pessoas");
   const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
-  // CPF reuse dialog state
-  const [cpfReuseData, setCpfReuseData] = useState(null); // { existingPerson, pendingFormData }
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -71,7 +65,7 @@ export default function EventDetail() {
 
   const hasAccess = canManageEvent(user, eventId);
 
-  // Backfill: create default track/room for existing events
+  // Backfill: default track/room for existing events
   useEffect(() => {
     if (!eventId || !event) return;
     const doBackfill = async () => {
@@ -91,44 +85,10 @@ export default function EventDetail() {
     doBackfill();
   }, [eventId, event]);
 
-  const ENTITY_MAP = {
-    participant: "Participant",
-    track: "Track",
-    room: "Room",
-    session: "Session",
-    partner: "Partner",
-  };
-
-  // Save participant with CPF reuse check
-  const saveParticipant = async (data, id) => {
-    if (!id && data.cpf) {
-      // Check global base for existing CPF
-      const cpfNorm = data.cpf.replace(/\D/g, "");
-      const existing = await base44.entities.Participant.filter({ cpf: cpfNorm, is_deleted: false });
-      // Filter out already linked to this event
-      const notInEvent = existing.filter((p) => p.event_id !== eventId);
-      if (notInEvent.length > 0) {
-        // Show reuse dialog
-        setCpfReuseData({ existingPerson: notInEvent[0], pendingFormData: data });
-        return "cpf_reuse"; // signal to caller
-      }
-    }
-    if (id) {
-      await base44.entities.Participant.update(id, data);
-      return "updated";
-    } else {
-      await base44.entities.Participant.create({ ...data, event_id: eventId, is_deleted: false });
-      return "created";
-    }
-  };
+  const ENTITY_MAP = { track: "Track", room: "Room", session: "Session", partner: "Partner" };
 
   const saveMut = useMutation({
     mutationFn: async ({ type, data, id }) => {
-      if (type === "participant") {
-        const result = await saveParticipant(data, id);
-        if (result === "cpf_reuse") return { id: null, action: null, cpf_reuse: true };
-        return { id: id || "new", action: id ? "update" : "create" };
-      }
       const eName = ENTITY_MAP[type];
       if (id) {
         await base44.entities[eName].update(id, data);
@@ -139,10 +99,8 @@ export default function EventDetail() {
       }
     },
     onSuccess: (res, { type }) => {
-      if (res?.cpf_reuse) return; // dialog handled separately
-      if (res?.action) logAudit({ event_id: eventId, action: res.action, entity_type: ENTITY_MAP[type] || type, entity_id: res.id, user });
-      const qKey = type + "s";
-      queryClient.invalidateQueries({ queryKey: [qKey, eventId] });
+      if (res?.action) logAudit({ event_id: eventId, action: res.action, entity_type: ENTITY_MAP[type], entity_id: res.id, user });
+      queryClient.invalidateQueries({ queryKey: [type + "s", eventId] });
       setFormDialog({ open: false, type: null, item: null });
       setTrackColorEdit(null);
       toast.success(t("events.saveSuccess"));
@@ -151,8 +109,7 @@ export default function EventDetail() {
 
   const deleteMut = useMutation({
     mutationFn: async ({ type, id }) => {
-      const eName = ENTITY_MAP[type];
-      await base44.entities[eName].update(id, { is_deleted: true });
+      await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
       return { type, id };
     },
     onSuccess: ({ type, id }) => {
@@ -161,41 +118,6 @@ export default function EventDetail() {
       toast.success(t("events.deleteSuccess"));
     },
   });
-
-  // Link existing person to this event (CPF reuse)
-  const handleCpfReuse = async (existingPerson) => {
-    await base44.entities.Participant.create({
-      event_id: eventId,
-      full_name: existingPerson.full_name,
-      email: existingPerson.email,
-      cpf: existingPerson.cpf,
-      phone: existingPerson.phone || "",
-      company: existingPerson.company || "",
-      job_title: existingPerson.job_title || "",
-      linkedin: existingPerson.linkedin || "",
-      instagram: existingPerson.instagram || "",
-      youtube: existingPerson.youtube || "",
-      website: existingPerson.website || "",
-      bio: existingPerson.bio || "",
-      role_in_event: "attendee",
-      registration_status: "registered",
-      is_deleted: false,
-    });
-    logAudit({ event_id: eventId, action: "create", entity_type: "Participant", entity_id: existingPerson.id, user });
-    queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
-    setCpfReuseData(null);
-    setFormDialog({ open: false, type: null, item: null });
-    toast.success("Participante vinculado ao evento com sucesso.");
-  };
-
-  // Role toggle for associative tabs (speaker / team)
-  const toggleRole = async (participant, targetRole) => {
-    const newRole = participant.role_in_event === targetRole ? "attendee" : targetRole;
-    await base44.entities.Participant.update(participant.id, { role_in_event: newRole });
-    logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: participant.id, user });
-    queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
-    toast.success(t("events.saveSuccess"));
-  };
 
   if (isLoading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (!event) return <p className="text-center py-12 text-muted-foreground">{t("events.noEvents")}</p>;
@@ -215,29 +137,6 @@ export default function EventDetail() {
   ];
 
   const fieldDefs = {
-    participant: [
-      { key: "full_name", label: "Nome", required: true },
-      { key: "email", label: "E-mail", type: "email", required: true },
-      { key: "cpf", label: "CPF", required: true },
-      { key: "phone", label: "Telefone", required: true },
-      { key: "company", label: "Empresa" },
-      { key: "job_title", label: "Cargo" },
-      { key: "linkedin", label: "LinkedIn" },
-      { key: "instagram", label: "Instagram" },
-      { key: "youtube", label: "Youtube" },
-      { key: "website", label: "Site" },
-      { key: "bio", label: "Sobre mim", type: "textarea" },
-      { key: "role_in_event", label: "Papel", type: "select", options: [
-        { value: "attendee", label: t("roles.attendee") },
-        { value: "speaker", label: t("roles.speaker") },
-        { value: "team", label: t("roles.team") },
-        { value: "manager", label: t("roles.manager") },
-      ]},
-    ],
-    track: [
-      { key: "name", label: "Nome", required: true },
-      { key: "description", label: "Descrição", type: "textarea" },
-    ],
     room: [
       { key: "name", label: "Nome", required: true },
       { key: "capacity", label: "Capacidade", type: "number" },
@@ -315,14 +214,8 @@ export default function EventDetail() {
       {/* Tabs */}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
-          <TabsTrigger value="participants" className="gap-1">
-            <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.participants")}</span><span className="sm:hidden">Part.</span>
-          </TabsTrigger>
-          <TabsTrigger value="speakers" className="gap-1">
-            <Mic2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.speakers")}</span><span className="sm:hidden">Pal.</span>
-          </TabsTrigger>
-          <TabsTrigger value="team" className="gap-1">
-            <UsersRound className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.team")}</span><span className="sm:hidden">Eq.</span>
+          <TabsTrigger value="pessoas" className="gap-1">
+            <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline">Pessoas</span><span className="sm:hidden">Pess.</span>
           </TabsTrigger>
           <TabsTrigger value="tracks" className="gap-1">
             <Route className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.tracks")}</span><span className="sm:hidden">Tri.</span>
@@ -336,67 +229,34 @@ export default function EventDetail() {
           <TabsTrigger value="partners" className="gap-1">
             <Handshake className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.partners")}</span><span className="sm:hidden">Par.</span>
           </TabsTrigger>
-          <TabsTrigger value="reps" className="gap-1">
-            <UserCheck className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.representatives")}</span><span className="sm:hidden">Rep.</span>
-          </TabsTrigger>
         </TabsList>
 
-        {/* Participantes */}
-        <TabsContent value="participants" className="mt-4">
-          {showImport ? (
-            <CsvImport eventId={eventId} existingParticipants={participants} onComplete={() => setShowImport(false)} />
-          ) : (
-            <>
-              <div className="flex gap-2 mb-3 justify-end">
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => setShowImport(true)}>
-                  <Upload className="w-4 h-4" /> CSV
-                </Button>
-              </div>
-              <EntityTable
-                items={participants}
-                columns={[
-                  { key: "full_name", label: "Nome" },
-                  { key: "email", label: "E-mail" },
-                  { key: "phone", label: "Telefone" },
-                  { key: "role_in_event", label: "Papel", render: (p) => t(`roles.${p.role_in_event}`) || p.role_in_event },
-                ]}
-                searchField="full_name"
-                onAdd={hasAccess ? () => openForm("participant") : undefined}
-                onEdit={hasAccess ? (item) => openForm("participant", item) : undefined}
-                onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "participant", id: item.id }) : undefined}
-                addLabel="Novo"
-              />
-            </>
-          )}
-        </TabsContent>
-
-        {/* Palestrantes — associativa */}
-        <TabsContent value="speakers" className="mt-4">
-          <AssociativeRoleTab
+        {/* ── Pessoas do Evento (tela única) ── */}
+        <TabsContent value="pessoas" className="mt-4">
+          <PessoasTab
+            eventId={eventId}
             participants={participants}
-            role="speaker"
-            roleLabel={t("roles.speaker")}
+            reps={reps}
+            partners={partners}
             hasAccess={hasAccess}
-            onToggle={(p) => toggleRole(p, "speaker")}
-            description="Associe participantes cadastrados como Palestrantes. Para cadastrar nova pessoa, use a aba Participantes."
+            showImport={showImport}
+            onShowImport={() => setShowImport(true)}
+            onHideImport={() => setShowImport(false)}
           />
         </TabsContent>
 
-        {/* Equipe — associativa */}
-        <TabsContent value="team" className="mt-4">
-          <AssociativeRoleTab
-            participants={participants}
-            role="team"
-            roleLabel={t("roles.team")}
-            hasAccess={hasAccess}
-            onToggle={(p) => toggleRole(p, "team")}
-            description="Associe participantes cadastrados como Equipe. Para cadastrar nova pessoa, use a aba Participantes."
-          />
-        </TabsContent>
-
-        {/* Trilhas */}
+        {/* ── Trilhas ── */}
         <TabsContent value="tracks" className="mt-4">
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* Toolbar: busca + botão Nova ao topo */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1" />
+              {hasAccess && (
+                <Button size="sm" className="gap-1 shrink-0" onClick={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}>
+                  <Plus className="w-4 h-4" /> Nova
+                </Button>
+              )}
+            </div>
             {tracks.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">{t("common.noData")}</p>}
             {tracks.map((track) => (
               <div key={track.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
@@ -417,15 +277,10 @@ export default function EventDetail() {
                 )}
               </div>
             ))}
-            {hasAccess && (
-              <Button variant="outline" size="sm" className="mt-2 gap-1" onClick={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}>
-                + Nova Trilha
-              </Button>
-            )}
           </div>
         </TabsContent>
 
-        {/* Salas */}
+        {/* ── Salas ── */}
         <TabsContent value="rooms" className="mt-4">
           <EntityTable
             items={rooms}
@@ -443,7 +298,7 @@ export default function EventDetail() {
           />
         </TabsContent>
 
-        {/* Sessões */}
+        {/* ── Sessões ── */}
         <TabsContent value="sessions" className="mt-4">
           <EntityTable
             items={sessions}
@@ -461,7 +316,7 @@ export default function EventDetail() {
           />
         </TabsContent>
 
-        {/* Parceiros */}
+        {/* ── Parceiros ── */}
         <TabsContent value="partners" className="mt-4">
           <EntityTable
             items={partners}
@@ -477,20 +332,9 @@ export default function EventDetail() {
             addLabel="Novo"
           />
         </TabsContent>
-
-        {/* Representantes — associativa */}
-        <TabsContent value="reps" className="mt-4">
-          <AssociativeRepTab
-            eventId={eventId}
-            participants={participants}
-            partners={partners}
-            reps={reps}
-            hasAccess={hasAccess}
-          />
-        </TabsContent>
       </Tabs>
 
-      {/* Generic Form Dialog */}
+      {/* Generic Form Dialog (rooms, sessions, partners) */}
       {formDialog.open && (
         <EntityFormDialog
           open={formDialog.open}
@@ -512,19 +356,11 @@ export default function EventDetail() {
           isSubmitting={saveMut.isPending}
         />
       )}
-
-      {/* CPF reuse dialog */}
-      <CpfReuseDialog
-        open={!!cpfReuseData}
-        existingPerson={cpfReuseData?.existingPerson}
-        onLink={handleCpfReuse}
-        onCancel={() => setCpfReuseData(null)}
-      />
     </div>
   );
 }
 
-// ── Track edit dialog with color picker ─────────────────────────────────────
+// ── Track edit dialog ────────────────────────────────────────────────────────
 function TrackEditDialog({ item, onSave, onClose, isSubmitting }) {
   const [name, setName] = useState(item.name || "");
   const [description, setDescription] = useState(item.description || "");
