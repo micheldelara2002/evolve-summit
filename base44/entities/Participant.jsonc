@@ -26,13 +26,37 @@
       "type": "string",
       "description": "Empresa"
     },
+    "job_title": {
+      "type": "string",
+      "description": "Cargo"
+    },
+    "linkedin": {
+      "type": "string",
+      "description": "LinkedIn"
+    },
+    "instagram": {
+      "type": "string",
+      "description": "Instagram"
+    },
+    "youtube": {
+      "type": "string",
+      "description": "Youtube"
+    },
+    "website": {
+      "type": "string",
+      "description": "Site"
+    },
+    "bio": {
+      "type": "string",
+      "description": "Sobre mim"
+    },
     "role_in_event": {
       "type": "string",
       "enum": [
         "attendee",
-        "vip",
         "speaker",
-        "organizer"
+        "team",
+        "manager"
       ],
       "default": "attendee"
     },
@@ -57,6 +81,8 @@
   "required": [
     "event_id",
     "full_name",
-    "email"
+    "email",
+    "cpf",
+    "phone"
   ]
 }

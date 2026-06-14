@@ -10,6 +10,10 @@
       "type": "string",
       "description": "ID da trilha"
     },
+    "room_id": {
+      "type": "string",
+      "description": "ID da sala"
+    },
     "title": {
       "type": "string",
       "description": "T\u00edtulo da sess\u00e3o"
@@ -36,7 +40,7 @@
     },
     "location": {
       "type": "string",
-      "description": "Sala/local"
+      "description": "Sala/local (legado)"
     },
     "capacity": {
       "type": "number"
@@ -44,13 +48,17 @@
     "session_type": {
       "type": "string",
       "enum": [
-        "talk",
-        "workshop",
-        "panel",
-        "networking",
-        "other"
+        "aula",
+        "debate",
+        "demonstracao",
+        "keynote",
+        "mesa_redonda",
+        "palestra",
+        "painel",
+        "simulacao",
+        "workshop"
       ],
-      "default": "talk"
+      "default": "palestra"
     },
     "is_deleted": {
       "type": "boolean",
@@ -60,6 +68,8 @@
   "required": [
     "event_id",
     "title",
-    "start_time"
+    "start_time",
+    "track_id",
+    "room_id"
   ]
 }

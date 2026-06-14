@@ -79,8 +79,8 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
           <Input type="datetime-local" value={form.start_date} onChange={(e) => update("start_date", e.target.value)} required />
         </div>
         <div className="space-y-2">
-          <Label>{t("events.endDate")}</Label>
-          <Input type="datetime-local" value={form.end_date} onChange={(e) => update("end_date", e.target.value)} />
+          <Label>{t("events.endDate")} *</Label>
+          <Input type="datetime-local" value={form.end_date} onChange={(e) => update("end_date", e.target.value)} required />
         </div>
       </div>
 

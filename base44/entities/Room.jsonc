@@ -1,5 +1,5 @@
 {
-  "name": "Track",
+  "name": "Room",
   "type": "object",
   "properties": {
     "event_id": {
@@ -8,15 +8,19 @@
     },
     "name": {
       "type": "string",
-      "description": "Nome da trilha"
+      "description": "Nome da sala"
     },
-    "description": {
-      "type": "string",
-      "description": "Descri\u00e7\u00e3o da trilha"
+    "capacity": {
+      "type": "number",
+      "description": "Capacidade"
     },
-    "color": {
+    "floor": {
       "type": "string",
-      "description": "Cor da trilha (hex)"
+      "description": "Andar"
+    },
+    "block": {
+      "type": "string",
+      "description": "Bloco"
     },
     "is_deleted": {
       "type": "boolean",

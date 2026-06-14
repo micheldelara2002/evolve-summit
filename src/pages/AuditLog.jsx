@@ -14,14 +14,14 @@ import { motion, AnimatePresence } from "framer-motion";
 const ACTIONS = ["create", "update", "soft_delete", "status_change", "role_change", "import", "checkin_revert", "export"];
 
 const actionColors = {
-  create: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-  update: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
-  soft_delete: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  status_change: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  role_change: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  import: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-  checkin_revert: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  export: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
+  create: "bg-emerald-100 text-emerald-700",
+  update: "bg-sky-100 text-sky-700",
+  soft_delete: "bg-red-100 text-red-700",
+  status_change: "bg-amber-100 text-amber-700",
+  role_change: "bg-purple-100 text-purple-700",
+  import: "bg-indigo-100 text-indigo-700",
+  checkin_revert: "bg-orange-100 text-orange-700",
+  export: "bg-gray-100 text-gray-700",
 };
 
 export default function AuditLog() {
@@ -32,7 +32,6 @@ export default function AuditLog() {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [sortDir, setSortDir] = useState("desc");
   const [showFilters, setShowFilters] = useState(false);
-  const [expandedId, setExpandedId] = useState(null);
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["audit-logs"],
@@ -46,39 +45,21 @@ export default function AuditLog() {
 
   const scopedEvents = filterEventsByAccess(events, user);
   const scopedEventIds = new Set(scopedEvents.map((e) => e.id));
+  const eventName = (id) => scopedEvents.find((e) => e.id === id)?.name || id || "—";
 
   const filtered = useMemo(() => {
-    let result = logs;
-
-    // Scope by access
+    let result = [...logs];
     if (!isAdmin(user)) {
       result = result.filter((l) => !l.event_id || scopedEventIds.has(l.event_id));
     }
-
-    // Action filter
-    if (actionFilter !== "all") {
-      result = result.filter((l) => l.action === actionFilter);
-    }
-
-    // Event filter
-    if (eventFilter !== "all") {
-      result = result.filter((l) => l.event_id === eventFilter);
-    }
-
-    // Period filter
+    if (actionFilter !== "all") result = result.filter((l) => l.action === actionFilter);
+    if (eventFilter !== "all") result = result.filter((l) => l.event_id === eventFilter);
     if (periodFilter !== "all") {
       const now = new Date();
-      let cutoff;
-      switch (periodFilter) {
-        case "24h": cutoff = new Date(now - 24 * 60 * 60 * 1000); break;
-        case "7d": cutoff = new Date(now - 7 * 24 * 60 * 60 * 1000); break;
-        case "30d": cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000); break;
-        default: cutoff = null;
-      }
-      if (cutoff) result = result.filter((l) => new Date(l.created_date) > cutoff);
+      const map = { "24h": 1, "7d": 7, "30d": 30 };
+      const cutoff = new Date(now - map[periodFilter] * 24 * 60 * 60 * 1000);
+      result = result.filter((l) => new Date(l.created_date) > cutoff);
     }
-
-    // Search
     if (search) {
       const q = search.toLowerCase();
       result = result.filter((l) =>
@@ -87,18 +68,15 @@ export default function AuditLog() {
         (l.details || "").toLowerCase().includes(q)
       );
     }
-
-    // Sort
     result.sort((a, b) => {
-      const da = new Date(a.created_date);
-      const db = new Date(b.created_date);
+      const da = new Date(a.created_date), db = new Date(b.created_date);
       return sortDir === "desc" ? db - da : da - db;
     });
-
     return result;
   }, [logs, actionFilter, eventFilter, periodFilter, search, sortDir, user]);
 
-  const eventName = (id) => scopedEvents.find((e) => e.id === id)?.name || "—";
+  const fmtDate = (d) => new Date(d).toLocaleDateString("pt-BR");
+  const fmtTime = (d) => new Date(d).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <div className="space-y-4">
@@ -109,7 +87,6 @@ export default function AuditLog() {
         </Button>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -120,7 +97,6 @@ export default function AuditLog() {
         />
       </div>
 
-      {/* Filters */}
       <AnimatePresence>
         {showFilters && (
           <motion.div
@@ -136,9 +112,7 @@ export default function AuditLog() {
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("audit.all")}</SelectItem>
-                    {ACTIONS.map((a) => (
-                      <SelectItem key={a} value={a}>{t(`actions.${a}`)}</SelectItem>
-                    ))}
+                    {ACTIONS.map((a) => <SelectItem key={a} value={a}>{t(`actions.${a}`)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -148,9 +122,7 @@ export default function AuditLog() {
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("audit.all")}</SelectItem>
-                    {scopedEvents.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                    ))}
+                    {scopedEvents.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -171,7 +143,6 @@ export default function AuditLog() {
         )}
       </AnimatePresence>
 
-      {/* Sort toggle */}
       <div className="flex justify-between items-center">
         <p className="text-xs text-muted-foreground">
           {t("common.showing")} {filtered.length} {t("common.results")}
@@ -182,64 +153,58 @@ export default function AuditLog() {
         </Button>
       </div>
 
-      {/* Loading */}
       {isLoading && (
         <div className="flex justify-center py-12">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Log list */}
-      <div className="space-y-2">
-        <AnimatePresence>
-          {filtered.map((log) => (
-            <motion.div
-              key={log.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="bg-card rounded-xl border border-border p-3 cursor-pointer hover:shadow-sm transition-shadow"
-              onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="secondary" className={`text-xs ${actionColors[log.action] || ""}`}>
-                      {t(`actions.${log.action}`) || log.action}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{log.entity_type}</span>
-                  </div>
-                  <p className="text-sm mt-1">{log.user_name || "Sistema"}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(log.created_date).toLocaleDateString("pt-BR")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(log.created_date).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                </div>
-              </div>
-              {log.event_id && (
-                <p className="text-xs text-muted-foreground mt-1">Evento: {eventName(log.event_id)}</p>
-              )}
-              {expandedId === log.id && log.details && (
-                <motion.div
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  className="mt-2 p-2 rounded bg-muted/50 overflow-hidden"
-                >
-                  <p className="text-xs font-mono break-all">{log.details}</p>
-                </motion.div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {!isLoading && filtered.length === 0 && (
-          <p className="text-center text-muted-foreground py-8">{t("audit.noLogs")}</p>
-        )}
-      </div>
+      {/* Table */}
+      {!isLoading && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/60 text-left">
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">{t("audit.date")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">{t("audit.user")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">{t("audit.event")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">{t("audit.action")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">{t("audit.entity")}</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">{t("audit.details")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((log, idx) => (
+                  <tr
+                    key={log.id}
+                    className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"} hover:bg-muted/40 transition-colors`}
+                  >
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                      <span>{fmtDate(log.created_date)}</span>
+                      <span className="block text-muted-foreground/70">{fmtTime(log.created_date)}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs font-medium max-w-[120px] truncate">{log.user_name || "Sistema"}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden sm:table-cell max-w-[140px] truncate">{eventName(log.event_id)}</td>
+                    <td className="px-3 py-2.5">
+                      <Badge variant="secondary" className={`text-xs whitespace-nowrap ${actionColors[log.action] || ""}`}>
+                        {t(`actions.${log.action}`) || log.action}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{log.entity_type || "—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground hidden lg:table-cell max-w-[220px] truncate font-mono">
+                      {log.details ? log.details.slice(0, 80) + (log.details.length > 80 ? "…" : "") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filtered.length === 0 && (
+            <p className="text-center text-muted-foreground py-8 text-sm">{t("audit.noLogs")}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -18,16 +18,16 @@
       "type": "string",
       "description": "Website"
     },
-    "tier": {
+    "plan": {
       "type": "string",
       "enum": [
-        "platinum",
-        "gold",
-        "silver",
+        "diamante",
+        "ouro",
+        "prata",
         "bronze",
-        "supporter"
+        "apoiador"
       ],
-      "default": "supporter"
+      "default": "apoiador"
     },
     "contact_email": {
       "type": "string"
