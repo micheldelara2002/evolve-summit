@@ -12,7 +12,8 @@ import ColorPickerField from "@/components/admin/ColorPickerField";
 import PessoasTab from "@/components/admin/PessoasTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -109,6 +110,7 @@ export default function EventDetail() {
         if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
       }
       if (type === "partner") {
+        if (partners.length <= 1) throw new Error("Deve haver pelo menos um parceiro cadastrado.");
         const hasReps = reps.some((r) => r.partner_id === id);
         if (hasReps) throw new Error("Para excluir este parceiro, desassocie os representantes vinculados.");
       }
@@ -254,7 +256,6 @@ export default function EventDetail() {
         {/* ── Trilhas ── */}
         <TabsContent value="tracks" className="mt-4">
           <div className="space-y-3">
-            {/* Toolbar: busca + botão Nova ao topo */}
             <div className="flex items-center gap-2">
               <div className="flex-1" />
               {hasAccess && (
@@ -272,14 +273,10 @@ export default function EventDetail() {
                   {track.description && <p className="text-xs text-muted-foreground truncate">{track.description}</p>}
                 </div>
                 {hasAccess && (
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setTrackDeleteConfirm(track)}>
-                      <span className="text-xs">✕</span>
-                    </Button>
-                  </div>
+                  <TrackActionsMenu
+                    onEdit={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
+                    onDelete={() => setTrackDeleteConfirm(track)}
+                  />
                 )}
               </div>
             ))}
@@ -372,6 +369,27 @@ export default function EventDetail() {
         />
       )}
     </div>
+  );
+}
+
+// ── Track actions kebab menu ─────────────────────────────────────────────────
+function TrackActionsMenu({ onEdit, onDelete }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+          <MoreVertical className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit}>
+          <Pencil className="w-4 h-4 mr-2" /> Editar
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+          <Trash2 className="w-4 h-4 mr-2" /> Excluir
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

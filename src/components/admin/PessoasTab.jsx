@@ -21,7 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
 
@@ -240,18 +241,25 @@ export default function PessoasTab({ eventId, participants, reps, partners, sess
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{pessoa.partnerName || "—"}</td>
                   {hasAccess && (
-                    <td className="px-3 py-2.5">
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar dados" onClick={() => setEditDataDialog(pessoa)}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar papéis" onClick={() => setEditRolesDialog(pessoa)}>
-                          <UserCog className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Remover do evento" onClick={() => setRemoveTarget(pessoa)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
+                    <td className="px-3 py-2.5 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditDataDialog(pessoa)}>
+                            <Pencil className="w-4 h-4 mr-2" /> Editar dados
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditRolesDialog(pessoa)}>
+                            <UserCog className="w-4 h-4 mr-2" /> Editar papéis
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => setRemoveTarget(pessoa)}>
+                            <Trash2 className="w-4 h-4 mr-2" /> Remover do evento
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   )}
                 </tr>
