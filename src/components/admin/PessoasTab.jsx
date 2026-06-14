@@ -62,7 +62,7 @@ function buildPessoaRow(p, reps, partners) {
   return { ...p, derivedRoles: roles, partnerName, repRecord };
 }
 
-export default function PessoasTab({ eventId, participants, reps, partners, hasAccess, onShowImport, showImport, onHideImport }) {
+export default function PessoasTab({ eventId, participants, reps, partners, sessions = [], hasAccess, onShowImport, showImport, onHideImport }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const adminUser = isAdmin(user);
@@ -139,6 +139,13 @@ export default function PessoasTab({ eventId, participants, reps, partners, hasA
 
   // ── Remove from event (soft delete) ──────────────────────────────────────
   const handleRemove = async (pessoa) => {
+    // Block if person is a speaker in any session
+    const hasSessions = sessions.some((s) => s.speaker_id === pessoa.id);
+    if (hasSessions) {
+      toast.error("Não é possível excluir esta pessoa: existe palestra/sessão associada. Edite a sessão antes de excluir.");
+      setRemoveTarget(null);
+      return;
+    }
     await base44.entities.Participant.update(pessoa.id, { is_deleted: true });
     // Also soft-delete rep record if exists
     if (pessoa.repRecord) {
@@ -286,6 +293,7 @@ export default function PessoasTab({ eventId, participants, reps, partners, hasA
           eventId={eventId}
           partners={partners}
           reps={reps}
+          sessions={sessions}
           user={user}
           onClose={() => setEditRolesDialog(null)}
           onSuccess={invalidate}
@@ -480,7 +488,7 @@ function EditDataDialog({ pessoa, user, eventId, onClose, onSuccess }) {
 }
 
 // ── Edit roles dialog ─────────────────────────────────────────────────────────
-function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuccess, onNeedPartner }) {
+function EditRolesDialog({ pessoa, eventId, partners, reps, sessions = [], user, onClose, onSuccess, onNeedPartner }) {
   const existingRep = reps.find((r) => r.email === pessoa.email || r.full_name === pessoa.full_name);
 
   const [roles, setRoles] = useState(() => {
@@ -525,6 +533,17 @@ function EditRolesDialog({ pessoa, eventId, partners, reps, user, onClose, onSuc
   };
 
   const handleSave = async () => {
+    // Block role change if person is speaker in a session and speaker role is being removed
+    const wasSpeaker = pessoa.role_in_event === "speaker";
+    const willBeSpeaker = roles.includes("speaker");
+    if (wasSpeaker && !willBeSpeaker) {
+      const hasSessions = sessions.some((s) => s.speaker_id === pessoa.id);
+      if (hasSessions) {
+        setConflict("Não é possível alterar o perfil: esta pessoa possui palestra/sessão associada. Edite a sessão antes de alterar o papel.");
+        return;
+      }
+    }
+
     if (roles.includes("rep")) {
       if (!partnerId) { setConflict("Selecione um parceiro para o papel de Representante."); return; }
     }

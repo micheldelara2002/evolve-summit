@@ -99,14 +99,18 @@ export default function EventDetail() {
     mutationFn: async ({ type, id }) => {
       // Guard: last track/room
       if (type === "track") {
-        if (tracks.length <= 1) throw new Error("Deve haver pelo menos 1 trilha cadastrada.");
+        if (tracks.length <= 1) throw new Error("Deve haver pelo menos uma trilha cadastrada.");
         const linked = sessions.some((s) => s.track_id === id);
         if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta trilha.");
       }
       if (type === "room") {
-        if (rooms.length <= 1) throw new Error("Deve haver pelo menos 1 sala cadastrada.");
+        if (rooms.length <= 1) throw new Error("Deve haver pelo menos uma sala cadastrada.");
         const linked = sessions.some((s) => s.room_id === id);
         if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
+      }
+      if (type === "partner") {
+        const hasReps = reps.some((r) => r.partner_id === id);
+        if (hasReps) throw new Error("Para excluir este parceiro, desassocie os representantes vinculados.");
       }
       await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
       return { type, id };
@@ -239,6 +243,7 @@ export default function EventDetail() {
             participants={participants}
             reps={reps}
             partners={partners}
+            sessions={sessions}
             hasAccess={hasAccess}
             showImport={showImport}
             onShowImport={() => setShowImport(true)}
