@@ -275,7 +275,10 @@ export default function EventDetail() {
                 {hasAccess && (
                   <TrackActionsMenu
                     onEdit={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
-                    onDelete={() => setTrackDeleteConfirm(track)}
+                    onDelete={() => {
+                      if (tracks.length <= 1) { toast.error("Deve haver pelo menos uma trilha cadastrada."); return; }
+                      setTrackDeleteConfirm(track);
+                    }}
                   />
                 )}
               </div>
@@ -296,7 +299,10 @@ export default function EventDetail() {
             searchField="name"
             onAdd={hasAccess ? () => openForm("room") : undefined}
             onEdit={hasAccess ? (item) => openForm("room", item) : undefined}
-            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "room", id: item.id }) : undefined}
+            onDelete={hasAccess ? (item) => {
+              if (rooms.length <= 1) { toast.error("Deve haver pelo menos uma sala cadastrada."); return; }
+              deleteMut.mutate({ type: "room", id: item.id });
+            } : undefined}
             addLabel="Nova"
           />
         </TabsContent>

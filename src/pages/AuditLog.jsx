@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw } from "lucide-react";
+import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, ArrowLeft } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
@@ -110,6 +111,7 @@ function renderCell(colId, log, eventName) {
 
 export default function AuditLog() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
@@ -182,7 +184,12 @@ export default function AuditLog() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-display font-bold">{t("audit.title")}</h1>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-xl font-display font-bold">{t("audit.title")}</h1>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1" onClick={resetColOrder}>
             <RotateCcw className="w-3.5 h-3.5" /> Padrão

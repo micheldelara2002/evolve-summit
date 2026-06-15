@@ -67,6 +67,7 @@ const AuthenticatedApp = () => {
           <Route path="/events/:eventId" element={<EventDetail />} />
           <Route path="/events/:eventId/edit" element={<EventEdit />} />
           <Route path="/audit" element={<AuditLog />} />
+          <Route path="/audti" element={<Navigate to="/audit" replace />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

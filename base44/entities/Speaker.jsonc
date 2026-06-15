@@ -1,6 +1,7 @@
 {
   "name": "Speaker",
   "type": "object",
+  "description": "DEPRECATED: Entidade legada. Palestrantes s\u00e3o gerenciados via Participant (role_in_event='speaker'). N\u00e3o criar/editar novos registros aqui.",
   "properties": {
     "event_id": {
       "type": "string",
