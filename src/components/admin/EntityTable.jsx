@@ -26,6 +26,7 @@ export default function EntityTable({
 }) {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [blockMsg, setBlockMsg] = useState(null);
 
   const filtered = items.filter((item) => {
     const val = item[searchField] || item.name || item.title || "";
@@ -93,10 +94,7 @@ export default function EntityTable({
                         onClick={() => {
                           if (canDelete) {
                             const msg = canDelete(item);
-                            if (msg) {
-                              setTimeout(() => toast.error(msg), 50);
-                              return;
-                            }
+                            if (msg) { setBlockMsg(msg); return; }
                           }
                           setDeleteTarget(item);
                         }}
@@ -115,6 +113,19 @@ export default function EntityTable({
           <p className="text-sm text-muted-foreground text-center py-6">{emptyLabel || t("common.noData")}</p>
         )}
       </div>
+
+      {/* Bloqueio de exclusão */}
+      <AlertDialog open={!!blockMsg} onOpenChange={() => setBlockMsg(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Não é possível excluir</AlertDialogTitle>
+            <AlertDialogDescription>{blockMsg}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBlockMsg(null)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>

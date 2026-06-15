@@ -30,6 +30,7 @@ export default function EventDetail() {
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
   const [trackDeleteConfirm, setTrackDeleteConfirm] = useState(null);
+  const [trackBlockMsg, setTrackBlockMsg] = useState(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -276,7 +277,7 @@ export default function EventDetail() {
                   <TrackActionsMenu
                     onEdit={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
                     onDelete={() => {
-                      if (tracks.length <= 1) { setTimeout(() => toast.error("Deve haver pelo menos uma trilha cadastrada."), 50); return; }
+                      if (tracks.length <= 1) { setTrackBlockMsg("Deve haver pelo menos uma trilha cadastrada."); return; }
                       setTrackDeleteConfirm(track);
                     }}
                   />
@@ -357,6 +358,19 @@ export default function EventDetail() {
           isSubmitting={saveMut.isPending}
         />
       )}
+
+      {/* Track block message */}
+      <AlertDialog open={!!trackBlockMsg} onOpenChange={() => setTrackBlockMsg(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <ADT>Não é possível excluir</ADT>
+            <AlertDialogDescription>{trackBlockMsg}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <ADF>
+            <AlertDialogAction onClick={() => setTrackBlockMsg(null)}>OK</AlertDialogAction>
+          </ADF>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Track delete confirm */}
       {trackDeleteConfirm && (
