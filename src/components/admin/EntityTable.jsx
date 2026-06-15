@@ -93,7 +93,10 @@ export default function EntityTable({
                         onClick={() => {
                           if (canDelete) {
                             const msg = canDelete(item);
-                            if (msg) { toast.error(msg); return; }
+                            if (msg) {
+                              setTimeout(() => toast.error(msg), 50);
+                              return;
+                            }
                           }
                           setDeleteTarget(item);
                         }}

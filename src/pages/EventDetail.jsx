@@ -276,7 +276,7 @@ export default function EventDetail() {
                   <TrackActionsMenu
                     onEdit={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
                     onDelete={() => {
-                      if (tracks.length <= 1) { toast.error("Deve haver pelo menos uma trilha cadastrada."); return; }
+                      if (tracks.length <= 1) { setTimeout(() => toast.error("Deve haver pelo menos uma trilha cadastrada."), 50); return; }
                       setTrackDeleteConfirm(track);
                     }}
                   />
