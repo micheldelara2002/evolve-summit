@@ -299,10 +299,12 @@ export default function EventDetail() {
             searchField="name"
             onAdd={hasAccess ? () => openForm("room") : undefined}
             onEdit={hasAccess ? (item) => openForm("room", item) : undefined}
-            onDelete={hasAccess ? (item) => {
-              if (rooms.length <= 1) { toast.error("Deve haver pelo menos uma sala cadastrada."); return; }
-              deleteMut.mutate({ type: "room", id: item.id });
-            } : undefined}
+            canDelete={(item) => {
+              if (rooms.length <= 1) return "Deve haver pelo menos uma sala cadastrada.";
+              if (sessions.some((s) => s.room_id === item.id)) return "Não é possível excluir: já existe sessão cadastrada nesta sala.";
+              return null;
+            }}
+            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "room", id: item.id }) : undefined}
             addLabel="Nova"
           />
         </TabsContent>

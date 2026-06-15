@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, ArrowLeft } from "lucide-react";
+import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, ArrowLeft, Shield } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -188,7 +188,10 @@ export default function AuditLog() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-xl font-display font-bold">{t("audit.title")}</h1>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-amber-600" />
+            <h1 className="text-xl font-display font-bold">{t("audit.title")}</h1>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1" onClick={resetColOrder}>

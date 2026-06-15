@@ -3,6 +3,7 @@ import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -19,6 +20,7 @@ export default function EntityTable({
   onAdd,
   onEdit,
   onDelete,
+  canDelete,
   addLabel,
   emptyLabel,
 }) {
@@ -86,7 +88,16 @@ export default function EntityTable({
                       </DropdownMenuItem>
                     )}
                     {onDelete && (
-                      <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(item)}>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => {
+                          if (canDelete) {
+                            const msg = canDelete(item);
+                            if (msg) { toast.error(msg); return; }
+                          }
+                          setDeleteTarget(item);
+                        }}
+                      >
                         <Trash2 className="w-4 h-4 mr-2" /> {t("common.delete")}
                       </DropdownMenuItem>
                     )}

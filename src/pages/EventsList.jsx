@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StatusBadge from "@/components/admin/StatusBadge";
-import { Plus, Search, MoreVertical, Trash2, Pencil, Eye, ArrowLeft } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Pencil, Eye, ArrowLeft, Calendar } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -54,7 +54,10 @@ export default function EventsList() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-xl font-display font-bold">{t("events.title")}</h1>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-violet-600" />
+            <h1 className="text-xl font-display font-bold">{t("events.title")}</h1>
+          </div>
         </div>
         {isAdmin(user) && (
           <Link to="/events/new">
