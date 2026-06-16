@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, ArrowLeft, Shield } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
@@ -156,7 +156,6 @@ export default function AuditLog() {
   const eventName = (id) => scopedEvents.find((e) => e.id === id)?.name || id || "—";
 
   const filtered = useMemo(() => {
-    setPage(1);
     let result = [...logs];
     if (!isAdmin(user)) {
       result = result.filter((l) => !l.event_id || scopedEventIds.has(l.event_id));
@@ -183,6 +182,9 @@ export default function AuditLog() {
     });
     return result;
   }, [logs, actionFilter, eventFilter, periodFilter, search, sortDir, user]);
+
+  // Reset page when filters change (safe — outside render)
+  useEffect(() => { setPage(1); }, [actionFilter, eventFilter, periodFilter, search, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

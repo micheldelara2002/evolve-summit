@@ -35,6 +35,8 @@ export default function EntityFormDialog({ open, onOpenChange, title, fields, it
       // Convert sentinel back to empty string
       if (f.type === "select" && data[f.key] === NONE_VALUE) data[f.key] = "";
     });
+    // Remove null/undefined fields so optional fields don't erase existing values
+    Object.keys(data).forEach((k) => { if (data[k] === null || data[k] === undefined) delete data[k]; });
     onSubmit(data);
   };
 
