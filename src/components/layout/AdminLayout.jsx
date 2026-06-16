@@ -122,7 +122,7 @@ export default function AdminLayout() {
 
 function InboxBell() {
   const [open, setOpen] = useState(false);
-  const unread = useUnreadCount();
+  const unread = useUnreadCount(); // já usa refetchInterval 30s + subscrição RT
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
