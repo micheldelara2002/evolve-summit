@@ -11,9 +11,10 @@ import EntityFormDialog from "@/components/admin/EntityFormDialog";
 import ColorPickerField from "@/components/admin/ColorPickerField";
 import PessoasTab from "@/components/admin/PessoasTab";
 import LojaTab from "@/components/admin/LojaTab";
+import PontuacaoTab from "@/components/admin/PontuacaoTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -242,6 +243,9 @@ export default function EventDetail() {
           <TabsTrigger value="loja" className="gap-1">
             <ShoppingBag className="w-3.5 h-3.5" /><span className="hidden sm:inline">Loja</span><span className="sm:hidden">Loj.</span>
           </TabsTrigger>
+          <TabsTrigger value="pontuacao" className="gap-1">
+            <Star className="w-3.5 h-3.5" /><span className="hidden sm:inline">Pontuação</span><span className="sm:hidden">Pont.</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Pessoas do Evento (tela única) ── */}
@@ -338,6 +342,11 @@ export default function EventDetail() {
         {/* ── Loja ── */}
         <TabsContent value="loja" className="mt-4">
           <LojaTab eventId={eventId} hasAccess={hasAccess} user={user} />
+        </TabsContent>
+
+        {/* ── Pontuação ── */}
+        <TabsContent value="pontuacao" className="mt-4">
+          <PontuacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />
         </TabsContent>
       </Tabs>
 

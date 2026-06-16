@@ -1,0 +1,58 @@
+{
+  "name": "ScoringRule",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "acao": {
+      "type": "string",
+      "enum": [
+        "presenca_sessao",
+        "avaliacao_sessao",
+        "pergunta_valida",
+        "completude_perfil",
+        "conexao_aceita",
+        "visita_estande"
+      ],
+      "description": "A\u00e7\u00e3o que gera pontos"
+    },
+    "pontos": {
+      "type": "number",
+      "description": "Pontos concedidos pela a\u00e7\u00e3o (m\u00faltiplo de 100, m\u00ednimo 100)"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se a regra est\u00e1 ativa"
+    },
+    "limite_tipo": {
+      "type": "string",
+      "enum": [
+        "por_sessao",
+        "por_estande",
+        "por_par_usuarios",
+        "one_shot"
+      ],
+      "description": "Tipo de limite de contagem"
+    },
+    "limite_valor": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantidade m\u00e1xima de vezes que a regra pode ser aplicada (m\u00ednimo 1)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "acao",
+    "pontos",
+    "ativo",
+    "limite_tipo",
+    "limite_valor"
+  ]
+}
