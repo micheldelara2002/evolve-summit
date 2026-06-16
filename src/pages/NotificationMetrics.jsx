@@ -1,18 +1,18 @@
 /**
- * Tela de métricas reutilizável — funciona para escopo global e por evento.
- * Rotas:
- *   /notifications/metrics         (global)
- *   /events/:eventId/notifications/metrics  (evento)
+ * Tela de métricas de notificações — reutilizável por contexto.
+ *   /notifications/metrics                   → admin global (todas campanhas)
+ *   /events/:eventId/notifications/metrics   → evento específico (gerente/staff/admin)
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bell, Users, BookOpen, MousePointerClick, TrendingUp } from "lucide-react";
+import { ArrowLeft, Bell, Users, BookOpen, MousePointerClick, TrendingUp, AlertTriangle, Send } from "lucide-react";
 import { format, subDays, isAfter } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
@@ -22,54 +22,134 @@ const STATUS_LABELS = {
   sent: "Enviado", partially_sent: "Parcial", canceled: "Cancelado", failed: "Falhou",
 };
 const STATUS_COLORS = {
-  draft: "bg-muted text-muted-foreground", sent: "bg-green-100 text-green-700",
-  scheduled: "bg-blue-100 text-blue-700", failed: "bg-red-100 text-red-700",
+  draft: "bg-muted text-muted-foreground",
+  sent: "bg-green-100 text-green-700",
+  partially_sent: "bg-orange-100 text-orange-700",
+  scheduled: "bg-blue-100 text-blue-700",
+  processing: "bg-yellow-100 text-yellow-700",
+  failed: "bg-red-100 text-red-700",
+  canceled: "bg-red-100 text-red-700",
 };
 
 export default function NotificationMetrics() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const scopeType = eventId ? "event" : "global";
-  const backPath = eventId ? `/events/${eventId}?tab=notificacoes` : "/notifications";
+  const { user } = useAuth();
+
+  const isEventScope = !!eventId;
+  const isAdmin = user?.role === "admin";
+  const backPath = isEventScope ? `/events/${eventId}` : "/notifications";
 
   const [periodDays, setPeriodDays] = useState("30");
   const [statusFilter, setStatusFilter] = useState("all");
+  // Admin global: filtrar por evento específico
+  const [filterEventId, setFilterEventId] = useState("all");
 
-  const { data: campaigns = [], isLoading } = useQuery({
-    queryKey: ["notification_campaigns_metrics", scopeType, eventId],
-    queryFn: () => {
-      const filter = { is_deleted: false, scope_type: scopeType };
-      if (eventId) filter.scope_event_id = eventId;
-      return base44.entities.NotificationCampaign.filter(filter);
-    },
-  });
+  // Redirecionar gerente/staff tentando acessar a rota global
+  if (!isEventScope && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <p className="text-muted-foreground">Acesso restrito a administradores.</p>
+        <Button variant="outline" onClick={() => navigate("/")}>Voltar ao início</Button>
+      </div>
+    );
+  }
 
-  const { data: allRecipients = [] } = useQuery({
-    queryKey: ["notification_recipients_metrics", scopeType, eventId],
+  return (
+    <MetricsContent
+      isEventScope={isEventScope}
+      eventId={eventId}
+      isAdmin={isAdmin}
+      backPath={backPath}
+      periodDays={periodDays}
+      setPeriodDays={setPeriodDays}
+      statusFilter={statusFilter}
+      setStatusFilter={setStatusFilter}
+      filterEventId={filterEventId}
+      setFilterEventId={setFilterEventId}
+    />
+  );
+}
+
+function MetricsContent({
+  isEventScope, eventId, isAdmin, backPath,
+  periodDays, setPeriodDays, statusFilter, setStatusFilter,
+  filterEventId, setFilterEventId,
+}) {
+  const navigate = useNavigate();
+
+  // Buscar o evento atual (se contexto de evento)
+  const { data: currentEvent } = useQuery({
+    queryKey: ["event_metrics", eventId],
     queryFn: async () => {
-      const cIds = campaigns.map((c) => c.id);
-      if (!cIds.length) return [];
-      const all = await base44.entities.NotificationRecipient.list("-created_date", 500);
-      return all.filter((r) => cIds.includes(r.campaign_id));
+      const list = await base44.entities.Event.filter({ id: eventId });
+      return list[0] || null;
     },
-    enabled: campaigns.length > 0,
+    enabled: isEventScope && !!eventId,
   });
 
+  // Buscar todos os eventos (admin global, para o filtro)
+  const { data: allEvents = [] } = useQuery({
+    queryKey: ["events_metrics_filter"],
+    queryFn: () => base44.entities.Event.filter({ is_deleted: false }),
+    enabled: !isEventScope && isAdmin,
+  });
+
+  // Buscar campanhas conforme escopo
+  const { data: campaigns = [], isLoading } = useQuery({
+    queryKey: ["notification_campaigns_metrics", isEventScope ? "event" : "global", eventId],
+    queryFn: () => {
+      if (isEventScope) {
+        // Escopo de evento: somente campanhas deste evento
+        return base44.entities.NotificationCampaign.filter({
+          is_deleted: false,
+          scope_type: "event",
+          scope_event_id: eventId,
+        });
+      }
+      // Admin global: busca tudo (globais + todos os eventos)
+      return base44.entities.NotificationCampaign.filter({ is_deleted: false });
+    },
+  });
+
+  // Buscar recipients para calcular cliques
+  const campaignIds = campaigns.map((c) => c.id);
+  const { data: allRecipients = [] } = useQuery({
+    queryKey: ["notification_recipients_metrics", campaignIds.join(",")],
+    queryFn: async () => {
+      if (!campaignIds.length) return [];
+      const all = await base44.entities.NotificationRecipient.list("-created_date", 1000);
+      return all.filter((r) => campaignIds.includes(r.campaign_id));
+    },
+    enabled: campaignIds.length > 0,
+  });
+
+  // Filtros aplicados
   const cutoff = subDays(new Date(), parseInt(periodDays));
   const filteredCampaigns = campaigns.filter((c) => {
-    const date = c.sent_at || c.created_date;
-    if (!isAfter(new Date(date), cutoff)) return false;
+    const date = new Date(c.sent_at || c.created_date);
+    if (!isAfter(date, cutoff)) return false;
     if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    // Filtro de evento (somente admin global)
+    if (!isEventScope && isAdmin && filterEventId !== "all") {
+      if (filterEventId === "global" && c.scope_type !== "global") return false;
+      if (filterEventId !== "global" && c.scope_event_id !== filterEventId) return false;
+    }
     return true;
   });
 
+  // KPIs
+  const totalCampaigns = filteredCampaigns.length;
   const sentCampaigns = filteredCampaigns.filter((c) => c.status === "sent" || c.status === "partially_sent");
-  const totalRecipients = sentCampaigns.reduce((s, c) => s + (c.recipients_count || 0), 0);
-  const totalRead = sentCampaigns.reduce((s, c) => s + (c.read_count || 0), 0);
-  const totalClicks = allRecipients.filter((r) => r.clicked_at).length;
-  const readRate = totalRecipients > 0 ? ((totalRead / totalRecipients) * 100).toFixed(1) : "0.0";
+  const failedCampaigns = filteredCampaigns.filter((c) => c.status === "failed");
+  const totalRecipients = filteredCampaigns.reduce((s, c) => s + (c.recipients_count || 0), 0);
+  const totalDelivered = filteredCampaigns.reduce((s, c) => s + (c.delivered_count || 0), 0);
+  const totalRead = filteredCampaigns.reduce((s, c) => s + (c.read_count || 0), 0);
+  const readRate = totalDelivered > 0 ? ((totalRead / totalDelivered) * 100).toFixed(1) : "0.0";
+  const relevantCampaignIds = new Set(filteredCampaigns.map((c) => c.id));
+  const totalClicks = allRecipients.filter((r) => r.clicked_at && relevantCampaignIds.has(r.campaign_id)).length;
 
-  // Series temporal por dia
+  // Série temporal por dia (apenas enviadas)
   const dayMap = {};
   sentCampaigns.forEach((c) => {
     const day = format(new Date(c.sent_at || c.created_date), "dd/MM");
@@ -80,12 +160,24 @@ export default function NotificationMetrics() {
   const chartData = Object.values(dayMap).slice(-14);
 
   const kpis = [
-    { label: "Campanhas Enviadas", value: sentCampaigns.length, icon: Bell, color: "text-primary" },
+    { label: "Total Campanhas", value: totalCampaigns, icon: Bell, color: "text-primary" },
     { label: "Total Destinatários", value: totalRecipients, icon: Users, color: "text-secondary" },
+    { label: "Entregues", value: totalDelivered, icon: Send, color: "text-blue-600" },
     { label: "Total Lidas", value: totalRead, icon: BookOpen, color: "text-green-600" },
     { label: "Taxa de Leitura", value: `${readRate}%`, icon: TrendingUp, color: "text-accent" },
     { label: "Cliques CTA", value: totalClicks, icon: MousePointerClick, color: "text-purple-600" },
+    { label: "Falhas", value: failedCampaigns.length, icon: AlertTriangle, color: "text-destructive" },
   ];
+
+  const scopeLabel = isEventScope
+    ? `Métricas do Evento: ${currentEvent?.name || "..."}`
+    : "Métricas Globais";
+
+  const scopeSubtitle = isEventScope
+    ? "Campanhas deste evento"
+    : "Todas as campanhas — globais e por evento";
+
+  const getEventName = (id) => allEvents.find((e) => e.id === id)?.name || "—";
 
   return (
     <div className="space-y-6">
@@ -95,17 +187,15 @@ export default function NotificationMetrics() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-display font-bold">Métricas de Notificações</h1>
-          <p className="text-sm text-muted-foreground">
-            {scopeType === "global" ? "Visão global da plataforma" : "Visão por evento"}
-          </p>
+          <h1 className="text-2xl font-display font-bold">{scopeLabel}</h1>
+          <p className="text-sm text-muted-foreground">{scopeSubtitle}</p>
         </div>
       </div>
 
       {/* Filtros */}
       <div className="flex items-center gap-3 flex-wrap">
         <Select value={periodDays} onValueChange={setPeriodDays}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="7">Últimos 7 dias</SelectItem>
             <SelectItem value="30">Últimos 30 dias</SelectItem>
@@ -113,28 +203,44 @@ export default function NotificationMetrics() {
             <SelectItem value="365">Último ano</SelectItem>
           </SelectContent>
         </Select>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>
             <SelectItem value="sent">Enviado</SelectItem>
             <SelectItem value="draft">Rascunho</SelectItem>
             <SelectItem value="scheduled">Agendado</SelectItem>
+            <SelectItem value="failed">Falhou</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Filtro de evento — apenas admin global */}
+        {!isEventScope && isAdmin && (
+          <Select value={filterEventId} onValueChange={setFilterEventId}>
+            <SelectTrigger className="w-52 h-9"><SelectValue placeholder="Todos os eventos" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os eventos</SelectItem>
+              <SelectItem value="global">Somente globais</SelectItem>
+              {allEvents.map((e) => (
+                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         {kpis.map((kpi) => (
           <Card key={kpi.label}>
             <CardContent className="pt-4 pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                  <p className={`text-2xl font-display font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
+              <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground leading-tight">{kpi.label}</p>
+                  <p className={`text-xl font-display font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
                 </div>
-                <kpi.icon className={`w-5 h-5 ${kpi.color} opacity-60`} />
+                <kpi.icon className={`w-4 h-4 shrink-0 ${kpi.color} opacity-60`} />
               </div>
             </CardContent>
           </Card>
@@ -146,7 +252,7 @@ export default function NotificationMetrics() {
         <div className="grid md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Envios por dia</CardTitle>
+              <CardTitle className="text-sm">Envios por dia (destinatários)</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={180}>
@@ -154,7 +260,7 @@ export default function NotificationMetrics() {
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="enviadas" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="enviadas" name="Enviadas" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -169,7 +275,7 @@ export default function NotificationMetrics() {
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="lidas" stroke="hsl(var(--secondary))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="lidas" name="Lidas" stroke="hsl(var(--secondary))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -191,10 +297,14 @@ export default function NotificationMetrics() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border">
+                  <tr className="border-b border-border bg-muted/30">
                     <th className="text-left p-3 font-medium text-muted-foreground">Título</th>
+                    {!isEventScope && (
+                      <th className="text-left p-3 font-medium text-muted-foreground">Escopo</th>
+                    )}
                     <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
                     <th className="text-right p-3 font-medium text-muted-foreground">Dest.</th>
+                    <th className="text-right p-3 font-medium text-muted-foreground">Entregues</th>
                     <th className="text-right p-3 font-medium text-muted-foreground">Lidas</th>
                     <th className="text-right p-3 font-medium text-muted-foreground">Taxa</th>
                     <th className="text-left p-3 font-medium text-muted-foreground">Envio</th>
@@ -202,21 +312,25 @@ export default function NotificationMetrics() {
                 </thead>
                 <tbody>
                   {filteredCampaigns.map((c) => {
-                    const rate = c.recipients_count > 0
-                      ? ((c.read_count || 0) / c.recipients_count * 100).toFixed(0)
-                      : 0;
+                    const base = c.delivered_count || c.recipients_count || 0;
+                    const rate = base > 0 ? (((c.read_count || 0) / base) * 100).toFixed(0) : 0;
+                    const scopeChip = c.scope_type === "global"
+                      ? <Badge variant="outline" className="text-xs px-1.5 py-0">Global</Badge>
+                      : <Badge variant="outline" className="text-xs px-1.5 py-0">{getEventName(c.scope_event_id)}</Badge>;
                     return (
                       <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                        <td className="p-3 max-w-[200px] truncate font-medium">{c.title}</td>
+                        <td className="p-3 max-w-[180px] truncate font-medium">{c.title}</td>
+                        {!isEventScope && <td className="p-3">{scopeChip}</td>}
                         <td className="p-3">
                           <Badge className={STATUS_COLORS[c.status] || "bg-muted text-muted-foreground"}>
                             {STATUS_LABELS[c.status] || c.status}
                           </Badge>
                         </td>
                         <td className="p-3 text-right">{c.recipients_count || 0}</td>
+                        <td className="p-3 text-right">{c.delivered_count || 0}</td>
                         <td className="p-3 text-right">{c.read_count || 0}</td>
                         <td className="p-3 text-right">{rate}%</td>
-                        <td className="p-3 text-muted-foreground">
+                        <td className="p-3 text-muted-foreground whitespace-nowrap">
                           {c.sent_at ? format(new Date(c.sent_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"}
                         </td>
                       </tr>
