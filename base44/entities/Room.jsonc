@@ -12,7 +12,8 @@
     },
     "capacity": {
       "type": "number",
-      "description": "Capacidade"
+      "description": "Capacidade",
+      "default": 0
     },
     "floor": {
       "type": "string",
