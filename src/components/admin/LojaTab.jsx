@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
@@ -10,19 +10,96 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, MoreVertical, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, ToggleLeft, ToggleRight, ImageIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
+
+// ── Lê estoque_total com fallback para campo legado quantidade_total ───────────
+const getEstoqueTotal = (item) => item?.estoque_total ?? item?.quantidade_total ?? 0;
+const getEstoqueDisponivel = (item) =>
+  Math.max(0, getEstoqueTotal(item) - (item?.quantidade_resgatada ?? 0));
+
+// ── Upload de imagem ───────────────────────────────────────────────────────────
+function ImageUpload({ value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      onChange(file_url);
+    } catch (err) {
+      toast.error("Erro ao fazer upload da imagem.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {value ? (
+        <div className="relative inline-block">
+          <img src={value} alt="preview" className="w-24 h-24 rounded-lg object-cover border border-border" />
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="absolute -top-1.5 -right-1.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex flex-col items-center justify-center w-24 h-24 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-muted/40 transition-colors text-muted-foreground"
+        >
+          {uploading ? (
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              <Upload className="w-5 h-5 mb-1" />
+              <span className="text-[10px]">Enviar</span>
+            </>
+          )}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+    </div>
+  );
+}
+
+// ── Placeholder de imagem ──────────────────────────────────────────────────────
+function ItemImage({ src, size = "sm" }) {
+  const cls = size === "sm" ? "w-8 h-8" : "w-16 h-16";
+  if (src) {
+    return <img src={src} alt="" className={`${cls} rounded object-cover shrink-0 border border-border`} />;
+  }
+  return (
+    <div className={`${cls} rounded bg-muted flex items-center justify-center shrink-0 border border-border`}>
+      <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+    </div>
+  );
+}
 
 // ── Form Dialog ───────────────────────────────────────────────────────────────
 function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting }) {
   const [form, setForm] = useState({
     codigo_item: item?.codigo_item ?? "",
     descricao_item: item?.descricao_item ?? "",
-    imagem_url: item?.imagem_url ?? "",
+    imagem_url: item?.imagem_url ?? null,
     pontos_necessarios: item?.pontos_necessarios ?? "",
-    quantidade_total: item?.quantidade_total ?? "",
+    estoque_total: getEstoqueTotal(item) !== 0 || item ? getEstoqueTotal(item) : "",
     limite_por_usuario: item?.limite_por_usuario ?? "",
     status: item?.status ?? "ativo",
   });
@@ -37,13 +114,13 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
       errs.codigo_item = "Já existe um item com este código neste evento.";
     if (!form.descricao_item.trim()) errs.descricao_item = "Descrição obrigatória.";
     const pts = Number(form.pontos_necessarios);
-    if (!form.pontos_necessarios || isNaN(pts) || !Number.isInteger(pts) || pts <= 0)
+    if (form.pontos_necessarios === "" || isNaN(pts) || !Number.isInteger(pts) || pts <= 0)
       errs.pontos_necessarios = "Informe um inteiro maior que 0.";
-    const qtd = Number(form.quantidade_total);
-    if (form.quantidade_total === "" || isNaN(qtd) || !Number.isInteger(qtd) || qtd < 0)
-      errs.quantidade_total = "Informe um inteiro maior ou igual a 0.";
+    const est = Number(form.estoque_total);
+    if (form.estoque_total === "" || isNaN(est) || !Number.isInteger(est) || est < 0)
+      errs.estoque_total = "Informe um inteiro maior ou igual a 0.";
     const lim = Number(form.limite_por_usuario);
-    if (!form.limite_por_usuario || isNaN(lim) || !Number.isInteger(lim) || lim < 1)
+    if (form.limite_por_usuario === "" || isNaN(lim) || !Number.isInteger(lim) || lim < 1)
       errs.limite_por_usuario = "Informe um inteiro maior ou igual a 1.";
     return errs;
   };
@@ -55,9 +132,9 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
     onSubmit({
       codigo_item: form.codigo_item.trim(),
       descricao_item: form.descricao_item.trim(),
-      imagem_url: form.imagem_url.trim() || null,
+      imagem_url: form.imagem_url || null,
       pontos_necessarios: Number(form.pontos_necessarios),
-      quantidade_total: Number(form.quantidade_total),
+      estoque_total: Number(form.estoque_total),
       limite_por_usuario: Number(form.limite_por_usuario),
       status: form.status,
     });
@@ -70,24 +147,27 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
           <DialogTitle className="font-display">{item ? "Editar Item" : "Novo Item da Loja"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Imagem */}
+          <div className="space-y-1.5">
+            <Label>Imagem do Item</Label>
+            <ImageUpload value={form.imagem_url} onChange={(v) => update("imagem_url", v)} />
+          </div>
+
           {/* Código */}
           <div className="space-y-1.5">
             <Label>Código do Item *</Label>
             <Input value={form.codigo_item} onChange={(e) => update("codigo_item", e.target.value)} disabled={!!item} />
             {errors.codigo_item && <p className="text-xs text-destructive">{errors.codigo_item}</p>}
           </div>
+
           {/* Descrição */}
           <div className="space-y-1.5">
             <Label>Descrição *</Label>
             <Input value={form.descricao_item} onChange={(e) => update("descricao_item", e.target.value)} />
             {errors.descricao_item && <p className="text-xs text-destructive">{errors.descricao_item}</p>}
           </div>
-          {/* Imagem */}
-          <div className="space-y-1.5">
-            <Label>URL da Imagem</Label>
-            <Input placeholder="https://..." value={form.imagem_url} onChange={(e) => update("imagem_url", e.target.value)} />
-          </div>
-          {/* Pontos */}
+
+          {/* Pontos + Estoque Total */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Pontos Necessários *</Label>
@@ -95,11 +175,12 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
               {errors.pontos_necessarios && <p className="text-xs text-destructive">{errors.pontos_necessarios}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>Qtd. Total *</Label>
-              <Input type="number" min={0} step={1} value={form.quantidade_total} onChange={(e) => update("quantidade_total", e.target.value)} />
-              {errors.quantidade_total && <p className="text-xs text-destructive">{errors.quantidade_total}</p>}
+              <Label>Estoque Total *</Label>
+              <Input type="number" min={0} step={1} value={form.estoque_total} onChange={(e) => update("estoque_total", e.target.value)} />
+              {errors.estoque_total && <p className="text-xs text-destructive">{errors.estoque_total}</p>}
             </div>
           </div>
+
           {/* Limite e Status */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -118,6 +199,7 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
               </Select>
             </div>
           </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
             <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Salvando..." : "Salvar"}</Button>
@@ -133,7 +215,7 @@ export default function LojaTab({ eventId, hasAccess, user }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [formItem, setFormItem] = useState(null); // null = closed, {} = new, item = edit
+  const [formItem, setFormItem] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -148,7 +230,12 @@ export default function LojaTab({ eventId, hasAccess, user }) {
         await base44.entities.StoreItem.update(id, data);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities.StoreItem.create({ ...data, event_id: eventId, is_deleted: false, quantidade_resgatada: 0 });
+        const created = await base44.entities.StoreItem.create({
+          ...data,
+          event_id: eventId,
+          is_deleted: false,
+          quantidade_resgatada: 0,
+        });
         return { id: created.id, action: "create" };
       }
     },
@@ -177,17 +264,12 @@ export default function LojaTab({ eventId, hasAccess, user }) {
     saveMut.mutate({ data: { status: newStatus }, id: item.id });
   };
 
-  // Quantidade disponível calculada
-  const disponivel = (item) => Math.max(0, (item.quantidade_total ?? 0) - (item.quantidade_resgatada ?? 0));
-
-  // Filtro e paginação
   const filtered = items.filter((it) => {
     const q = search.toLowerCase();
     return (it.codigo_item || "").toLowerCase().includes(q) || (it.descricao_item || "").toLowerCase().includes(q);
   });
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
   const existingCodes = items.map((it) => it.codigo_item?.toLowerCase());
 
   const openNew = () => { setFormItem(null); setFormOpen(true); };
@@ -227,11 +309,12 @@ export default function LojaTab({ eventId, hasAccess, user }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/60 text-left">
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground w-10"></th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Código</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Descrição</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Pontos</th>
-                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Total</th>
-                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Disponível</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Est. Total</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Est. Disponível</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Lim./Usuário</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                   {hasAccess && <th className="px-3 py-2.5 w-10" />}
@@ -240,18 +323,16 @@ export default function LojaTab({ eventId, hasAccess, user }) {
               <tbody>
                 {paginated.map((item, idx) => (
                   <tr key={item.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"} hover:bg-muted/40 transition-colors`}>
-                    <td className="px-3 py-2.5 font-mono text-xs font-medium">{item.codigo_item}</td>
-                    <td className="px-3 py-2.5 text-sm max-w-[200px] truncate">
-                      <div className="flex items-center gap-2">
-                        {item.imagem_url && <img src={item.imagem_url} alt="" className="w-7 h-7 rounded object-cover shrink-0" />}
-                        {item.descricao_item}
-                      </div>
+                    <td className="px-3 py-2">
+                      <ItemImage src={item.imagem_url} size="sm" />
                     </td>
+                    <td className="px-3 py-2.5 font-mono text-xs font-medium">{item.codigo_item}</td>
+                    <td className="px-3 py-2.5 text-sm max-w-[180px] truncate">{item.descricao_item}</td>
                     <td className="px-3 py-2.5 text-right text-xs">{item.pontos_necessarios}</td>
-                    <td className="px-3 py-2.5 text-right text-xs">{item.quantidade_total}</td>
+                    <td className="px-3 py-2.5 text-right text-xs">{getEstoqueTotal(item)}</td>
                     <td className="px-3 py-2.5 text-right text-xs font-medium">
-                      <span className={disponivel(item) === 0 ? "text-destructive" : "text-secondary"}>
-                        {disponivel(item)}
+                      <span className={getEstoqueDisponivel(item) === 0 ? "text-destructive" : "text-secondary"}>
+                        {getEstoqueDisponivel(item)}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs">{item.limite_por_usuario}</td>

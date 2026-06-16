@@ -22,9 +22,13 @@
       "type": "number",
       "description": "Pontos necess\u00e1rios para resgatar o item (inteiro > 0)"
     },
+    "estoque_total": {
+      "type": "number",
+      "description": "Quantidade total em estoque (inteiro >= 0)"
+    },
     "quantidade_total": {
       "type": "number",
-      "description": "Quantidade total dispon\u00edvel em estoque (inteiro >= 0)"
+      "description": "Campo legado \u2014 use estoque_total. Mantido para compatibilidade."
     },
     "quantidade_resgatada": {
       "type": "number",
@@ -54,7 +58,7 @@
     "codigo_item",
     "descricao_item",
     "pontos_necessarios",
-    "quantidade_total",
+    "estoque_total",
     "limite_por_usuario",
     "status"
   ]
