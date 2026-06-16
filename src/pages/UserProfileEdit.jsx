@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -11,7 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-const FIELDS = [
+// Campos obrigatórios no topo, opcionais abaixo
+const REQUIRED_FIELDS = [
+  { key: "full_name", label: "Nome completo", type: "text" },
+  { key: "cpf",       label: "CPF",           type: "text", placeholder: "000.000.000-00" },
+];
+
+const OPTIONAL_FIELDS = [
   { key: "phone",     label: "Telefone",  type: "text" },
   { key: "company",   label: "Empresa",   type: "text" },
   { key: "job_title", label: "Cargo",     type: "text" },
@@ -22,11 +28,23 @@ const FIELDS = [
   { key: "bio",       label: "Sobre mim", type: "textarea" },
 ];
 
+const ALL_FIELDS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
+
+function buildInitialForm(user, participant) {
+  const form = {};
+  form.full_name = user?.full_name || "";
+  OPTIONAL_FIELDS.forEach(({ key }) => { form[key] = participant?.[key] || ""; });
+  form.cpf = participant?.cpf || "";
+  return form;
+}
+
 export default function UserProfileEdit() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState(null);
 
   const { data: participant, isLoading } = useQuery({
     queryKey: ["my_participant", user?.id],
@@ -39,35 +57,55 @@ export default function UserProfileEdit() {
     enabled: !!user,
   });
 
-  const [form, setForm] = useState(null);
-
-  // Inicializar form quando participant carrega
-  if (participant && form === null) {
-    const initial = {};
-    FIELDS.forEach(({ key }) => { initial[key] = participant[key] || ""; });
-    setForm(initial);
-  }
-  // Se não há participant ainda, inicializar vazio
-  if (!participant && !isLoading && form === null) {
-    const initial = {};
-    FIELDS.forEach(({ key }) => { initial[key] = ""; });
-    setForm(initial);
-  }
+  // Inicializar form apenas uma vez após carregamento
+  useEffect(() => {
+    if (form === null && !isLoading) {
+      setForm(buildInitialForm(user, participant));
+    }
+  }, [isLoading, participant, user]);
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }));
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    if (!form.full_name?.trim()) newErrors.full_name = "Nome é obrigatório.";
+    if (!form.cpf?.trim()) newErrors.cpf = "CPF é obrigatório.";
+    return newErrors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
     setSaving(true);
     try {
+      // Trim de todos os campos string
+      const payload = {};
+      ALL_FIELDS.forEach(({ key }) => {
+        payload[key] = typeof form[key] === "string" ? form[key].trim() : form[key];
+      });
+
       if (participant) {
-        await base44.entities.Participant.update(participant.id, form);
+        await base44.entities.Participant.update(participant.id, payload);
       }
-      // Invalidar query para recalcular completude
+
+      // Atualizar nome no user (via auth) se mudou
+      if (payload.full_name !== user?.full_name) {
+        await base44.auth.updateMe({ full_name: payload.full_name });
+      }
+
+      // Sincronizar context do usuário e invalidar query de participant
+      await refreshUser();
       queryClient.invalidateQueries({ queryKey: ["my_participant", user?.id] });
-      toast.success("Perfil atualizado!");
+
+      toast.success("Perfil atualizado com sucesso!");
       navigate("/profile");
     } catch (err) {
       toast.error("Erro ao salvar: " + (err.message || "tente novamente."));
@@ -77,7 +115,11 @@ export default function UserProfileEdit() {
   };
 
   if (isLoading || form === null) {
-    return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -89,23 +131,49 @@ export default function UserProfileEdit() {
         <h1 className="text-xl font-display font-bold">Editar Perfil</h1>
       </div>
 
+      {/* E-mail somente leitura */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-muted-foreground">E-mail</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4 pb-4">
+          <Label className="text-xs text-muted-foreground mb-1.5 block">E-mail (não editável)</Label>
           <Input value={user?.email || ""} disabled className="bg-muted/30 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground mt-1">O e-mail não pode ser alterado aqui.</p>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Informações adicionais</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {FIELDS.map(({ key, label, type, placeholder }) => (
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Campos obrigatórios */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Dados obrigatórios</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {REQUIRED_FIELDS.map(({ key, label, type, placeholder }) => (
+              <div key={key} className="space-y-1.5">
+                <Label htmlFor={key}>
+                  {label} <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id={key}
+                  type={type}
+                  value={form[key]}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  placeholder={placeholder}
+                  className={errors[key] ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {errors[key] && (
+                  <p className="text-xs text-destructive">{errors[key]}</p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Campos opcionais */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Informações adicionais</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {OPTIONAL_FIELDS.map(({ key, label, type, placeholder }) => (
               <div key={key} className="space-y-1.5">
                 <Label htmlFor={key}>{label}</Label>
                 {type === "textarea" ? (
@@ -127,18 +195,18 @@ export default function UserProfileEdit() {
                 )}
               </div>
             ))}
+          </CardContent>
+        </Card>
 
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => navigate("/profile")}>
-                Cancelar
-              </Button>
-              <Button type="submit" className="flex-1" disabled={saving}>
-                {saving ? "Salvando..." : "Salvar"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" className="flex-1" onClick={() => navigate("/profile")}>
+            Cancelar
+          </Button>
+          <Button type="submit" className="flex-1" disabled={saving}>
+            {saving ? "Salvando..." : "Salvar"}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
