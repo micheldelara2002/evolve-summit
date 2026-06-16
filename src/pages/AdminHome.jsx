@@ -1,7 +1,7 @@
 import { t } from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { Activity, TrendingUp, Calendar, Shield, ArrowRight } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Shield, Bell, Users, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 const NAV_CARDS = [
@@ -33,6 +33,20 @@ const NAV_CARDS = [
     iconColor: "text-amber-600",
     href: "/audit",
   },
+  {
+    key: "notifications",
+    icon: Bell,
+    color: "bg-rose-50 text-rose-700 border-rose-200",
+    iconColor: "text-rose-600",
+    href: "/notifications",
+  },
+  {
+    key: "people",
+    icon: Users,
+    color: "bg-teal-50 text-teal-700 border-teal-200",
+    iconColor: "text-teal-600",
+    href: "/admin/people",
+  },
 ];
 
 export default function AdminHome() {
@@ -47,7 +61,7 @@ export default function AdminHome() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {NAV_CARDS.map(({ key, icon: Icon, color, iconColor, href }, i) => {
           const inner = (
             <motion.div

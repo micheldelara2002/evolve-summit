@@ -35,7 +35,9 @@ export default function AdminLayout() {
               variant="ghost"
               size="icon"
               className="md:hidden"
-              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((v) => !v)}
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
@@ -83,34 +85,43 @@ export default function AdminLayout() {
       </header>
 
       {/* Mobile nav overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <nav className="absolute left-0 top-14 w-64 bg-card border-r border-border h-[calc(100vh-3.5rem)] p-3 space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path));
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon className="w-5 h-5" />
-                    {t(item.label)}
-                  </div>
-                  <ChevronRight className="w-4 h-4 opacity-40" />
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      )}
+      <div
+        className={`fixed inset-0 z-40 md:hidden transition-all duration-200 ${mobileOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        aria-hidden={!mobileOpen}
+      >
+        {/* Backdrop */}
+        <div
+          className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${mobileOpen ? "opacity-100" : "opacity-0"}`}
+          onClick={() => setMobileOpen(false)}
+        />
+        {/* Drawer */}
+        <nav
+          className={`absolute left-0 top-14 w-64 bg-card border-r border-border h-[calc(100vh-3.5rem)] p-3 space-y-1 shadow-xl transition-transform duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+          aria-label="Menu de navegação"
+        >
+          {navItems.map((item) => {
+            const isActive = pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path));
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <item.icon className="w-5 h-5" />
+                  {t(item.label)}
+                </div>
+                <ChevronRight className="w-4 h-4 opacity-40" />
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
 
       {/* Main content */}
       <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">

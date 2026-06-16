@@ -13,6 +13,8 @@ const ptBR = {
     business: "Negócio",
     eventManagement: "Gestão de Eventos",
     audit: "Auditoria",
+    notifications: "Notificações",
+    people: "Pessoas (Global)",
   },
   health: {
     uptime: "Uptime Mensal",
