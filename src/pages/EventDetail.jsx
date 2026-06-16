@@ -15,7 +15,8 @@ import PontuacaoTab from "@/components/admin/PontuacaoTab";
 import ConquistasTab from "@/components/admin/ConquistasTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell } from "lucide-react";
+import NotificationsCenter from "@/components/notifications/NotificationsCenter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -250,6 +251,9 @@ export default function EventDetail() {
           <TabsTrigger value="conquistas" className="gap-1">
             <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Conquistas</span><span className="sm:hidden">Conq.</span>
           </TabsTrigger>
+          <TabsTrigger value="notificacoes" className="gap-1">
+            <Bell className="w-3.5 h-3.5" /><span className="hidden sm:inline">Notificações</span><span className="sm:hidden">Not.</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Pessoas do Evento (tela única) ── */}
@@ -356,6 +360,15 @@ export default function EventDetail() {
         {/* ── Conquistas ── */}
         <TabsContent value="conquistas" className="mt-4">
           <ConquistasTab eventId={eventId} hasAccess={hasAccess} user={user} />
+        </TabsContent>
+
+        {/* ── Notificações ── */}
+        <TabsContent value="notificacoes" className="mt-4">
+          <NotificationsCenter
+            scopeType="event"
+            scopeEventId={eventId}
+            metricsPath={`/events/${eventId}/notifications/metrics`}
+          />
         </TabsContent>
       </Tabs>
 

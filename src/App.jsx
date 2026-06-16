@@ -26,6 +26,7 @@ import EventEdit from "@/pages/EventEdit";
 import EventDetail from "@/pages/EventDetail";
 import AuditLog from "@/pages/AuditLog";
 import AdminNotifications from "@/pages/AdminNotifications";
+import NotificationMetrics from "@/pages/NotificationMetrics";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -69,6 +70,8 @@ const AuthenticatedApp = () => {
           <Route path="/events/:eventId/edit" element={<EventEdit />} />
           <Route path="/audit" element={<AuditLog />} />
           <Route path="/notifications" element={<AdminNotifications />} />
+          <Route path="/notifications/metrics" element={<NotificationMetrics />} />
+          <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
           
         </Route>
       </Route>

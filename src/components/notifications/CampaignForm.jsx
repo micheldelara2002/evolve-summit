@@ -8,44 +8,79 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Send } from "lucide-react";
+import AudienceSelector from "./AudienceSelector";
+import { dispatchCampaign } from "@/lib/notificationService";
+import { toast } from "sonner";
 
 export default function CampaignForm({ campaign, scopeType = "global", scopeEventId = null, onClose, currentUser }) {
   const queryClient = useQueryClient();
+
+  // audience value: { type: "all"|"segment"|"my_leads"|"my_attendees", segments: [] }
+  const parseInitialAudience = () => {
+    if (!campaign) return { type: "all", segments: [] };
+    if (campaign.audience_type === "segment") {
+      try {
+        const segs = campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [];
+        return { type: "segment", segments: segs };
+      } catch { return { type: "segment", segments: [] }; }
+    }
+    return { type: campaign.audience_type || "all", segments: [] };
+  };
 
   const [form, setForm] = useState({
     title: campaign?.title || "",
     message: campaign?.message || "",
     type: campaign?.type || "informativa",
     priority: campaign?.priority || "normal",
-    audience_type: campaign?.audience_type || "all",
     cta_label: campaign?.cta_label || "",
     cta_target: campaign?.cta_target || "",
   });
+  const [audience, setAudience] = useState(parseInitialAudience);
 
-  const saveMutation = useMutation({
+  const saveDraftMutation = useMutation({
     mutationFn: (data) => {
-      if (campaign?.id) {
-        return base44.entities.NotificationCampaign.update(campaign.id, data);
-      }
+      if (campaign?.id) return base44.entities.NotificationCampaign.update(campaign.id, data);
       return base44.entities.NotificationCampaign.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
+      toast.success("Rascunho salvo.");
       onClose?.();
     },
   });
 
-  const handleSubmit = (status = "draft") => {
-    saveMutation.mutate({
-      ...form,
-      scope_type: scopeType,
-      scope_event_id: scopeEventId || undefined,
-      sender_user_id: currentUser?.id,
-      sender_role: currentUser?.role,
-      status,
-      ...(status === "sent" ? { sent_at: new Date().toISOString() } : {}),
-    });
-  };
+  const sendMutation = useMutation({
+    mutationFn: async (campaignData) => {
+      let savedCampaign;
+      if (campaign?.id) {
+        await base44.entities.NotificationCampaign.update(campaign.id, campaignData);
+        savedCampaign = { ...campaign, ...campaignData };
+      } else {
+        savedCampaign = await base44.entities.NotificationCampaign.create(campaignData);
+      }
+      await dispatchCampaign(savedCampaign, currentUser);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
+      toast.success("Campanha enviada com sucesso!");
+      onClose?.();
+    },
+    onError: (e) => toast.error("Erro ao enviar: " + e.message),
+  });
+
+  const buildPayload = (status) => ({
+    ...form,
+    scope_type: scopeType,
+    scope_event_id: scopeEventId || undefined,
+    sender_user_id: currentUser?.id,
+    sender_role: currentUser?.role,
+    status,
+    audience_type: audience.type === "segment" ? "segment" : audience.type,
+    audience_payload: audience.type === "segment" ? JSON.stringify(audience.segments) : null,
+  });
+
+  const isValid = form.title.trim() && form.message.trim();
+  const isPending = saveDraftMutation.isPending || sendMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -59,9 +94,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Conteúdo</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base">Conteúdo</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1">
             <Label>Título *</Label>
@@ -111,13 +144,13 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
 
           <div className="space-y-1">
             <Label>Audiência</Label>
-            <Select value={form.audience_type} onValueChange={(v) => setForm({ ...form, audience_type: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="segment">Segmento</SelectItem>
-              </SelectContent>
-            </Select>
+            <AudienceSelector
+              userRole={currentUser?.role || "user"}
+              scopeType={scopeType}
+              scopeEventId={scopeEventId}
+              value={audience}
+              onChange={setAudience}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -145,17 +178,17 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
         <Button
           variant="outline"
-          onClick={() => handleSubmit("draft")}
-          disabled={!form.title || !form.message || saveMutation.isPending}
+          onClick={() => saveDraftMutation.mutate(buildPayload("draft"))}
+          disabled={!isValid || isPending}
         >
           Salvar Rascunho
         </Button>
         <Button
-          onClick={() => handleSubmit("sent")}
-          disabled={!form.title || !form.message || saveMutation.isPending}
+          onClick={() => sendMutation.mutate(buildPayload("processing"))}
+          disabled={!isValid || isPending}
         >
           <Send className="w-4 h-4 mr-2" />
-          Enviar Agora
+          {isPending ? "Enviando..." : "Enviar Agora"}
         </Button>
       </div>
     </div>
