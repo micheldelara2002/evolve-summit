@@ -100,7 +100,7 @@ function gerarDescricao(criterio_tipo, acao_referencia, valor_meta) {
     const sufixo = sufixos[acao_referencia] || (acaoLabel ? `${acaoLabel.toLowerCase()}.` : ".");
     const verboFirst = {
       presenca_sessao:   "Registrar a primeira",
-      avaliacao_sessao:  "Fazer a primeira",
+      avaliacao_sessao:  "Avaliar a primeira",
       pergunta_valida:   "Enviar a primeira",
       completude_perfil: "Completar o perfil pela primeira vez.",
       conexao_aceita:    "Realizar a primeira",
