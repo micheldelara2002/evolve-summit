@@ -1,0 +1,61 @@
+{
+  "name": "StoreItem",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "codigo_item": {
+      "type": "string",
+      "description": "C\u00f3digo \u00fanico do item dentro do evento"
+    },
+    "descricao_item": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do item"
+    },
+    "imagem_url": {
+      "type": "string",
+      "description": "URL da imagem do item (opcional)"
+    },
+    "pontos_necessarios": {
+      "type": "number",
+      "description": "Pontos necess\u00e1rios para resgatar o item (inteiro > 0)"
+    },
+    "quantidade_total": {
+      "type": "number",
+      "description": "Quantidade total dispon\u00edvel em estoque (inteiro >= 0)"
+    },
+    "quantidade_resgatada": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade j\u00e1 resgatada (controlado pelo sistema)"
+    },
+    "limite_por_usuario": {
+      "type": "number",
+      "description": "Limite de resgates por usu\u00e1rio (inteiro >= 1)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo"
+      ],
+      "default": "ativo",
+      "description": "Status do item na loja"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "codigo_item",
+    "descricao_item",
+    "pontos_necessarios",
+    "quantidade_total",
+    "limite_por_usuario",
+    "status"
+  ]
+}
