@@ -3,6 +3,7 @@ const ptBR = {
   nav: {
     home: "Início",
     events: "Eventos",
+    notifications: "Notificações",
     audit: "Auditoria",
     logout: "Sair",
   },

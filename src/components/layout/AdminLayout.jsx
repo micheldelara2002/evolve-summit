@@ -2,13 +2,17 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
-import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState } from "react";
+import { useUnreadCount } from "@/components/notifications/NotificationInbox";
+import NotificationInbox from "@/components/notifications/NotificationInbox";
 
 const navItems = [
   { path: "/", icon: LayoutDashboard, label: "nav.home" },
   { path: "/events", icon: Calendar, label: "nav.events" },
+  { path: "/notifications", icon: Bell, label: "nav.notifications" },
   { path: "/audit", icon: Shield, label: "nav.audit" },
 ];
 
@@ -48,6 +52,8 @@ export default function AdminLayout() {
               <p className="text-sm font-medium leading-none">{user?.full_name}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{user?.role === "admin" ? "Admin" : "Manager"}</p>
             </div>
+            {/* Inbox bell */}
+            <InboxBell />
             <Button variant="ghost" size="icon" onClick={handleLogout} title={t("nav.logout")}>
               <LogOut className="w-4 h-4" />
             </Button>
@@ -111,5 +117,28 @@ export default function AdminLayout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+function InboxBell() {
+  const [open, setOpen] = useState(false);
+  const unread = useUnreadCount();
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="w-4 h-4" />
+          {unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-destructive text-[10px] text-white flex items-center justify-center font-bold">
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-96 p-0" align="end">
+        <NotificationInbox onClose={() => setOpen(false)} />
+      </PopoverContent>
+    </Popover>
   );
 }

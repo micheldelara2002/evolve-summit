@@ -25,6 +25,7 @@ import EventCreate from "@/pages/EventCreate";
 import EventEdit from "@/pages/EventEdit";
 import EventDetail from "@/pages/EventDetail";
 import AuditLog from "@/pages/AuditLog";
+import AdminNotifications from "@/pages/AdminNotifications.jsx";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -67,6 +68,7 @@ const AuthenticatedApp = () => {
           <Route path="/events/:eventId" element={<EventDetail />} />
           <Route path="/events/:eventId/edit" element={<EventEdit />} />
           <Route path="/audit" element={<AuditLog />} />
+          <Route path="/notifications" element={<AdminNotifications />} />
           
         </Route>
       </Route>
