@@ -149,7 +149,7 @@ export default function EventDetail() {
   const fieldDefs = {
     room: [
       { key: "name", label: "Nome", required: true },
-      { key: "capacity", label: "Capacidade", type: "number", default: 0, required: false },
+      { key: "capacity", label: "Capacidade", type: "number", required: false },
       { key: "floor", label: "Andar" },
       { key: "block", label: "Bloco" },
     ],
