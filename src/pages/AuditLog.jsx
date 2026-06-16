@@ -118,6 +118,8 @@ export default function AuditLog() {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [sortDir, setSortDir] = useState("desc");
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // Column order — persisted
   const [colOrder, setColOrder] = useState(() => loadColOrder() || DEFAULT_COLUMNS.map((c) => c.id));
@@ -154,6 +156,7 @@ export default function AuditLog() {
   const eventName = (id) => scopedEvents.find((e) => e.id === id)?.name || id || "—";
 
   const filtered = useMemo(() => {
+    setPage(1);
     let result = [...logs];
     if (!isAdmin(user)) {
       result = result.filter((l) => !l.event_id || scopedEventIds.has(l.event_id));
@@ -180,6 +183,9 @@ export default function AuditLog() {
     });
     return result;
   }, [logs, actionFilter, eventFilter, periodFilter, search, sortDir, user]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -261,7 +267,7 @@ export default function AuditLog() {
 
       <div className="flex justify-between items-center">
         <p className="text-xs text-muted-foreground">
-          {t("common.showing")} {filtered.length} {t("common.results")}
+          {filtered.length} {t("common.results")} — página {page} de {totalPages}
           <span className="ml-2 text-muted-foreground/60">— arraste cabeçalhos para reordenar</span>
         </p>
         <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}>
@@ -315,7 +321,7 @@ export default function AuditLog() {
                 </DragDropContext>
               </thead>
               <tbody>
-                {filtered.map((log, idx) => (
+                {paginated.map((log, idx) => (
                   <tr
                     key={log.id}
                     className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"} hover:bg-muted/40 transition-colors`}
@@ -329,6 +335,31 @@ export default function AuditLog() {
           {filtered.length === 0 && (
             <p className="text-center text-muted-foreground py-8 text-sm">{t("audit.noLogs")}</p>
           )}
+        </div>
+      )}
+
+      {/* Paginação */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
+            Anterior
+          </Button>
+          <div className="flex gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <Button
+                key={p}
+                variant={p === page ? "default" : "outline"}
+                size="sm"
+                className="w-8 h-8 p-0"
+                onClick={() => setPage(p)}
+              >
+                {p}
+              </Button>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>
+            Próxima
+          </Button>
         </div>
       )}
     </div>

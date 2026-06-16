@@ -687,14 +687,14 @@ function QuickPartnerDialog({ eventId, user, onClose, onSuccess }) {
         <DialogHeader><DialogTitle className="font-display">Cadastrar parceiro</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1"><Label>Nome *</Label><Input value={form.name} onChange={(e) => update("name", e.target.value)} required /></div>
+          <div className="space-y-1"><Label>Website</Label><Input value={form.website} onChange={(e) => update("website", e.target.value)} /></div>
+          <div className="space-y-1"><Label>E-mail de contato</Label><Input type="email" value={form.contact_email} onChange={(e) => update("contact_email", e.target.value)} /></div>
           <div className="space-y-1"><Label>Plano</Label>
             <Select value={form.plan} onValueChange={(v) => update("plan", v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{PLANS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="space-y-1"><Label>Website</Label><Input value={form.website} onChange={(e) => update("website", e.target.value)} /></div>
-          <div className="space-y-1"><Label>E-mail de contato</Label><Input type="email" value={form.contact_email} onChange={(e) => update("contact_email", e.target.value)} /></div>
           <p className="text-xs text-muted-foreground">Após salvar, você retornará ao fluxo de edição da pessoa.</p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>

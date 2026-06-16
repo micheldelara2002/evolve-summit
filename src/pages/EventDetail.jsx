@@ -12,10 +12,11 @@ import ColorPickerField from "@/components/admin/ColorPickerField";
 import PessoasTab from "@/components/admin/PessoasTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
@@ -148,7 +149,7 @@ export default function EventDetail() {
   const fieldDefs = {
     room: [
       { key: "name", label: "Nome", required: true },
-      { key: "capacity", label: "Capacidade", type: "number" },
+      { key: "capacity", label: "Capacidade", type: "number", required: false },
       { key: "floor", label: "Andar" },
       { key: "block", label: "Bloco" },
     ],
@@ -256,36 +257,21 @@ export default function EventDetail() {
 
         {/* ── Trilhas ── */}
         <TabsContent value="tracks" className="mt-4">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1" />
-              {hasAccess && (
-                <Button size="sm" className="gap-1 shrink-0" onClick={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}>
-                  <Plus className="w-4 h-4" /> Nova
-                </Button>
-              )}
-            </div>
-            {tracks.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">{t("common.noData")}</p>}
-            {tracks.map((track) => (
-              <div key={track.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-                <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: track.color || "#94a3b8" }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{track.name}</p>
-                  {track.description && <p className="text-xs text-muted-foreground truncate">{track.description}</p>}
-                </div>
-                {hasAccess && (
-                  <TrackActionsMenu
-                    onEdit={() => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
-                    onDelete={() => {
-                      if (tracks.length <= 1) { setTrackBlockMsg("Deve haver pelo menos uma trilha cadastrada."); return; }
-                      setTrackDeleteConfirm(track);
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          <TracksList
+            tracks={tracks}
+            sessions={sessions}
+            hasAccess={hasAccess}
+            onNew={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}
+            onEdit={(track) => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
+            onDelete={(track) => {
+              if (tracks.length <= 1) { setTrackBlockMsg("Deve haver pelo menos uma trilha cadastrada."); return; }
+              if (sessions.some((s) => s.track_id === track.id)) { setTrackBlockMsg("Não é possível excluir esta trilha, pois há sessão(ões) vinculada(s) a ela."); return; }
+              setTrackDeleteConfirm(track);
+            }}
+          />
         </TabsContent>
+
+
 
         {/* ── Salas ── */}
         <TabsContent value="rooms" className="mt-4">
@@ -390,6 +376,46 @@ export default function EventDetail() {
           isSubmitting={saveMut.isPending}
         />
       )}
+    </div>
+  );
+}
+
+// ── Tracks list with search ──────────────────────────────────────────────────
+function TracksList({ tracks, sessions, hasAccess, onNew, onEdit, onDelete }) {
+  const [search, setSearch] = useState("");
+  const filtered = tracks.filter((tr) => tr.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar trilha..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+        {hasAccess && (
+          <Button size="sm" className="gap-1 shrink-0" onClick={onNew}>
+            <Plus className="w-4 h-4" /> Nova
+          </Button>
+        )}
+      </div>
+      {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">{t("common.noData")}</p>}
+      {filtered.map((track) => (
+        <div key={track.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
+          <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: track.color || "#94a3b8" }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{track.name}</p>
+            {track.description && <p className="text-xs text-muted-foreground truncate">{track.description}</p>}
+          </div>
+          {hasAccess && (
+            <TrackActionsMenu onEdit={() => onEdit(track)} onDelete={() => onDelete(track)} />
+          )}
+        </div>
+      ))}
     </div>
   );
 }
