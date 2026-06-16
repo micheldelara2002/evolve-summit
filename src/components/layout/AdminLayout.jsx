@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
@@ -50,10 +50,8 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium leading-none">{user?.full_name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{user?.role === "admin" ? "Admin" : "Manager"}</p>
-            </div>
+            {/* Avatar + nome clicável → /profile */}
+            <UserChip user={user} />
             {/* Inbox bell */}
             <InboxBell />
             <Button variant="ghost" size="icon" onClick={handleLogout} title={t("nav.logout")}>
@@ -128,6 +126,35 @@ export default function AdminLayout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+function UserChip({ user }) {
+  const navigate = useNavigate();
+  const initials = user?.full_name
+    ? user.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+  const roleLabel = user?.role === "admin" ? "Admin" : "Manager";
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate("/profile")}
+      aria-label="Ver meu perfil"
+      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {user?.photo_url ? (
+        <img src={user.photo_url} alt={user.full_name} className="w-7 h-7 rounded-full object-cover ring-1 ring-border" />
+      ) : (
+        <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-display font-bold flex items-center justify-center">
+          {initials}
+        </div>
+      )}
+      <div className="text-right hidden sm:block">
+        <p className="text-sm font-medium leading-none">{user?.full_name}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{roleLabel}</p>
+      </div>
+    </button>
   );
 }
 
