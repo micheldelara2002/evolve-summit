@@ -1,0 +1,59 @@
+{
+  "name": "NotificationRecipient",
+  "type": "object",
+  "properties": {
+    "campaign_id": {
+      "type": "string",
+      "description": "ID da campanha"
+    },
+    "recipient_user_id": {
+      "type": "string",
+      "description": "ID do participante destinat\u00e1rio"
+    },
+    "recipient_name": {
+      "type": "string",
+      "description": "Nome do destinat\u00e1rio (snapshot)"
+    },
+    "recipient_email": {
+      "type": "string",
+      "description": "Email do destinat\u00e1rio (snapshot)"
+    },
+    "recipient_role": {
+      "type": "string",
+      "description": "Role do destinat\u00e1rio no evento (snapshot)"
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sent",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Status de entrega"
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de entrega (nullable)"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de leitura (nullable)"
+    },
+    "clicked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de clique no CTA (nullable)"
+    },
+    "error_reason": {
+      "type": "string",
+      "description": "Motivo do erro se falhou (nullable)"
+    }
+  },
+  "required": [
+    "campaign_id",
+    "recipient_user_id"
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "name": "NotificationCampaign",
+  "type": "object",
+  "properties": {
+    "scope_type": {
+      "type": "string",
+      "enum": [
+        "event",
+        "global"
+      ],
+      "default": "event",
+      "description": "Escopo da campanha"
+    },
+    "scope_event_id": {
+      "type": "string",
+      "description": "ID do evento (obrigat\u00f3rio quando scope_type=event)"
+    },
+    "sender_user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio emissor"
+    },
+    "sender_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "gerente",
+        "staff",
+        "representante",
+        "palestrante"
+      ],
+      "description": "Papel do emissor no envio"
+    },
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da notifica\u00e7\u00e3o (m\u00e1x 80 chars)"
+    },
+    "message": {
+      "type": "string",
+      "description": "Mensagem da notifica\u00e7\u00e3o (m\u00e1x 500 chars)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "informativa",
+        "lembrete",
+        "destaque"
+      ],
+      "default": "informativa",
+      "description": "Tipo da notifica\u00e7\u00e3o"
+    },
+    "cta_label": {
+      "type": "string",
+      "description": "Label do bot\u00e3o CTA (opcional)"
+    },
+    "cta_target": {
+      "type": "string",
+      "description": "Rota interna ou URL do CTA (opcional)"
+    },
+    "audience_type": {
+      "type": "string",
+      "enum": [
+        "all",
+        "segment",
+        "manual",
+        "my_leads",
+        "my_attendees"
+      ],
+      "default": "all",
+      "description": "Tipo de audi\u00eancia"
+    },
+    "audience_payload": {
+      "type": "string",
+      "description": "JSON com dados de segmenta\u00e7\u00e3o (nullable)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high"
+      ],
+      "default": "normal",
+      "description": "Prioridade da notifica\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "scheduled",
+        "processing",
+        "sent",
+        "partially_sent",
+        "canceled",
+        "failed"
+      ],
+      "default": "draft",
+      "description": "Status da campanha"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora de envio agendado (nullable)"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora de envio efetivo (nullable)"
+    },
+    "recipients_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de destinat\u00e1rios"
+    },
+    "delivered_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de entregues"
+    },
+    "read_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de lidas"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "scope_type",
+    "title",
+    "message",
+    "type",
+    "audience_type",
+    "priority",
+    "status"
+  ]
+}
