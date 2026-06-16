@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { ACAO_EVENTO_LABELS, ACAO_EVENTO_KEYS } from "@/lib/acaoEvento";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,15 +43,6 @@ const CRITERIO_LABELS = {
   points_total: "Pontos acumulados",
 };
 
-const ACAO_LABELS = {
-  presenca_sessao: "Presença em Sessão",
-  avaliacao_sessao: "Avaliação de Sessão",
-  pergunta_valida: "Pergunta Válida",
-  completude_perfil: "Completude de Perfil",
-  conexao_aceita: "Conexão Aceita",
-  visita_estande: "Visita a Estande",
-};
-
 // Sugestões de ícones por categoria/coluna
 const ICONE_SUGESTOES = {
   engajamento: ["🏅", "⭐", "🎯", "💫", "🌟", "🏆", "🎖️", "✨"],
@@ -60,20 +52,20 @@ const ICONE_SUGESTOES = {
 
 const DEFAULT_SEEDS = [
   // Engajamento
-  { codigo: "1A", titulo: "Primeira presença em sessão", categoria: "engajamento", coluna_progresso: "partindo",    criterio_tipo: "first",        acao_referencia: "presenca_sessao",  regra_especial: null, valor_meta: 1,    icone_emoji: "🏅", icone_cor: "#3B82F6" },
-  { codigo: "1B", titulo: "Perfil completo",              categoria: "engajamento", coluna_progresso: "aquecendo",   criterio_tipo: "percent",      acao_referencia: "completude_perfil", regra_especial: null, valor_meta: 90,   icone_emoji: "⭐", icone_cor: "#60A5FA" },
-  { codigo: "1C", titulo: "Presenças acumuladas",         categoria: "engajamento", coluna_progresso: "acelerando",  criterio_tipo: "count",        acao_referencia: "presenca_sessao",  regra_especial: null, valor_meta: 5,    icone_emoji: "🎯", icone_cor: "#2563EB" },
-  { codigo: "1D", titulo: "Pontos acumulados",            categoria: "engajamento", coluna_progresso: "voando",      criterio_tipo: "points_total", acao_referencia: null,               regra_especial: null, valor_meta: 1000, icone_emoji: "🏆", icone_cor: "#1D4ED8" },
+  { codigo: "1A", titulo: "Primeira presença em sessão", categoria: "engajamento", coluna_progresso: "partindo",   criterio_tipo: "first",        acao_referencia: "presenca_sessao",   valor_meta: 1,    icone_emoji: "🏅", icone_cor: "#3B82F6" },
+  { codigo: "1B", titulo: "Perfil completo",             categoria: "engajamento", coluna_progresso: "aquecendo",  criterio_tipo: "percent",      acao_referencia: "completude_perfil", valor_meta: 90,   icone_emoji: "⭐", icone_cor: "#60A5FA" },
+  { codigo: "1C", titulo: "Presenças acumuladas",        categoria: "engajamento", coluna_progresso: "acelerando", criterio_tipo: "count",        acao_referencia: "presenca_sessao",   valor_meta: 5,    icone_emoji: "🎯", icone_cor: "#2563EB" },
+  { codigo: "1D", titulo: "Pontos acumulados",           categoria: "engajamento", coluna_progresso: "voando",     criterio_tipo: "points_total", acao_referencia: null,                valor_meta: 1000, icone_emoji: "🏆", icone_cor: "#1D4ED8" },
   // Conteúdo
-  { codigo: "2A", titulo: "Primeira avaliação",           categoria: "conteudo",    coluna_progresso: "partindo",    criterio_tipo: "first",        acao_referencia: "avaliacao_sessao", regra_especial: null,              valor_meta: 1,  icone_emoji: "📚", icone_cor: "#9333EA" },
-  { codigo: "2B", titulo: "Primeiro resgate",             categoria: "conteudo",    coluna_progresso: "aquecendo",   criterio_tipo: "first",        acao_referencia: null,               regra_especial: "primeiro_resgate", valor_meta: 1,  icone_emoji: "💡", icone_cor: "#A855F7" },
-  { codigo: "2C", titulo: "Avaliações acumuladas",        categoria: "conteudo",    coluna_progresso: "acelerando",  criterio_tipo: "count",        acao_referencia: "avaliacao_sessao", regra_especial: null,              valor_meta: 3,  icone_emoji: "🎓", icone_cor: "#7C3AED" },
-  { codigo: "2D", titulo: "Perguntas enviadas",           categoria: "conteudo",    coluna_progresso: "voando",      criterio_tipo: "count",        acao_referencia: "pergunta_valida",  regra_especial: null,              valor_meta: 3,  icone_emoji: "💎", icone_cor: "#6D28D9" },
+  { codigo: "2A", titulo: "Primeira avaliação",          categoria: "conteudo",    coluna_progresso: "partindo",   criterio_tipo: "first",        acao_referencia: "avaliacao_sessao",  valor_meta: 1,  icone_emoji: "📚", icone_cor: "#9333EA" },
+  { codigo: "2B", titulo: "Primeiro resgate",            categoria: "conteudo",    coluna_progresso: "aquecendo",  criterio_tipo: "first",        acao_referencia: "resgate_realizado", valor_meta: 1,  icone_emoji: "💡", icone_cor: "#A855F7" },
+  { codigo: "2C", titulo: "Avaliações acumuladas",       categoria: "conteudo",    coluna_progresso: "acelerando", criterio_tipo: "count",        acao_referencia: "avaliacao_sessao",  valor_meta: 3,  icone_emoji: "🎓", icone_cor: "#7C3AED" },
+  { codigo: "2D", titulo: "Perguntas enviadas",          categoria: "conteudo",    coluna_progresso: "voando",     criterio_tipo: "count",        acao_referencia: "pergunta_valida",   valor_meta: 3,  icone_emoji: "💎", icone_cor: "#6D28D9" },
   // Networking
-  { codigo: "3A", titulo: "Primeira conexão",             categoria: "networking",  coluna_progresso: "partindo",    criterio_tipo: "first",        acao_referencia: "conexao_aceita",   regra_especial: null, valor_meta: 1,  icone_emoji: "🤝", icone_cor: "#059669" },
-  { codigo: "3B", titulo: "Primeiro estande visitado",    categoria: "networking",  coluna_progresso: "aquecendo",   criterio_tipo: "first",        acao_referencia: "visita_estande",   regra_especial: null, valor_meta: 1,  icone_emoji: "🌐", icone_cor: "#10B981" },
-  { codigo: "3C", titulo: "Conexões acumuladas",          categoria: "networking",  coluna_progresso: "acelerando",  criterio_tipo: "count",        acao_referencia: "conexao_aceita",   regra_especial: null, valor_meta: 5,  icone_emoji: "💬", icone_cor: "#047857" },
-  { codigo: "3D", titulo: "Cobertura de estandes",        categoria: "networking",  coluna_progresso: "voando",      criterio_tipo: "percent",      acao_referencia: "visita_estande",   regra_especial: null, valor_meta: 90, icone_emoji: "🌍", icone_cor: "#065F46" },
+  { codigo: "3A", titulo: "Primeira conexão",            categoria: "networking",  coluna_progresso: "partindo",   criterio_tipo: "first",        acao_referencia: "conexao_aceita",    valor_meta: 1,  icone_emoji: "🤝", icone_cor: "#059669" },
+  { codigo: "3B", titulo: "Primeiro estande visitado",   categoria: "networking",  coluna_progresso: "aquecendo",  criterio_tipo: "first",        acao_referencia: "visita_estande",    valor_meta: 1,  icone_emoji: "🌐", icone_cor: "#10B981" },
+  { codigo: "3C", titulo: "Conexões acumuladas",         categoria: "networking",  coluna_progresso: "acelerando", criterio_tipo: "count",        acao_referencia: "conexao_aceita",    valor_meta: 5,  icone_emoji: "💬", icone_cor: "#047857" },
+  { codigo: "3D", titulo: "Cobertura de estandes",       categoria: "networking",  coluna_progresso: "voando",     criterio_tipo: "percent",      acao_referencia: "visita_estande",    valor_meta: 90, icone_emoji: "🌍", icone_cor: "#065F46" },
 ];
 
 // ── Badge Card ────────────────────────────────────────────────────────────────
@@ -151,7 +143,6 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
     coluna_progresso: badge?.coluna_progresso ?? "",
     criterio_tipo: badge?.criterio_tipo ?? "first",
     acao_referencia: badge?.acao_referencia ?? "",
-    regra_especial: badge?.regra_especial ?? "",
     valor_meta: badge?.valor_meta ?? 1,
     ativo: badge?.ativo ?? true,
   });
@@ -180,8 +171,6 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
     if (form.criterio_tipo === "count" && (!Number.isInteger(meta) || meta < 1)) errs.valor_meta = "Mínimo 1.";
     if (form.criterio_tipo === "percent" && (meta < 1 || meta > 100)) errs.valor_meta = "Entre 1 e 100.";
     if (form.criterio_tipo === "points_total" && (meta < 100 || meta % 100 !== 0)) errs.valor_meta = "Mínimo 100, múltiplo de 100.";
-    if (form.regra_especial === "primeiro_resgate" && form.criterio_tipo !== "first")
-      errs.regra_especial = "regra_especial=primeiro_resgate exige criterio_tipo=first.";
     return errs;
   };
 
@@ -198,7 +187,6 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
       coluna_progresso: form.coluna_progresso,
       criterio_tipo: form.criterio_tipo,
       acao_referencia: form.criterio_tipo === "points_total" ? null : (form.acao_referencia || null),
-      regra_especial: form.regra_especial || null,
       valor_meta: Number(form.valor_meta),
       ativo: form.ativo,
     });
@@ -286,7 +274,6 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
               <Select value={form.criterio_tipo} onValueChange={(v) => {
                 set("criterio_tipo", v);
                 if (v === "first") set("valor_meta", 1);
-                if (v === "points_total") set("acao_referencia", "");
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -316,36 +303,15 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
               <Select
                 value={form.acao_referencia || "__none__"}
                 onValueChange={(v) => set("acao_referencia", v === "__none__" ? "" : v)}
-                disabled={!!form.regra_especial}
               >
                 <SelectTrigger><SelectValue placeholder="— nenhuma —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— nenhuma —</SelectItem>
-                  {Object.entries(ACAO_LABELS).map(([k, lbl]) => <SelectItem key={k} value={k}>{lbl}</SelectItem>)}
+                  {ACAO_EVENTO_KEYS.map((k) => <SelectItem key={k} value={k}>{ACAO_EVENTO_LABELS[k]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           )}
-
-          {/* Regra especial */}
-          <div className="space-y-1.5">
-            <Label>Regra Especial</Label>
-            <Select
-              value={form.regra_especial || "__none__"}
-              onValueChange={(v) => {
-                const val = v === "__none__" ? "" : v;
-                set("regra_especial", val);
-                if (val === "primeiro_resgate") { set("acao_referencia", ""); set("criterio_tipo", "first"); set("valor_meta", 1); }
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="— nenhuma —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">— nenhuma —</SelectItem>
-                <SelectItem value="primeiro_resgate">Primeiro Resgate</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.regra_especial && <p className="text-xs text-destructive">{errors.regra_especial}</p>}
-          </div>
 
           {/* Ativo */}
           <div className="flex items-center gap-3">

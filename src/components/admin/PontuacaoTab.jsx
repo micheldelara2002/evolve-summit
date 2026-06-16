@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { ACAO_EVENTO_LABELS, ACAO_EVENTO_KEYS } from "@/lib/acaoEvento";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,16 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, MoreVertical, Pencil, Trash2, Zap, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
-// ── Labels ────────────────────────────────────────────────────────────────────
-const ACAO_LABELS = {
-  presenca_sessao: "Presença em Sessão",
-  avaliacao_sessao: "Avaliação de Sessão",
-  pergunta_valida: "Pergunta Válida",
-  completude_perfil: "Completude de Perfil",
-  conexao_aceita: "Conexão Aceita",
-  visita_estande: "Visita a Estande",
-};
-
 const LIMITE_LABELS = {
   por_sessao: "Por Sessão",
   por_estande: "Por Estande",
@@ -31,7 +22,6 @@ const LIMITE_LABELS = {
   one_shot: "Uma vez (one-shot)",
 };
 
-const ACOES = Object.keys(ACAO_LABELS);
 const LIMITE_TIPOS = Object.keys(LIMITE_LABELS);
 
 // ── Defaults para seed ────────────────────────────────────────────────────────
@@ -42,6 +32,7 @@ const DEFAULTS = [
   { acao: "completude_perfil", pontos: 100, limite_tipo: "one_shot",         limite_valor: 1, ativo: true },
   { acao: "conexao_aceita",    pontos: 200, limite_tipo: "por_par_usuarios", limite_valor: 1, ativo: true },
   { acao: "visita_estande",    pontos: 300, limite_tipo: "por_estande",      limite_valor: 1, ativo: true },
+  { acao: "resgate_realizado", pontos: 200, limite_tipo: "one_shot",         limite_valor: 1, ativo: true },
 ];
 
 // ── Form Dialog ───────────────────────────────────────────────────────────────
@@ -96,9 +87,9 @@ function RuleForm({ rule, existingAcoes, onSubmit, onClose, isSubmitting }) {
             <Select value={form.acao} onValueChange={(v) => set("acao", v)} disabled={!!rule}>
               <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
               <SelectContent>
-                {ACOES.map((a) => (
+                {ACAO_EVENTO_KEYS.map((a) => (
                   <SelectItem key={a} value={a} disabled={!rule && existingAcoes.includes(a)}>
-                    {ACAO_LABELS[a]}
+                    {ACAO_EVENTO_LABELS[a]}
                     {!rule && existingAcoes.includes(a) && " (já cadastrada)"}
                   </SelectItem>
                 ))}
@@ -254,7 +245,7 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas as ações</SelectItem>
-            {ACOES.map((a) => <SelectItem key={a} value={a}>{ACAO_LABELS[a]}</SelectItem>)}
+            {ACAO_EVENTO_KEYS.map((a) => <SelectItem key={a} value={a}>{ACAO_EVENTO_LABELS[a]}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -322,7 +313,7 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
                         <Zap className="w-3.5 h-3.5 text-accent shrink-0" />
-                        <span className="font-medium text-sm">{ACAO_LABELS[rule.acao] || rule.acao}</span>
+                        <span className="font-medium text-sm">{ACAO_EVENTO_LABELS[rule.acao] || rule.acao}</span>
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right">
@@ -404,7 +395,7 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Deseja excluir a regra de <strong>{ACAO_LABELS[deleteTarget?.acao]}</strong>?
+              Deseja excluir a regra de <strong>{ACAO_EVENTO_LABELS[deleteTarget?.acao]}</strong>?
               Esta ação não poderá ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>

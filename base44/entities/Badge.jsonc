@@ -59,16 +59,10 @@
         "pergunta_valida",
         "completude_perfil",
         "conexao_aceita",
-        "visita_estande"
+        "visita_estande",
+        "resgate_realizado"
       ],
-      "description": "A\u00e7\u00e3o de refer\u00eancia (nullable)"
-    },
-    "regra_especial": {
-      "type": "string",
-      "enum": [
-        "primeiro_resgate"
-      ],
-      "description": "Regra especial nullable"
+      "description": "A\u00e7\u00e3o de refer\u00eancia \u2014 enum \u00fanico acao_evento (nullable)"
     },
     "valor_meta": {
       "type": "number",
