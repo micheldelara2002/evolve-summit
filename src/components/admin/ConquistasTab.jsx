@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MoreVertical, Pencil, Wand2, ToggleLeft, ToggleRight, Power } from "lucide-react";
+import { MoreVertical, Pencil, Wand2, ToggleLeft, ToggleRight, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Constantes fixas da matriz ────────────────────────────────────────────────
@@ -43,7 +43,6 @@ const CRITERIO_LABELS = {
   points_total: "Pontos acumulados",
 };
 
-// Sugestões de ícones por categoria/coluna
 const ICONE_SUGESTOES = {
   engajamento: ["🏅", "⭐", "🎯", "💫", "🌟", "🏆", "🎖️", "✨"],
   conteudo:    ["📚", "💡", "🎓", "📖", "🔬", "🎯", "💎", "🧠"],
@@ -68,11 +67,72 @@ const DEFAULT_SEEDS = [
   { codigo: "3D", titulo: "Cobertura de estandes",       categoria: "networking",  coluna_progresso: "voando",     criterio_tipo: "percent",      acao_referencia: "visita_estande",    valor_meta: 90, icone_emoji: "🌍", icone_cor: "#065F46" },
 ];
 
+// ── Descrição automática ──────────────────────────────────────────────────────
+function gerarDescricao(criterio_tipo, acao_referencia, valor_meta) {
+  const meta = Number(valor_meta);
+  const acaoLabel = acao_referencia ? ACAO_EVENTO_LABELS[acao_referencia] : null;
+
+  const verbos = {
+    presenca_sessao:   "Registrar presença em pelo menos",
+    avaliacao_sessao:  "Avaliar pelo menos",
+    pergunta_valida:   "Enviar pelo menos",
+    completude_perfil: "Completar pelo menos",
+    conexao_aceita:    "Realizar pelo menos",
+    visita_estande:    "Visitar pelo menos",
+    resgate_realizado: "Resgatar pelo menos",
+  };
+
+  const sufixos = {
+    presenca_sessao:   meta === 1 ? "sessão." : "sessões.",
+    avaliacao_sessao:  meta === 1 ? "sessão." : "sessões.",
+    pergunta_valida:   meta === 1 ? "pergunta válida." : "perguntas válidas.",
+    completude_perfil: "% do perfil.",
+    conexao_aceita:    meta === 1 ? "conexão aceita." : "conexões aceitas.",
+    visita_estande:    meta === 1 ? "estande." : "estandes.",
+    resgate_realizado: meta === 1 ? "item resgatado." : "itens resgatados.",
+  };
+
+  if (criterio_tipo === "points_total") {
+    return `Acumular pelo menos ${meta} pontos.`;
+  }
+
+  if (criterio_tipo === "first" && acao_referencia) {
+    const sufixo = sufixos[acao_referencia] || (acaoLabel ? `${acaoLabel.toLowerCase()}.` : ".");
+    const verboFirst = {
+      presenca_sessao:   "Registrar a primeira",
+      avaliacao_sessao:  "Fazer a primeira",
+      pergunta_valida:   "Enviar a primeira",
+      completude_perfil: "Completar o perfil pela primeira vez.",
+      conexao_aceita:    "Realizar a primeira",
+      visita_estande:    "Visitar o primeiro",
+      resgate_realizado: "Realizar o primeiro",
+    }[acao_referencia];
+    if (acao_referencia === "completude_perfil") return verboFirst;
+    return `${verboFirst || "Realizar a primeira"} ${sufixos[acao_referencia] || "."}`;
+  }
+
+  if (criterio_tipo === "percent" && acao_referencia) {
+    if (acao_referencia === "completude_perfil") return `Completar pelo menos ${meta}% do perfil.`;
+    if (acao_referencia === "visita_estande") return `Visitar pelo menos ${meta}% dos estandes.`;
+    return `Atingir ${meta}% em ${acaoLabel ? acaoLabel.toLowerCase() : "ação"}.`;
+  }
+
+  if (criterio_tipo === "count" && acao_referencia) {
+    const verbo = verbos[acao_referencia] || "Realizar pelo menos";
+    const sufixo = sufixos[acao_referencia] || ".";
+    return `${verbo} ${meta} ${sufixo}`;
+  }
+
+  return "";
+}
+
 // ── Badge Card ────────────────────────────────────────────────────────────────
-function BadgeCard({ badge, hasAccess, onEdit, onToggle }) {
+function BadgeCard({ badge, hasAccess, onEdit, onToggle, onDelete }) {
   const catColors = CAT_COLORS[badge.categoria] || {};
+  const descricao = gerarDescricao(badge.criterio_tipo, badge.acao_referencia, badge.valor_meta);
+
   return (
-    <div className={`relative rounded-xl border ${catColors.border || "border-border"} ${badge.ativo ? (catColors.bg || "bg-card") : "bg-muted/30"} p-3 flex flex-col items-center gap-2 min-h-[120px] transition-all`}>
+    <div className={`relative rounded-xl border ${catColors.border || "border-border"} ${badge.ativo ? (catColors.bg || "bg-card") : "bg-muted/30"} p-3 flex flex-col items-center gap-1.5 min-h-[120px] transition-all`}>
       {/* Ícone */}
       <div
         className="w-12 h-12 rounded-full flex items-center justify-center text-2xl shrink-0 transition-all"
@@ -89,10 +149,12 @@ function BadgeCard({ badge, hasAccess, onEdit, onToggle }) {
         {badge.titulo}
       </p>
 
-      {/* Status pill */}
-      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.ativo ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>
-        {badge.ativo ? "Ativa" : "Inativa"}
-      </span>
+      {/* Descrição automática */}
+      {descricao && (
+        <p className="text-[10px] text-center leading-snug text-muted-foreground/80 px-1">
+          {descricao}
+        </p>
+      )}
 
       {/* Menu kebab */}
       {hasAccess && (
@@ -111,6 +173,10 @@ function BadgeCard({ badge, hasAccess, onEdit, onToggle }) {
                 {badge.ativo
                   ? <><ToggleLeft className="w-3.5 h-3.5 mr-2" /> Desativar</>
                   : <><ToggleRight className="w-3.5 h-3.5 mr-2" /> Ativar</>}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onDelete(badge)} className="text-destructive focus:text-destructive">
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir badge
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -152,6 +218,9 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
 
   const currentCat = form.categoria || "engajamento";
   const sugestoes = ICONE_SUGESTOES[currentCat] || ICONE_SUGESTOES.engajamento;
+
+  // Descrição dinâmica no formulário
+  const previewDescricao = gerarDescricao(form.criterio_tipo, form.acao_referencia || null, form.valor_meta);
 
   const validate = () => {
     const errs = {};
@@ -313,6 +382,14 @@ function BadgeForm({ badge, eventId, existingPositions, existingCodigos, onSubmi
             </div>
           )}
 
+          {/* Preview de descrição automática */}
+          {previewDescricao && (
+            <div className="rounded-lg bg-muted/50 border border-border px-3 py-2">
+              <p className="text-xs text-muted-foreground font-medium mb-0.5">Descrição gerada automaticamente:</p>
+              <p className="text-xs text-foreground">{previewDescricao}</p>
+            </div>
+          )}
+
           {/* Ativo */}
           <div className="flex items-center gap-3">
             <Switch checked={form.ativo} onCheckedChange={(v) => set("ativo", v)} id="badge-ativo" />
@@ -366,20 +443,37 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
     onError: (err) => toast.error(err.message || "Erro."),
   });
 
+  const deleteMut = useMutation({
+    mutationFn: ({ id }) => base44.entities.Badge.update(id, { is_deleted: true }),
+    onSuccess: (_, { id }) => {
+      logAudit({ event_id: eventId, action: "soft_delete", entity_type: "Badge", entity_id: id, user });
+      queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
+      toast.success("Badge excluída. A posição está disponível.");
+    },
+    onError: (err) => toast.error(err.message || "Erro ao excluir."),
+  });
+
+  // Seed: preenche apenas posições vazias
   const seedMut = useMutation({
     mutationFn: async () => {
-      if (badges.length > 0) throw new Error("Já existem badges configuradas para este evento. Nenhuma alteração foi feita.");
-      await Promise.all(
-        DEFAULT_SEEDS.map((d) => base44.entities.Badge.create({ ...d, event_id: eventId, is_deleted: false, ativo: true }))
+      const existingPos = new Set(badges.map((b) => `${b.categoria}__${b.coluna_progresso}`));
+      const toCreate = DEFAULT_SEEDS.filter(
+        (d) => !existingPos.has(`${d.categoria}__${d.coluna_progresso}`)
       );
+      if (toCreate.length === 0) throw new Error("Todas as posições já estão preenchidas. Nenhuma badge foi criada.");
+      await Promise.all(
+        toCreate.map((d) => base44.entities.Badge.create({ ...d, event_id: eventId, is_deleted: false, ativo: true }))
+      );
+      return toCreate.length;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
-      toast.success("12 badges padrão criadas com sucesso.");
+      toast.success(`${count} badge(s) padrão criada(s) nas posições vazias.`);
     },
     onError: (err) => toast.error(err.message || "Erro ao criar padrões."),
   });
 
+  // Toggle por categoria (linha)
   const toggleCategoria = (categoria, ativo) => {
     const targets = badges.filter((b) => b.categoria === categoria);
     Promise.all(targets.map((b) => base44.entities.Badge.update(b.id, { ativo }))).then(() => {
@@ -388,10 +482,19 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
     });
   };
 
+  // Toggle por coluna
+  const toggleColuna = (coluna, ativo) => {
+    const targets = badges.filter((b) => b.coluna_progresso === coluna);
+    if (targets.length === 0) return;
+    Promise.all(targets.map((b) => base44.entities.Badge.update(b.id, { ativo }))).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
+      toast.success(`${ativo ? "Ativadas" : "Desativadas"} ${targets.length} badges de ${COL_LABELS[coluna]}.`);
+    });
+  };
+
   const openEdit = (badge) => { setFormBadge(badge); setFormPreset({}); setFormOpen(true); };
   const openNew = (preset = {}) => { setFormBadge(null); setFormPreset(preset); setFormOpen(true); };
 
-  // Lookup: badge por posição
   const getCell = (categoria, coluna) =>
     badges.find((b) => b.categoria === categoria && b.coluna_progresso === coluna) || null;
 
@@ -432,14 +535,39 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
       {/* Matriz 4x3 */}
       <div className="overflow-x-auto">
         <div className="min-w-[640px]">
-          {/* Cabeçalho das colunas */}
+          {/* Cabeçalho das colunas com ações em massa */}
           <div className="grid grid-cols-[140px_1fr_1fr_1fr_1fr] gap-2 mb-2">
             <div />
-            {COLUNAS.map((col) => (
-              <div key={col} className="text-center text-xs font-semibold text-muted-foreground py-1.5 px-2 bg-muted/50 rounded-lg">
-                {COL_LABELS[col]}
-              </div>
-            ))}
+            {COLUNAS.map((col) => {
+              const colBadges = badges.filter((b) => b.coluna_progresso === col);
+              const allAtivo = colBadges.length > 0 && colBadges.every((b) => b.ativo);
+              const allInativo = colBadges.length === 0 || colBadges.every((b) => !b.ativo);
+              return (
+                <div key={col} className="flex flex-col items-center gap-1 py-1.5 px-2 bg-muted/50 rounded-lg">
+                  <span className="text-xs font-semibold text-muted-foreground">{COL_LABELS[col]}</span>
+                  {hasAccess && colBadges.length > 0 && (
+                    <div className="flex gap-1">
+                      <button
+                        title="Ativar todas da coluna"
+                        onClick={() => toggleColuna(col, true)}
+                        disabled={allAtivo}
+                        className="p-0.5 rounded hover:bg-white/60 disabled:opacity-30 transition"
+                      >
+                        <Power className="w-3 h-3 text-emerald-600" />
+                      </button>
+                      <button
+                        title="Desativar todas da coluna"
+                        onClick={() => toggleColuna(col, false)}
+                        disabled={allInativo}
+                        className="p-0.5 rounded hover:bg-white/60 disabled:opacity-30 transition"
+                      >
+                        <ToggleLeft className="w-3 h-3 text-gray-500" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Linhas por categoria */}
@@ -489,6 +617,7 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
                           hasAccess={hasAccess}
                           onEdit={openEdit}
                           onToggle={(b) => toggleMut.mutate({ id: b.id, ativo: !b.ativo })}
+                          onDelete={(b) => deleteMut.mutate({ id: b.id })}
                         />
                       ) : (
                         <EmptyCell
