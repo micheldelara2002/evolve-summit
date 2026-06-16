@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-// Campos obrigatórios no topo, opcionais abaixo
 const REQUIRED_FIELDS = [
   { key: "full_name", label: "Nome completo", type: "text" },
   { key: "cpf",       label: "CPF",           type: "text", placeholder: "000.000.000-00" },
@@ -28,14 +27,22 @@ const OPTIONAL_FIELDS = [
   { key: "bio",       label: "Sobre mim", type: "textarea" },
 ];
 
-const ALL_FIELDS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
+// Todos os campos do formulário (exceto email que é somente leitura)
+const ALL_KEYS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS].map((f) => f.key);
 
 function buildInitialForm(user, participant) {
-  const form = {};
-  form.full_name = user?.full_name || "";
-  OPTIONAL_FIELDS.forEach(({ key }) => { form[key] = participant?.[key] || ""; });
-  form.cpf = participant?.cpf || "";
-  return form;
+  return {
+    full_name: user?.full_name || "",
+    cpf:       participant?.cpf       || "",
+    phone:     participant?.phone     || "",
+    company:   participant?.company   || "",
+    job_title: participant?.job_title || "",
+    linkedin:  participant?.linkedin  || "",
+    instagram: participant?.instagram || "",
+    youtube:   participant?.youtube   || "",
+    website:   participant?.website   || "",
+    bio:       participant?.bio       || "",
+  };
 }
 
 export default function UserProfileEdit() {
@@ -57,12 +64,12 @@ export default function UserProfileEdit() {
     enabled: !!user,
   });
 
-  // Inicializar form apenas uma vez após carregamento
+  // Inicializar form uma vez após carregamento
   useEffect(() => {
-    if (form === null && !isLoading) {
+    if (!isLoading && form === null) {
       setForm(buildInitialForm(user, participant));
     }
-  }, [isLoading, participant, user]);
+  }, [isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -70,10 +77,10 @@ export default function UserProfileEdit() {
   };
 
   const validate = () => {
-    const newErrors = {};
-    if (!form.full_name?.trim()) newErrors.full_name = "Nome é obrigatório.";
-    if (!form.cpf?.trim()) newErrors.cpf = "CPF é obrigatório.";
-    return newErrors;
+    const errs = {};
+    if (!form.full_name?.trim()) errs.full_name = "Nome é obrigatório.";
+    if (!form.cpf?.trim())       errs.cpf       = "CPF é obrigatório.";
+    return errs;
   };
 
   const handleSubmit = async (e) => {
@@ -86,24 +93,34 @@ export default function UserProfileEdit() {
 
     setSaving(true);
     try {
-      // Trim de todos os campos string
+      // Montar payload com trim em todos os campos string
       const payload = {};
-      ALL_FIELDS.forEach(({ key }) => {
-        payload[key] = typeof form[key] === "string" ? form[key].trim() : form[key];
+      ALL_KEYS.forEach((key) => {
+        payload[key] = typeof form[key] === "string" ? form[key].trim() : (form[key] ?? "");
       });
 
-      if (participant) {
+      if (participant?.id) {
+        // Atualizar registro existente
         await base44.entities.Participant.update(participant.id, payload);
+      } else {
+        // Criar registro novo — email obrigatório na entidade
+        await base44.entities.Participant.create({
+          ...payload,
+          email: user.email,
+          event_id: "global", // placeholder; participant sem evento específico
+        });
       }
 
-      // Atualizar nome no user (via auth) se mudou
+      // Sincronizar nome no user do sistema se mudou
       if (payload.full_name !== user?.full_name) {
         await base44.auth.updateMe({ full_name: payload.full_name });
       }
 
-      // Sincronizar context do usuário e invalidar query de participant
-      await refreshUser();
-      queryClient.invalidateQueries({ queryKey: ["my_participant", user?.id] });
+      // Forçar refetch do participant e do user no context
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["my_participant", user?.id] }),
+        refreshUser(),
+      ]);
 
       toast.success("Perfil atualizado com sucesso!");
       navigate("/profile");
@@ -159,9 +176,7 @@ export default function UserProfileEdit() {
                   placeholder={placeholder}
                   className={errors[key] ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                {errors[key] && (
-                  <p className="text-xs text-destructive">{errors[key]}</p>
-                )}
+                {errors[key] && <p className="text-xs text-destructive">{errors[key]}</p>}
               </div>
             ))}
           </CardContent>
