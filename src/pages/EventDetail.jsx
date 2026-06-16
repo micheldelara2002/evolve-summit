@@ -12,9 +12,10 @@ import ColorPickerField from "@/components/admin/ColorPickerField";
 import PessoasTab from "@/components/admin/PessoasTab";
 import LojaTab from "@/components/admin/LojaTab";
 import PontuacaoTab from "@/components/admin/PontuacaoTab";
+import ConquistasTab from "@/components/admin/ConquistasTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -246,6 +247,9 @@ export default function EventDetail() {
           <TabsTrigger value="pontuacao" className="gap-1">
             <Star className="w-3.5 h-3.5" /><span className="hidden sm:inline">Pontuação</span><span className="sm:hidden">Pont.</span>
           </TabsTrigger>
+          <TabsTrigger value="conquistas" className="gap-1">
+            <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Conquistas</span><span className="sm:hidden">Conq.</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Pessoas do Evento (tela única) ── */}
@@ -347,6 +351,11 @@ export default function EventDetail() {
         {/* ── Pontuação ── */}
         <TabsContent value="pontuacao" className="mt-4">
           <PontuacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />
+        </TabsContent>
+
+        {/* ── Conquistas ── */}
+        <TabsContent value="conquistas" className="mt-4">
+          <ConquistasTab eventId={eventId} hasAccess={hasAccess} user={user} />
         </TabsContent>
       </Tabs>
 
