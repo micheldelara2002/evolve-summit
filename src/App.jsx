@@ -25,7 +25,7 @@ import EventCreate from "@/pages/EventCreate";
 import EventEdit from "@/pages/EventEdit";
 import EventDetail from "@/pages/EventDetail";
 import AuditLog from "@/pages/AuditLog";
-import AdminNotifications from "@/pages/AdminNotifications.jsx";
+import AdminNotifications from "@/pages/AdminNotifications";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
