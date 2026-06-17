@@ -6,16 +6,22 @@
       "type": "string",
       "enum": [
         "admin",
-        "manager"
+        "member"
       ],
-      "default": "manager"
+      "default": "member",
+      "description": "Papel global do usu\u00e1rio no sistema"
     },
-    "managed_event_ids": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "IDs dos eventos que este manager pode gerenciar"
+    "photo_url": {
+      "type": "string",
+      "description": "URL da foto de perfil"
+    },
+    "cpf": {
+      "type": "string",
+      "description": "CPF (normalizado)"
+    },
+    "bio": {
+      "type": "string",
+      "description": "Sobre mim"
     }
   }
 }
