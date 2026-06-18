@@ -15,6 +15,7 @@ const ptBR = {
     audit: "Auditoria",
     notifications: "Notificações",
     people: "Pessoas (Global)",
+    partners: "Parceiros (Global)",
   },
   health: {
     uptime: "Uptime Mensal",

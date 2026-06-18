@@ -1,7 +1,8 @@
 import { t } from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { Activity, TrendingUp, Calendar, Shield, Bell, Users, ArrowRight } from "lucide-react";
+import { isAdmin, isPartnerManager } from "@/lib/access";
+import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 const NAV_CARDS = [
@@ -46,23 +47,37 @@ const NAV_CARDS = [
     color: "bg-teal-50 text-teal-700 border-teal-200",
     iconColor: "text-teal-600",
     href: "/admin/people",
+    roles: ["admin"],
+  },
+  {
+    key: "partners",
+    icon: Building2,
+    color: "bg-orange-50 text-orange-700 border-orange-200",
+    iconColor: "text-orange-600",
+    href: "/admin/partners",
+    roles: ["admin", "partner_manager"],
   },
 ];
 
+const ROLE_LABELS = { admin: "Admin Global", member: "Membro", partner_manager: "Gestor Parceiro" };
+
 export default function AdminHome() {
   const { user } = useAuth();
+  const visibleCards = NAV_CARDS.filter(
+    (c) => !c.roles || c.roles.includes(user?.role)
+  );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-display font-bold">{t("home.title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {user?.full_name} · {user?.role === "admin" ? "Admin Global" : "Manager"}
+          {user?.full_name} · {ROLE_LABELS[user?.role] ?? "Usuário"}
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {NAV_CARDS.map(({ key, icon: Icon, color, iconColor, href }, i) => {
+        {visibleCards.map(({ key, icon: Icon, color, iconColor, href }, i) => {
           const inner = (
             <motion.div
               initial={{ opacity: 0, y: 16 }}

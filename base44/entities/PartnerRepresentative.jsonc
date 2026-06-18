@@ -2,36 +2,60 @@
   "name": "PartnerRepresentative",
   "type": "object",
   "properties": {
-    "event_id": {
-      "type": "string",
-      "description": "ID do evento"
-    },
     "partner_id": {
       "type": "string",
-      "description": "ID do parceiro"
+      "description": "ID do partner (empresa)"
     },
-    "full_name": {
-      "type": "string"
-    },
-    "email": {
-      "type": "string"
-    },
-    "phone": {
-      "type": "string"
-    },
-    "role": {
+    "person_id": {
       "type": "string",
-      "description": "Fun\u00e7\u00e3o no parceiro"
+      "description": "ID da Person vinculada (obrigat\u00f3rio)"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do User vinculado (opcional, se tiver conta de acesso)"
+    },
+    "role_in_partner": {
+      "type": "string",
+      "description": "Papel na empresa: partner_manager, owner, assistant"
+    },
+    "is_primary": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 o representante principal"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se o v\u00ednculo est\u00e1 ativo"
     },
     "is_deleted": {
       "type": "boolean",
       "default": false
+    },
+    "event_id": {
+      "type": "string",
+      "description": "DEPRECATED: legado."
+    },
+    "full_name": {
+      "type": "string",
+      "description": "DEPRECATED: legado."
+    },
+    "email": {
+      "type": "string",
+      "description": "DEPRECATED: legado."
+    },
+    "phone": {
+      "type": "string",
+      "description": "DEPRECATED: legado."
+    },
+    "role": {
+      "type": "string",
+      "description": "DEPRECATED: legado."
     }
   },
   "required": [
-    "event_id",
     "partner_id",
-    "full_name",
-    "email"
+    "person_id",
+    "role_in_partner"
   ]
 }

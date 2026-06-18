@@ -28,6 +28,7 @@ import AuditLog from "@/pages/AuditLog";
 import AdminNotifications from "@/pages/AdminNotifications";
 import NotificationMetrics from "@/pages/NotificationMetrics";
 import AdminPeoplePlaceholder from "@/pages/AdminPeoplePlaceholder";
+import AdminPartners from "@/pages/AdminPartners";
 import UserProfile from "@/pages/UserProfile";
 import UserProfileEdit from "@/pages/UserProfileEdit";
 
@@ -76,6 +77,7 @@ const AuthenticatedApp = () => {
           <Route path="/notifications/metrics" element={<NotificationMetrics />} />
           <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
           <Route path="/admin/people" element={<AdminPeoplePlaceholder />} />
+          <Route path="/admin/partners" element={<AdminPartners />} />
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
         </Route>
