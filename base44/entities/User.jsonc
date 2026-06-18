@@ -6,7 +6,8 @@
       "type": "string",
       "enum": [
         "admin",
-        "member"
+        "member",
+        "partner_manager"
       ],
       "default": "member",
       "description": "Papel global do usu\u00e1rio no sistema"
@@ -15,13 +16,9 @@
       "type": "string",
       "description": "URL da foto de perfil"
     },
-    "cpf": {
+    "person_id": {
       "type": "string",
-      "description": "CPF (normalizado)"
-    },
-    "bio": {
-      "type": "string",
-      "description": "Sobre mim"
+      "description": "ID da pessoa vinculada (Person entity)"
     }
   }
 }

@@ -1,0 +1,44 @@
+{
+  "name": "PersonDocument",
+  "type": "object",
+  "properties": {
+    "person_id": {
+      "type": "string",
+      "description": "ID da pessoa"
+    },
+    "country_code": {
+      "type": "string",
+      "default": "BR",
+      "description": "C\u00f3digo do pa\u00eds (ISO 3166-1 alpha-2)"
+    },
+    "document_type": {
+      "type": "string",
+      "default": "CPF",
+      "description": "Tipo de documento (CPF, RG, PASSAPORTE, etc.)"
+    },
+    "document_number": {
+      "type": "string",
+      "description": "N\u00famero do documento"
+    },
+    "is_primary": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 o documento principal da pessoa"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active",
+      "description": "Status do documento"
+    }
+  },
+  "required": [
+    "person_id",
+    "country_code",
+    "document_type",
+    "document_number"
+  ]
+}

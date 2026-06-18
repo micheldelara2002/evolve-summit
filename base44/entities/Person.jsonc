@@ -1,0 +1,58 @@
+{
+  "name": "Person",
+  "type": "object",
+  "properties": {
+    "full_name": {
+      "type": "string",
+      "description": "Nome completo da pessoa"
+    },
+    "contact_email": {
+      "type": "string",
+      "description": "Email de contato/perfil (diferente do email de autentica\u00e7\u00e3o)"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Telefone"
+    },
+    "company": {
+      "type": "string",
+      "description": "Empresa"
+    },
+    "job_title": {
+      "type": "string",
+      "description": "Cargo"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "URL da foto de perfil"
+    },
+    "bio": {
+      "type": "string",
+      "description": "Sobre mim"
+    },
+    "linkedin": {
+      "type": "string",
+      "description": "LinkedIn"
+    },
+    "instagram": {
+      "type": "string",
+      "description": "Instagram"
+    },
+    "youtube": {
+      "type": "string",
+      "description": "YouTube"
+    },
+    "website": {
+      "type": "string",
+      "description": "Site pessoal"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se a pessoa est\u00e1 ativa no sistema"
+    }
+  },
+  "required": [
+    "full_name"
+  ]
+}

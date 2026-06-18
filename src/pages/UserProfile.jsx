@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { Link } from "react-router-dom";
@@ -37,32 +37,36 @@ const MINI_DASHBOARD_CARDS = [
   { label: "Resgates", icon: ShoppingBag },
 ];
 
+const ROLE_LABELS = {
+  admin: "Admin Global",
+  member: "Membro",
+  partner_manager: "Gestor Parceiro",
+};
+
 export default function UserProfile() {
   const { user, refreshUser } = useAuth();
-  const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(null); // optimistic local override
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
-  const { data: participant, isLoading } = useQuery({
-    queryKey: ["my_participant", user?.id],
+  const { data: person, isLoading } = useQuery({
+    queryKey: ["my_person", user?.person_id],
     queryFn: async () => {
-      if (!user) return null;
-      const list = await base44.entities.Participant.filter({ email: user.email, is_deleted: false });
-      if (!list.length) return null;
-      return list.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0];
+      if (!user?.person_id) return null;
+      const list = await base44.entities.Person.filter({ id: user.person_id });
+      return list[0] ?? null;
     },
-    enabled: !!user,
+    enabled: !!user?.person_id,
   });
 
-  const completeness = calcCompleteness(participant);
-  const displayAvatar = avatarUrl ?? user?.photo_url;
-  const roleLabel = user?.role === "admin" ? "Admin Global" : user?.role === "manager" ? "Gerente" : "Usuário";
+  const completeness = calcCompleteness(person);
+  const displayAvatar = avatarUrl ?? person?.photo_url ?? user?.photo_url;
+  const displayName = person?.full_name || user?.full_name || user?.email;
+  const roleLabel = ROLE_LABELS[user?.role] ?? "Membro";
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // reset input so same file can be re-selected
     e.target.value = "";
 
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -78,12 +82,15 @@ export default function UserProfile() {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      // Salvar foto na pessoa se existir, senão no user
+      if (person?.id) {
+        await base44.entities.Person.update(person.id, { photo_url: file_url });
+      }
       await base44.auth.updateMe({ photo_url: file_url });
-      // Atualizar optimisticamente e depois sincronizar context
       setAvatarUrl(file_url);
       await refreshUser();
       toast.success("Foto atualizada!");
-    } catch (err) {
+    } catch {
       toast.error("Erro ao enviar foto. Tente novamente.");
     } finally {
       setUploading(false);
@@ -98,15 +105,38 @@ export default function UserProfile() {
     );
   }
 
+  // Estado vazio: user sem person vinculado
+  if (!user?.person_id) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Card>
+          <CardContent className="pt-8 pb-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <Users className="w-7 h-7 text-muted-foreground" />
+            </div>
+            <div>
+              <h2 className="text-lg font-display font-bold">Perfil não configurado</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Complete seu perfil para aparecer em eventos e conectar com pessoas.
+              </p>
+            </div>
+            <Link to="/profile/edit">
+              <Button>Completar perfil</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Card principal do perfil */}
+      {/* Card principal */}
       <Card>
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-start gap-5">
-            {/* Avatar com botão câmera */}
             <div className="relative shrink-0">
-              <UserAvatar src={displayAvatar} name={user?.full_name} size="lg" />
+              <UserAvatar src={displayAvatar} name={displayName} size="lg" />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -128,11 +158,10 @@ export default function UserProfile() {
               />
             </div>
 
-            {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h1 className="text-xl font-display font-bold truncate">{user?.full_name}</h1>
+                  <h1 className="text-xl font-display font-bold truncate">{displayName}</h1>
                   <Badge variant="outline" className="mt-1 text-xs">{roleLabel}</Badge>
                 </div>
                 <Link to="/profile/edit">
@@ -142,23 +171,40 @@ export default function UserProfile() {
                 </Link>
               </div>
 
+              {/* Email de autenticação */}
               <div className="flex items-center gap-1.5 mt-3 text-sm text-muted-foreground">
                 <Mail className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{user?.email}</span>
+                <Badge variant="outline" className="text-[10px] py-0 px-1 ml-1">login</Badge>
               </div>
 
-              {participant && (
+              {/* Email de contato */}
+              {person?.contact_email && person.contact_email !== user?.email && (
+                <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
+                  <Mail className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{person.contact_email}</span>
+                  <Badge variant="outline" className="text-[10px] py-0 px-1 ml-1">contato</Badge>
+                </div>
+              )}
+
+              {/* Empresa / cargo / telefone */}
+              {person && (
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {participant.company && (
-                    <span>{participant.company}{participant.job_title ? ` · ${participant.job_title}` : ""}</span>
+                  {person.company && (
+                    <span>{person.company}{person.job_title ? ` · ${person.job_title}` : ""}</span>
                   )}
-                  {participant.phone && <span>{participant.phone}</span>}
+                  {person.phone && <span>{person.phone}</span>}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Completude — dentro do card principal, abaixo do e-mail */}
+          {/* Bio */}
+          {person?.bio && (
+            <p className="text-sm text-muted-foreground border-t border-border pt-4">{person.bio}</p>
+          )}
+
+          {/* Completude */}
           <div className="border-t border-border pt-4 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground font-medium">Completude do perfil</span>
