@@ -16,7 +16,7 @@
     },
     "role_in_partner": {
       "type": "string",
-      "description": "Papel na empresa: partner_manager, owner, assistant"
+      "description": "Papel na empresa: partner_manager, representative"
     },
     "is_primary": {
       "type": "boolean",
