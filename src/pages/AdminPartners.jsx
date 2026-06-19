@@ -43,9 +43,8 @@ const DOC_TYPE_OPTIONS = [
 ];
 
 const ROLE_OPTIONS = [
-  { value: "partner_manager", label: "Gestor (partner_manager)" },
-  { value: "owner", label: "Proprietário" },
-  { value: "assistant", label: "Assistente" },
+  { value: "partner_manager", label: "Gestor" },
+  { value: "representative", label: "Representante" },  
 ];
 
 function sanitizeDoc(n) { return (n || "").replace(/\D/g, ""); }
