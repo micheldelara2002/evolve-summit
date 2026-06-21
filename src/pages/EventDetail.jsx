@@ -17,7 +17,8 @@ import ConquistasTab from "@/components/admin/ConquistasTab";
 import FeedbacksTab from "@/components/admin/FeedbacksTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell, MessageSquare } from "lucide-react";
+import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell, MessageSquare, Ticket } from "lucide-react";
+import SorteioTab from "@/components/admin/SorteioTab";
 import NotificationsCenter from "@/components/notifications/NotificationsCenter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -243,6 +244,9 @@ export default function EventDetail() {
           <TabsTrigger value="feedbacks" className="gap-1">
             <MessageSquare className="w-3.5 h-3.5" /><span className="hidden sm:inline">Feedbacks</span><span className="sm:hidden">Feed.</span>
           </TabsTrigger>
+          <TabsTrigger value="sorteio" className="gap-1">
+            <Ticket className="w-3.5 h-3.5" /><span className="hidden sm:inline">Sorteio</span><span className="sm:hidden">Sort.</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Pessoas do Evento (tela única) ── */}
@@ -349,6 +353,11 @@ export default function EventDetail() {
         {/* ── Feedbacks ── */}
         <TabsContent value="feedbacks" className="mt-4">
           <FeedbacksTab eventId={eventId} />
+        </TabsContent>
+
+        {/* ── Sorteio ── */}
+        <TabsContent value="sorteio" className="mt-4">
+          <SorteioTab eventId={eventId} user={user} />
         </TabsContent>
       </Tabs>
 

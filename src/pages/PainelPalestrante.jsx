@@ -112,6 +112,7 @@ export default function PainelPalestrante() {
               myParticipant={myParticipantInEvent}
               personId={user?.person_id}
               userEmail={user?.email}
+              user={user}
             />
           );
         })}

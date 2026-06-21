@@ -1,0 +1,86 @@
+{
+  "name": "Raffle",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (obrigat\u00f3rio)"
+    },
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo do sorteio"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do pr\u00eamio/sorteio"
+    },
+    "drawn_by_label": {
+      "type": "string",
+      "description": "Contexto/nome de quem sorteia (Organizador, Palestrante X, Parceiro Y)"
+    },
+    "context": {
+      "type": "string",
+      "enum": [
+        "organizer",
+        "speaker",
+        "partner"
+      ],
+      "description": "Perfil executor"
+    },
+    "context_ref_id": {
+      "type": "string",
+      "description": "ID de refer\u00eancia do contexto (participant_id do speaker, partner_id)"
+    },
+    "winner_count": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantidade de vencedores"
+    },
+    "eligible_total": {
+      "type": "number",
+      "description": "Total do universo eleg\u00edvel no momento do sorteio"
+    },
+    "filters_snapshot": {
+      "type": "string",
+      "description": "JSON dos filtros aplicados (snapshot)"
+    },
+    "winners": {
+      "type": "string",
+      "description": "JSON: [{participant_id, full_name, email, confirmed: bool}]"
+    },
+    "rounds": {
+      "type": "string",
+      "description": "JSON: hist\u00f3rico de rodadas de re-sorteio"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "running",
+        "saved"
+      ],
+      "default": "draft"
+    },
+    "executed_by_user_id": {
+      "type": "string"
+    },
+    "executed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "saved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "title",
+    "winner_count",
+    "context"
+  ]
+}

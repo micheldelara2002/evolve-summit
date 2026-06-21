@@ -7,13 +7,14 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { ChevronDown, ChevronRight, Calendar, MapPin } from "lucide-react";
 import SpeakerSessionRow from "@/components/palestrante/SpeakerSessionRow";
+import SpeakerRaffleSection from "@/components/palestrante/SpeakerRaffleSection";
 
 function formatDate(dt) {
   if (!dt) return "";
   return new Date(dt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function SpeakerEventCard({ event, myParticipant, personId, userEmail }) {
+export default function SpeakerEventCard({ event, myParticipant, personId, userEmail, user }) {
   const [expanded, setExpanded] = useState(false);
 
   const { data: sessions = [], isLoading } = useQuery({
@@ -26,7 +27,6 @@ export default function SpeakerEventCard({ event, myParticipant, personId, userE
     enabled: expanded && !!myParticipant?.id,
   });
 
-  // Stats rápidas para o header (perguntas)
   const sessionIds = sessions.map((s) => s.id);
   const { data: questions = [] } = useQuery({
     queryKey: ["speaker-event-questions-summary", event.id, myParticipant?.id],
@@ -77,7 +77,11 @@ export default function SpeakerEventCard({ event, myParticipant, personId, userE
             {pendingQ} pendente{pendingQ !== 1 ? "s" : ""}
           </span>
         )}
-        {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+        )}
       </button>
 
       {/* Conteúdo expandido */}
@@ -104,6 +108,7 @@ export default function SpeakerEventCard({ event, myParticipant, personId, userE
               ))}
             </div>
           )}
+          <SpeakerRaffleSection event={event} myParticipant={myParticipant} user={user} />
         </div>
       )}
     </div>

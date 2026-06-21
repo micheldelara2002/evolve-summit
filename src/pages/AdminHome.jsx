@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin } from "@/lib/access";
-import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
 import { motion } from "framer-motion";
 
 const ADMIN_CARDS = [
@@ -31,6 +31,15 @@ const SPEAKER_CARD = {
   label: "Painel do Palestrante",
 };
 
+const PARTNER_CARD = {
+  key: "painelParceiro",
+  icon: Handshake,
+  color: "bg-orange-50 text-orange-700 border-orange-200",
+  iconColor: "text-orange-600",
+  href: "/painel-parceiro",
+  label: "Painel do Parceiro",
+};
+
 const ROLE_LABELS = { admin: "Admin Global", member: "Membro", partner_manager: "Gestor Parceiro" };
 
 export default function AdminHome() {
@@ -38,23 +47,29 @@ export default function AdminHome() {
   const admin = isAdmin(user);
 
   // Verificar se o usuário é palestrante em algum evento
-  const { data: isSpeaker } = useQuery({
-    queryKey: ["is-speaker-check", user?.person_id, user?.email],
+  const { data: participantRoles } = useQuery({
+    queryKey: ["home-role-check", user?.person_id, user?.email],
     queryFn: async () => {
       const all = await base44.entities.Participant.filter({ is_deleted: false });
-      return all.some(
-        (p) =>
-          p.role_in_event === "speaker" &&
-          (p.person_id === user?.person_id || p.email === user?.email)
+      const mine = all.filter(
+        (p) => p.person_id === user?.person_id || p.email === user?.email
       );
+      return {
+        isSpeaker: mine.some((p) => p.role_in_event === "speaker"),
+        isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep"),
+      };
     },
     enabled: !!user,
   });
 
   const baseCards = admin ? ADMIN_CARDS : USER_CARDS;
-  const cards = isSpeaker
-    ? [...baseCards.filter((c) => c.key !== "painelPalestrante"), SPEAKER_CARD]
-    : baseCards;
+  let cards = [...baseCards];
+  if (participantRoles?.isSpeaker && !cards.find((c) => c.key === "painelPalestrante")) {
+    cards = [...cards, SPEAKER_CARD];
+  }
+  if (participantRoles?.isPartnerRep && !cards.find((c) => c.key === "painelParceiro")) {
+    cards = [...cards, PARTNER_CARD];
+  }
 
   const title = admin ? t("home.title") : "Início";
 
