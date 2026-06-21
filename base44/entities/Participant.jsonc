@@ -16,11 +16,11 @@
     },
     "cpf": {
       "type": "string",
-      "description": "CPF (normalizado, sem pontos/tra\u00e7os)"
+      "description": "CPF (normalizado, sem pontos/tra\u00e7os) \u2014 opcional"
     },
     "phone": {
       "type": "string",
-      "description": "Telefone"
+      "description": "Telefone \u2014 opcional"
     },
     "company": {
       "type": "string",
@@ -56,7 +56,8 @@
         "attendee",
         "speaker",
         "team",
-        "manager"
+        "manager",
+        "partner_rep"
       ],
       "default": "attendee"
     },
@@ -73,6 +74,10 @@
       "type": "string",
       "description": "ID da importa\u00e7\u00e3o (se veio via CSV)"
     },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person vinculada (se existir)"
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false
@@ -81,8 +86,6 @@
   "required": [
     "event_id",
     "full_name",
-    "email",
-    "cpf",
-    "phone"
+    "email"
   ]
 }

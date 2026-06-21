@@ -10,6 +10,7 @@ import EntityTable from "@/components/admin/EntityTable";
 import EntityFormDialog from "@/components/admin/EntityFormDialog";
 import ColorPickerField from "@/components/admin/ColorPickerField";
 import PessoasTab from "@/components/admin/PessoasTab";
+import PartnersTab from "@/components/admin/PartnersTab";
 import LojaTab from "@/components/admin/LojaTab";
 import PontuacaoTab from "@/components/admin/PontuacaoTab";
 import ConquistasTab from "@/components/admin/ConquistasTab";
@@ -63,8 +64,8 @@ export default function EventDetail() {
   });
 
   const { data: partners = [] } = useQuery({
-    queryKey: ["partners", eventId],
-    queryFn: () => base44.entities.Partner.filter({ event_id: eventId, is_deleted: false }),
+    queryKey: ["event_partners", eventId],
+    queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, is_deleted: false }),
   });
 
   const { data: reps = [] } = useQuery({
@@ -74,7 +75,7 @@ export default function EventDetail() {
 
   const hasAccess = canManageEvent(user, eventId);
 
-  const ENTITY_MAP = { track: "Track", room: "Room", session: "Session", partner: "Partner" };
+  const ENTITY_MAP = { track: "Track", room: "Room", session: "Session" };
 
   const saveMut = useMutation({
     mutationFn: async ({ type, data, id }) => {
@@ -115,11 +116,7 @@ export default function EventDetail() {
         const linked = sessions.some((s) => s.room_id === id);
         if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
       }
-      if (type === "partner") {
-        if (partners.length <= 1) throw new Error("Deve haver pelo menos um parceiro cadastrado.");
-        const hasReps = reps.some((r) => r.partner_id === id);
-        if (hasReps) throw new Error("Para excluir este parceiro, desassocie os representantes vinculados.");
-      }
+
       await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
       return { type, id };
     },
@@ -166,18 +163,6 @@ export default function EventDetail() {
       { key: "track_id", label: "Trilha", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
       { key: "room_id", label: "Sala", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
       { key: "session_type", label: "Tipo de Sessão", type: "select", options: SESSION_TYPES },
-    ],
-    partner: [
-      { key: "name", label: "Nome", required: true },
-      { key: "website", label: "Website" },
-      { key: "contact_email", label: "E-mail de Contato" },
-      { key: "plan", label: "Plano", type: "select", options: [
-        { value: "diamante", label: t("plans.diamante") },
-        { value: "ouro", label: t("plans.ouro") },
-        { value: "prata", label: t("plans.prata") },
-        { value: "bronze", label: t("plans.bronze") },
-        { value: "apoiador", label: t("plans.apoiador") },
-      ]},
     ],
   };
 
@@ -332,19 +317,7 @@ export default function EventDetail() {
 
         {/* ── Parceiros ── */}
         <TabsContent value="partners" className="mt-4">
-          <EntityTable
-            items={partners}
-            columns={[
-              { key: "name", label: "Nome" },
-              { key: "plan", label: "Plano", render: (p) => t(`plans.${p.plan}`) || p.plan },
-              { key: "contact_email", label: "Contato" },
-            ]}
-            searchField="name"
-            onAdd={hasAccess ? () => openForm("partner") : undefined}
-            onEdit={hasAccess ? (item) => openForm("partner", item) : undefined}
-            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "partner", id: item.id }) : undefined}
-            addLabel="Novo"
-          />
+          <PartnersTab eventId={eventId} hasAccess={hasAccess} />
         </TabsContent>
 
         {/* ── Loja ── */}

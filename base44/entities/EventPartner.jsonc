@@ -1,0 +1,38 @@
+{
+  "name": "EventPartner",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "partner_id": {
+      "type": "string",
+      "description": "ID do partner global"
+    },
+    "sponsorship_plan": {
+      "type": "string",
+      "enum": [
+        "diamante",
+        "ouro",
+        "prata",
+        "bronze",
+        "apoiador"
+      ],
+      "description": "Plano de patroc\u00ednio no contexto do evento"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "partner_id",
+    "sponsorship_plan"
+  ]
+}
