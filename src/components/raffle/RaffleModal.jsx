@@ -230,7 +230,7 @@ export default function RaffleModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-lg w-full relative overflow-hidden">
+      <DialogContent className="max-w-lg w-full relative flex flex-col max-h-[90vh]">
         {phase === "countdown" && <Countdown onDone={handleCountdownDone} />}
 
         <DialogHeader>
@@ -241,7 +241,7 @@ export default function RaffleModal({
 
         {/* ── Phase: Form ── */}
         {phase === "form" && (
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
             <div className="space-y-1.5">
               <Label>Título *</Label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Sorteio de Camiseta" />
@@ -306,7 +306,7 @@ export default function RaffleModal({
 
         {/* ── Phase: Result ── */}
         {phase === "result" && (
-          <div className="space-y-4">
+          <div className="space-y-4 flex flex-col flex-1 overflow-hidden">
             <div>
               <p className="font-display font-semibold text-base">{title}</p>
               {description && <p className="text-sm text-muted-foreground">{description}</p>}
@@ -316,7 +316,7 @@ export default function RaffleModal({
             </div>
 
             {/* Winners */}
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1">
               {winners.map((w) => (
                 <WinnerCard key={w.id} winner={w} onToggleConfirmed={toggleConfirmed} locked={locked} />
               ))}
@@ -326,7 +326,7 @@ export default function RaffleModal({
             </div>
 
             {!locked ? (
-              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <div className="flex flex-col sm:flex-row gap-2 pt-2 shrink-0">
                 <Button variant="outline" className="flex-1 gap-1.5" onClick={redraw} disabled={saveMut.isPending}>
                   <RefreshCw className="w-4 h-4" /> Sortear de novo
                 </Button>
@@ -336,7 +336,7 @@ export default function RaffleModal({
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between pt-2 shrink-0">
                 <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
                   ✓ Sorteio finalizado e salvo
                 </span>

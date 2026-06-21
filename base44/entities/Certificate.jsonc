@@ -1,0 +1,64 @@
+{
+  "name": "Certificate",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "person_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Apenas para certificado de palestra"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "participacao",
+        "palestra"
+      ],
+      "description": "Tipo do certificado"
+    },
+    "template": {
+      "type": "string",
+      "enum": [
+        "classico",
+        "moderno",
+        "minimalista"
+      ],
+      "default": "classico"
+    },
+    "hash_code": {
+      "type": "string",
+      "description": "Hash \u00fanico para valida\u00e7\u00e3o p\u00fablica"
+    },
+    "issued_by_user_id": {
+      "type": "string"
+    },
+    "issued_by_name": {
+      "type": "string"
+    },
+    "email_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "email_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "person_id",
+    "tipo",
+    "hash_code"
+  ]
+}

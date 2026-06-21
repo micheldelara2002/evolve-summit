@@ -21,6 +21,9 @@ import { base44 } from "@/api/base44Client";
 export async function processAction({ eventId, participantId, personId, acao, refId = "" }) {
   if (!eventId || !participantId || !acao) return { credited: false, pontos: 0, reason: "params_missing" };
 
+  // Regra antifarming: resgate_realizado nunca credita pontos
+  if (acao === "resgate_realizado") return { credited: false, pontos: 0, reason: "resgate_no_points" };
+
   // 1. Buscar regra ativa para esta ação no evento
   const rules = await base44.entities.ScoringRule.filter({ event_id: eventId, acao, ativo: true, is_deleted: false });
   if (!rules || rules.length === 0) return { credited: false, pontos: 0, reason: "no_rule" };

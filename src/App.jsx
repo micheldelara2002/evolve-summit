@@ -35,6 +35,7 @@ import UserProfileEdit from "@/pages/UserProfileEdit";
 import MeusEventos from "@/pages/MeusEventos";
 import EventoParticipante from "@/pages/EventoParticipante";
 import PainelPalestrante from "@/pages/PainelPalestrante";
+import ValidaCertificado from "@/pages/ValidaCertificado";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -94,6 +95,7 @@ const AuthenticatedApp = () => {
           </Route>
         </Route>
       </Route>
+      <Route path="/valida-certificado" element={<ValidaCertificado />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

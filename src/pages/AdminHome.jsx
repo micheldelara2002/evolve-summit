@@ -64,11 +64,12 @@ export default function AdminHome() {
 
   const baseCards = admin ? ADMIN_CARDS : USER_CARDS;
   let cards = [...baseCards];
-  if (participantRoles?.isSpeaker && !cards.find((c) => c.key === "painelPalestrante")) {
-    cards = [...cards, SPEAKER_CARD];
+  // Admin sempre vê todos os cards
+  if (admin || participantRoles?.isSpeaker) {
+    if (!cards.find((c) => c.key === "painelPalestrante")) cards = [...cards, SPEAKER_CARD];
   }
-  if (participantRoles?.isPartnerRep && !cards.find((c) => c.key === "painelParceiro")) {
-    cards = [...cards, PARTNER_CARD];
+  if (admin || participantRoles?.isPartnerRep) {
+    if (!cards.find((c) => c.key === "painelParceiro")) cards = [...cards, PARTNER_CARD];
   }
 
   const title = admin ? t("home.title") : "Início";

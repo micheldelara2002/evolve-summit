@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
 } from "lucide-react";
+import BadgesEventCard from "@/components/profile/BadgesEventCard";
 import { toast } from "sonner";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import PointsModal from "@/components/profile/PointsModal";
@@ -43,6 +44,17 @@ export default function UserProfile() {
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [showPoints, setShowPoints] = useState(false);
   const [showResgates, setShowResgates] = useState(false);
+  const [showBadges, setShowBadges] = useState(false);
+
+  // Participações do usuário (para badges por evento)
+  const { data: myParticipants = [] } = useQuery({
+    queryKey: ["my-participants-profile", user?.person_id, user?.email],
+    queryFn: async () => {
+      const all = await base44.entities.Participant.filter({ is_deleted: false });
+      return all.filter((p) => p.person_id === user?.person_id || p.email === user?.email);
+    },
+    enabled: !!user,
+  });
 
   const { data: person, isLoading } = useQuery({
     queryKey: ["my_person", user?.person_id],
@@ -124,7 +136,7 @@ export default function UserProfile() {
 
   const MINI_DASHBOARD_CARDS = [
     { label: "Pontos", icon: Star, onClick: () => setShowPoints(true), active: true },
-    { label: "Badges", icon: Award, onClick: null, active: false },
+    { label: "Badges", icon: Award, onClick: () => setShowBadges((v) => !v), active: true },
     { label: "Conexões", icon: Users, onClick: null, active: false },
     { label: "Ranking", icon: Trophy, onClick: null, active: false },
     { label: "Resgates", icon: ShoppingBag, onClick: () => setShowResgates(true), active: true },
@@ -242,6 +254,20 @@ export default function UserProfile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Badges por evento */}
+      {showBadges && myParticipants.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-display font-semibold flex items-center gap-2">
+            <Award className="w-4 h-4 text-primary" /> Minhas Conquistas por Evento
+          </h3>
+          {myParticipants.map((p) => (
+            <div key={p.id} className="rounded-2xl border border-border bg-card p-4">
+              <BadgesEventCard eventId={p.event_id} participantId={p.id} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Modais */}
       <PointsModal
