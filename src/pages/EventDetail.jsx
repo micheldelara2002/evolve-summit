@@ -246,8 +246,6 @@ export default function EventDetail() {
           <PessoasTab
             eventId={eventId}
             participants={participants}
-            reps={reps}
-            partners={partners}
             sessions={sessions}
             hasAccess={hasAccess}
             showImport={showImport}
