@@ -34,6 +34,7 @@ import UserProfile from "@/pages/UserProfile";
 import UserProfileEdit from "@/pages/UserProfileEdit";
 import MeusEventos from "@/pages/MeusEventos";
 import EventoParticipante from "@/pages/EventoParticipante";
+import PainelPalestrante from "@/pages/PainelPalestrante";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -74,6 +75,7 @@ const AuthenticatedApp = () => {
           <Route path="/profile/edit" element={<UserProfileEdit />} />
           <Route path="/meus-eventos" element={<MeusEventos />} />
           <Route path="/evento/:eventId" element={<EventoParticipante />} />
+          <Route path="/painel-palestrante" element={<PainelPalestrante />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>

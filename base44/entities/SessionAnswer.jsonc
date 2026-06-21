@@ -1,0 +1,35 @@
+{
+  "name": "SessionAnswer",
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "ID da SessionQuestion"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "speaker_participant_id": {
+      "type": "string",
+      "description": "Participant ID do palestrante que respondeu"
+    },
+    "speaker_person_id": {
+      "type": "string"
+    },
+    "answer_text": {
+      "type": "string"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "question_id",
+    "session_id",
+    "answer_text"
+  ]
+}

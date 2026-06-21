@@ -1,8 +1,10 @@
 import { t } from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { isAdmin } from "@/lib/access";
-import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight } from "lucide-react";
+import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic } from "lucide-react";
 import { motion } from "framer-motion";
 
 const ADMIN_CARDS = [
@@ -20,12 +22,40 @@ const USER_CARDS = [
   { key: "meusEventos", icon: Calendar, color: "bg-violet-50 text-violet-700 border-violet-200", iconColor: "text-violet-600", href: "/meus-eventos" },
 ];
 
+const SPEAKER_CARD = {
+  key: "painelPalestrante",
+  icon: Mic,
+  color: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  iconColor: "text-fuchsia-600",
+  href: "/painel-palestrante",
+  label: "Painel do Palestrante",
+};
+
 const ROLE_LABELS = { admin: "Admin Global", member: "Membro", partner_manager: "Gestor Parceiro" };
 
 export default function AdminHome() {
   const { user } = useAuth();
   const admin = isAdmin(user);
-  const cards = admin ? ADMIN_CARDS : USER_CARDS;
+
+  // Verificar se o usuário é palestrante em algum evento
+  const { data: isSpeaker } = useQuery({
+    queryKey: ["is-speaker-check", user?.person_id, user?.email],
+    queryFn: async () => {
+      const all = await base44.entities.Participant.filter({ is_deleted: false });
+      return all.some(
+        (p) =>
+          p.role_in_event === "speaker" &&
+          (p.person_id === user?.person_id || p.email === user?.email)
+      );
+    },
+    enabled: !!user,
+  });
+
+  const baseCards = admin ? ADMIN_CARDS : USER_CARDS;
+  const cards = isSpeaker
+    ? [...baseCards.filter((c) => c.key !== "painelPalestrante"), SPEAKER_CARD]
+    : baseCards;
+
   const title = admin ? t("home.title") : "Início";
 
   return (
@@ -38,7 +68,7 @@ export default function AdminHome() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(({ key, icon: IconComp, color, iconColor, href }, i) => (
+        {cards.map(({ key, icon: IconComp, color, iconColor, href, label }, i) => (
           <Link key={key} to={href} className="no-underline">
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -50,7 +80,9 @@ export default function AdminHome() {
                 <IconComp className={`w-6 h-6 ${iconColor}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-display font-semibold text-base">{t(`home.${key}`) || key}</p>
+                <p className="font-display font-semibold text-base">
+                  {label || t(`home.${key}`) || key}
+                </p>
               </div>
               <ArrowRight className="w-5 h-5 opacity-60 shrink-0" />
             </motion.div>
