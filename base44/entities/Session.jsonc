@@ -24,7 +24,7 @@
     },
     "speaker_id": {
       "type": "string",
-      "description": "ID do palestrante"
+      "description": "ID do palestrante (Participant)"
     },
     "speaker_name": {
       "type": "string",
@@ -59,6 +59,10 @@
         "workshop"
       ],
       "default": "palestra"
+    },
+    "material_url": {
+      "type": "string",
+      "description": "URL do material da sess\u00e3o (arquivo/link)"
     },
     "is_deleted": {
       "type": "boolean",

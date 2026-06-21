@@ -1,0 +1,52 @@
+{
+  "name": "PointTransaction",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": "string"
+    },
+    "person_id": {
+      "type": "string"
+    },
+    "acao": {
+      "type": "string",
+      "enum": [
+        "presenca_sessao",
+        "avaliacao_sessao",
+        "pergunta_valida",
+        "completude_perfil",
+        "conexao_aceita",
+        "visita_estande",
+        "resgate_realizado"
+      ]
+    },
+    "scoring_rule_id": {
+      "type": "string",
+      "description": "ID da ScoringRule aplicada"
+    },
+    "pontos": {
+      "type": "number"
+    },
+    "chave_idempotencia": {
+      "type": "string",
+      "description": "event_id:participant_id:acao:ref_id para evitar duplicata"
+    },
+    "ref_id": {
+      "type": "string",
+      "description": "ID da entidade de refer\u00eancia (session_id, etc)"
+    },
+    "descricao": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "participant_id",
+    "acao",
+    "pontos",
+    "chave_idempotencia"
+  ]
+}

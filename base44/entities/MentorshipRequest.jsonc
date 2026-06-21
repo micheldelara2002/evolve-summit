@@ -5,11 +5,19 @@
     "event_id": {
       "type": "string"
     },
+    "session_id": {
+      "type": "string",
+      "description": "Sess\u00e3o de origem"
+    },
     "participant_id": {
       "type": "string"
     },
-    "mentor_id": {
+    "person_id": {
       "type": "string"
+    },
+    "mentor_participant_id": {
+      "type": "string",
+      "description": "Participant ID do palestrante/mentor"
     },
     "topic": {
       "type": "string"
@@ -27,11 +35,15 @@
     "scheduled_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "required": [
     "event_id",
-    "participant_id",
-    "topic"
+    "session_id",
+    "participant_id"
   ]
 }

@@ -205,7 +205,14 @@ export default function EventoParticipante() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.15 }}
         >
-          {activeTab === "programacao" && <ProgramacaoView eventId={eventId} />}
+          {activeTab === "programacao" && (
+            <ProgramacaoView
+              eventId={eventId}
+              participant={myParticipantRecord}
+              isReadOnly={isReadOnly}
+              event={event}
+            />
+          )}
           {activeTab === "loja" && (
             <LojaView
               eventId={eventId}
@@ -246,8 +253,7 @@ function PointsChip({ eventId, userEmail, myPerson, primaryColor }) {
     (p) => p.email === userEmail || (myPerson && p.person_id === myPerson?.id)
   );
 
-  // Placeholder: points from participant record if stored, else 0
-  const points = myParticipant?.points || 0;
+  const points = myParticipant?.points_total ?? myParticipant?.points ?? 0;
 
   return (
     <div
