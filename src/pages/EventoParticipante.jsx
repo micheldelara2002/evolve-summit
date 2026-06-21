@@ -19,6 +19,7 @@ import ProgramacaoView from "@/components/participante/ProgramacaoView";
 import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
 import MuralFeedback from "@/components/participante/MuralFeedback";
+import SponsorsStrip from "@/components/participante/SponsorsStrip";
 
 const TABS = [
   { key: "programacao", label: "Programação", icon: Calendar },
@@ -164,8 +165,12 @@ export default function EventoParticipante() {
               <p className="text-xs text-muted-foreground mt-0.5">{event.location}</p>
             )}
           </div>
-          {/* Points chip — placeholder, real data wired below */}
           <PointsChip eventId={eventId} userEmail={user?.email} myPerson={myPerson} primaryColor={primaryColor} />
+        </div>
+
+        {/* Sponsors strip */}
+        <div className="max-w-4xl mx-auto pb-3 px-0">
+          <SponsorsStrip eventId={eventId} />
         </div>
 
         {/* Tab bar */}

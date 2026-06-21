@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
-  ToggleLeft, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { calcCompleteness } from "@/lib/profileCompleteness";
+import PointsModal from "@/components/profile/PointsModal";
+import ResgatesModal from "@/components/profile/ResgatesModal";
 
 function UserAvatar({ src, name, size = "lg" }) {
   const initials = name
@@ -29,14 +30,6 @@ function UserAvatar({ src, name, size = "lg" }) {
   );
 }
 
-const MINI_DASHBOARD_CARDS = [
-  { label: "Pontos", icon: Star },
-  { label: "Badges", icon: Award },
-  { label: "Conexões", icon: Users },
-  { label: "Ranking", icon: Trophy },
-  { label: "Resgates", icon: ShoppingBag },
-];
-
 const ROLE_LABELS = {
   admin: "Admin Global",
   member: "Membro",
@@ -48,6 +41,8 @@ export default function UserProfile() {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [showPoints, setShowPoints] = useState(false);
+  const [showResgates, setShowResgates] = useState(false);
 
   const { data: person, isLoading } = useQuery({
     queryKey: ["my_person", user?.person_id],
@@ -82,7 +77,6 @@ export default function UserProfile() {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      // Salvar foto na pessoa se existir, senão no user
       if (person?.id) {
         await base44.entities.Person.update(person.id, { photo_url: file_url });
       }
@@ -105,7 +99,6 @@ export default function UserProfile() {
     );
   }
 
-  // Estado vazio: user sem person vinculado
   if (!user?.person_id) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
@@ -128,6 +121,14 @@ export default function UserProfile() {
       </div>
     );
   }
+
+  const MINI_DASHBOARD_CARDS = [
+    { label: "Pontos", icon: Star, onClick: () => setShowPoints(true), active: true },
+    { label: "Badges", icon: Award, onClick: null, active: false },
+    { label: "Conexões", icon: Users, onClick: null, active: false },
+    { label: "Ranking", icon: Trophy, onClick: null, active: false },
+    { label: "Resgates", icon: ShoppingBag, onClick: () => setShowResgates(true), active: true },
+  ];
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -215,35 +216,46 @@ export default function UserProfile() {
         </CardContent>
       </Card>
 
-      {/* Mini Dashboard — somente layout */}
+      {/* Mini Dashboard */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm">Meu desempenho</CardTitle>
-            <div className="flex items-center gap-2 opacity-40 pointer-events-none select-none">
-              <div className="flex items-center gap-1 border rounded-md px-2 py-1 text-xs">
-                <ToggleLeft className="w-3.5 h-3.5" />
-                <span>Geral</span>
-              </div>
-              <div className="flex items-center gap-1 border rounded-md px-2 py-1 text-xs">
-                <span>Por evento</span>
-                <ChevronDown className="w-3 h-3" />
-              </div>
-            </div>
-          </div>
+          <CardTitle className="text-sm">Meu desempenho</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {MINI_DASHBOARD_CARDS.map(({ label, icon: Icon }) => (
-              <div key={label} className="rounded-xl border border-border bg-muted/30 p-4 flex flex-col items-center gap-2 text-center">
-                <Icon className="w-5 h-5 text-muted-foreground/60" />
-                <span className="text-xs font-medium text-muted-foreground">{label}</span>
-                <span className="text-xs text-muted-foreground/60">Em breve</span>
-              </div>
+            {MINI_DASHBOARD_CARDS.map(({ label, icon: Icon, onClick, active }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                disabled={!active}
+                className={`rounded-xl border border-border p-4 flex flex-col items-center gap-2 text-center transition-all ${
+                  active
+                    ? "bg-card hover:bg-muted/50 hover:shadow-sm cursor-pointer"
+                    : "bg-muted/30 opacity-50 cursor-default"
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${active ? "text-primary" : "text-muted-foreground/60"}`} />
+                <span className="text-xs font-medium">{label}</span>
+                {!active && <span className="text-xs text-muted-foreground/60">Em breve</span>}
+              </button>
             ))}
           </div>
         </CardContent>
       </Card>
+
+      {/* Modais */}
+      <PointsModal
+        open={showPoints}
+        onClose={() => setShowPoints(false)}
+        personId={user?.person_id}
+        userEmail={user?.email}
+      />
+      <ResgatesModal
+        open={showResgates}
+        onClose={() => setShowResgates(false)}
+        personId={user?.person_id}
+        userEmail={user?.email}
+      />
     </div>
   );
 }

@@ -227,19 +227,6 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
         </div>
       </div>
 
-      {/* Meus resgates (histórico rápido) */}
-      {!isReadOnly && redemptions.length > 0 && (
-        <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Meus Resgates</p>
-          {redemptions.map((r) => (
-            <div key={r.id} className="flex items-center justify-between text-sm py-0.5">
-              <span className="truncate">{r.item_description}</span>
-              <span className="text-muted-foreground shrink-0 ml-2">- {r.pontos_debitados} pts</span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {items.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />

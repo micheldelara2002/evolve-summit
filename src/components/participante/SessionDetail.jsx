@@ -1,10 +1,11 @@
 /**
  * Detalhe de uma sessão para o participante.
  * - Toggle de presença (controla acesso aos recursos)
+ * - Foto + info do palestrante + "Patrocinado por" (partner_rep)
  * - Perguntas públicas/particulares
- * - Avaliação (0-10 + comentário)
+ * - Avaliação com slider 0-10 + comentário
  * - Solicitar mentoria
- * - Baixar material
+ * - Baixar material + Enviar por e-mail de contato
  * Motor de pontuação integrado.
  */
 import { useState } from "react";
@@ -14,7 +15,8 @@ import { processAction } from "@/lib/scoringEngine";
 import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, BookUser,
-  Download, ThumbsUp, Lock, CheckCircle2, Clock, MapPin, Mic, Send, UserCheck, BookOpen,
+  Download, ThumbsUp, Lock, CheckCircle2, Clock, MapPin, Mic, Send,
+  UserCheck, BookOpen, Mail, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,6 +43,177 @@ function Section({ title, icon: Icon, children, locked }) {
       {locked ? (
         <p className="text-xs text-muted-foreground">Registre presença para acessar.</p>
       ) : children}
+    </div>
+  );
+}
+
+// ── Speaker card (foto + info + patrocinado por) ──────────────────────────────
+function SpeakerCard({ session }) {
+  // Buscar person do speaker para foto
+  const { data: speakerPerson } = useQuery({
+    queryKey: ["speaker-person", session.speaker_id],
+    queryFn: async () => {
+      if (!session.speaker_id) return null;
+      // speaker_id é Participant.id
+      const parts = await base44.entities.Participant.filter({ id: session.speaker_id });
+      const sp = parts[0];
+      if (!sp?.person_id) return null;
+      const persons = await base44.entities.Person.filter({ id: sp.person_id });
+      return persons[0] ?? null;
+    },
+    enabled: !!session.speaker_id,
+  });
+
+  // Verificar se palestrante é partner_rep
+  const { data: partnerRepInfo } = useQuery({
+    queryKey: ["speaker-partner-rep", session.speaker_id, session.event_id],
+    queryFn: async () => {
+      if (!session.speaker_id) return null;
+      const parts = await base44.entities.Participant.filter({ id: session.speaker_id });
+      const sp = parts[0];
+      if (!sp?.person_id || sp.role_in_event !== "partner_rep") return null;
+
+      // Buscar PartnerRepresentative por person_id
+      const reps = await base44.entities.PartnerRepresentative.filter({
+        person_id: sp.person_id,
+        is_active: true,
+        is_deleted: false,
+      });
+      if (!reps.length) return null;
+
+      // Verificar se o partner está vinculado a este evento
+      const eventPartners = await base44.entities.EventPartner.filter({
+        event_id: session.event_id,
+        is_active: true,
+        is_deleted: false,
+      });
+      const rep = reps.find((r) => eventPartners.some((ep) => ep.partner_id === r.partner_id));
+      if (!rep) return null;
+
+      const partners = await base44.entities.Partner.filter({ id: rep.partner_id });
+      return partners[0] ?? null;
+    },
+    enabled: !!session.speaker_id,
+  });
+
+  if (!session.speaker_name && !speakerPerson) return null;
+
+  const photoUrl = speakerPerson?.photo_url;
+  const displayName = session.speaker_name || speakerPerson?.full_name;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 bg-muted/30 border-b border-border">
+      {/* Avatar */}
+      <div className="shrink-0">
+        {photoUrl ? (
+          <img src={photoUrl} alt={displayName} className="w-12 h-12 rounded-full object-cover ring-2 ring-border" />
+        ) : (
+          <div className="w-12 h-12 rounded-full bg-primary/10 text-primary font-display font-bold text-lg flex items-center justify-center ring-2 ring-border">
+            {displayName?.[0]?.toUpperCase() ?? "?"}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <Mic className="w-3 h-3 text-muted-foreground shrink-0" />
+          <p className="text-sm font-medium truncate">{displayName}</p>
+        </div>
+        {speakerPerson?.company && (
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+            {speakerPerson.company}{speakerPerson.job_title ? ` · ${speakerPerson.job_title}` : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Patrocinado por */}
+      {partnerRepInfo && (
+        <div className="shrink-0 flex flex-col items-center gap-1 text-center">
+          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Patrocinado por</span>
+          {partnerRepInfo.logo_url ? (
+            <img src={partnerRepInfo.logo_url} alt={partnerRepInfo.trade_name} className="h-8 max-w-[80px] object-contain" />
+          ) : (
+            <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{partnerRepInfo.trade_name}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Material section (download + email) ──────────────────────────────────────
+function MaterialSection({ session, participant }) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  // Buscar person para pegar contact_email
+  const { data: person } = useQuery({
+    queryKey: ["participant-person", participant?.person_id],
+    queryFn: async () => {
+      if (!participant?.person_id) return null;
+      const list = await base44.entities.Person.filter({ id: participant.person_id });
+      return list[0] ?? null;
+    },
+    enabled: !!participant?.person_id,
+  });
+
+  const contactEmail = person?.contact_email;
+
+  const handleSendEmail = async () => {
+    if (!contactEmail) {
+      toast.error("E-mail de contato não cadastrado. Acesse seu perfil e preencha o e-mail de contato.");
+      return;
+    }
+    setSending(true);
+    try {
+      await base44.integrations.Core.SendEmail({
+        to: contactEmail,
+        subject: `Material da sessão: ${session.title}`,
+        body: `Olá${participant?.full_name ? `, ${participant.full_name}` : ""}!\n\nAqui está o material da sessão "${session.title}":\n\n${session.material_url}\n\nBom aprendizado!`,
+      });
+      setSent(true);
+      toast.success(`Material enviado para ${contactEmail}`);
+    } catch {
+      toast.error("Erro ao enviar e-mail. Tente novamente.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <a
+        href={session.material_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm font-medium hover:bg-muted/60 transition-colors"
+      >
+        <Download className="w-4 h-4 text-primary" />
+        Baixar material da sessão
+      </a>
+
+      {sent ? (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          Material enviado para {contactEmail}
+        </div>
+      ) : (
+        <button
+          onClick={handleSendEmail}
+          disabled={sending}
+          className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+        >
+          {sending ? (
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Mail className="w-4 h-4 text-primary" />
+          )}
+          {sending ? "Enviando..." : "Enviar material por e-mail"}
+        </button>
+      )}
     </div>
   );
 }
@@ -157,10 +330,10 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
   );
 }
 
-// ── Rating ────────────────────────────────────────────────────────────────────
+// ── Rating (slider) ───────────────────────────────────────────────────────────
 function RatingSection({ session, participant, isReadOnly }) {
   const queryClient = useQueryClient();
-  const [rating, setRating] = useState(null);
+  const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
 
   const { data: existingReviews = [] } = useQuery({
@@ -209,21 +382,29 @@ function RatingSection({ session, participant, isReadOnly }) {
   if (isReadOnly) return <p className="text-xs text-muted-foreground">Evento encerrado.</p>;
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-medium text-muted-foreground">Nota (0–10) *</p>
-      <div className="flex flex-wrap gap-1.5">
-        {Array.from({ length: 11 }, (_, i) => (
-          <button
-            key={i}
-            onClick={() => setRating(i)}
-            className={`w-9 h-9 rounded-xl text-sm font-semibold border transition-colors ${
-              rating === i ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/50"
-            }`}
-          >
-            {i}
-          </button>
-        ))}
+    <div className="space-y-4">
+      {/* Slider */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-muted-foreground">Nota *</p>
+          <span className="text-2xl font-display font-bold text-primary">{rating}<span className="text-sm font-normal text-muted-foreground">/10</span></span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={rating}
+          onChange={(e) => setRating(Number(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none cursor-pointer accent-primary bg-muted"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>0</span>
+          <span>5</span>
+          <span>10</span>
+        </div>
       </div>
+
       <div className="space-y-1">
         <textarea
           className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
@@ -235,7 +416,7 @@ function RatingSection({ session, participant, isReadOnly }) {
         />
         <p className="text-xs text-right text-muted-foreground">{comment.length}/500</p>
       </div>
-      <Button className="w-full" disabled={rating === null || submitMut.isPending} onClick={() => submitMut.mutate()}>
+      <Button className="w-full" disabled={submitMut.isPending} onClick={() => submitMut.mutate()}>
         {submitMut.isPending ? "Enviando..." : "Enviar Avaliação"}
       </Button>
     </div>
@@ -311,7 +492,6 @@ export default function SessionDetail({ session, track, room, participant, isRea
           is_present: true,
           registered_at: new Date().toISOString(),
         });
-        // Lead para palestrante
         if (session.speaker_name) {
           base44.entities.Lead.create({
             event_id: session.event_id,
@@ -322,7 +502,6 @@ export default function SessionDetail({ session, track, room, participant, isRea
             notes: `Presença na sessão: ${session.title}`,
           }).catch(() => {});
         }
-        // Pontuação
         await processAction({
           eventId: session.event_id,
           participantId,
@@ -344,35 +523,39 @@ export default function SessionDetail({ session, track, room, participant, isRea
       <div className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div
-          className="sticky top-0 bg-background p-4 pb-3 border-b border-border z-10"
+          className="sticky top-0 bg-background border-b border-border z-10"
           style={track?.color ? { borderTopColor: track.color, borderTopWidth: 4, borderTopLeftRadius: 16, borderTopRightRadius: 16 } : {}}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="font-display font-bold text-base leading-tight">{session.title}</p>
-              <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                {session.start_time && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    {formatTime(session.start_time)}{session.end_time && ` – ${formatTime(session.end_time)}`}
-                  </span>
-                )}
-                {room && <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="w-3 h-3" />{room.name}</span>}
-                {session.speaker_name && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Mic className="w-3 h-3" />{session.speaker_name}</span>}
-                {session.session_type && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                    {SESSION_TYPE_LABELS[session.session_type] || session.session_type}
-                  </span>
-                )}
+          <div className="p-4 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-display font-bold text-base leading-tight">{session.title}</p>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  {session.start_time && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      {formatTime(session.start_time)}{session.end_time && ` – ${formatTime(session.end_time)}`}
+                    </span>
+                  )}
+                  {room && <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="w-3 h-3" />{room.name}</span>}
+                  {session.session_type && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      {SESSION_TYPE_LABELS[session.session_type] || session.session_type}
+                    </span>
+                  )}
+                </div>
               </div>
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0 mt-0.5">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0 mt-0.5">
-              <X className="w-5 h-5" />
-            </button>
+            {session.description && (
+              <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{session.description}</p>
+            )}
           </div>
-          {session.description && (
-            <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{session.description}</p>
-          )}
+
+          {/* Speaker card */}
+          {session.speaker_name && <SpeakerCard session={session} />}
         </div>
 
         {/* Body */}
@@ -408,11 +591,8 @@ export default function SessionDetail({ session, track, room, participant, isRea
           </Section>
 
           {session.material_url && (
-            <Section title="Material" icon={Download} locked={blocked}>
-              <a href={session.material_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-primary hover:underline">
-                <Download className="w-4 h-4" /> Baixar material da sessão
-              </a>
+            <Section title="Material da Sessão" icon={Download} locked={blocked}>
+              <MaterialSection session={session} participant={participant} />
             </Section>
           )}
 
