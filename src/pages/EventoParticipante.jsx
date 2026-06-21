@@ -12,18 +12,20 @@ import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import {
   Calendar, ShoppingBag, Users, Trophy, Wrench,
-  ArrowLeft, Lock, Star, QrCode, MessageSquare,
+  ArrowLeft, Lock, Star, QrCode, MessageSquare, SmilePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProgramacaoView from "@/components/participante/ProgramacaoView";
 import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
+import MuralFeedback from "@/components/participante/MuralFeedback";
 
 const TABS = [
   { key: "programacao", label: "Programação", icon: Calendar },
   { key: "loja",        label: "Loja",         icon: ShoppingBag },
   { key: "rede",        label: "Rede",          icon: Users },
   { key: "conquistas",  label: "Conquistas",    icon: Trophy },
+  { key: "mural",       label: "Feedback",      icon: SmilePlus },
   { key: "ferramentas", label: "Ferramentas",   icon: Wrench },
 ];
 
@@ -63,11 +65,12 @@ export default function EventoParticipante() {
   const isLoading = loadingEvent || loadingParticipant;
 
   // Determine if user is associated
-  const isAssociated = myParticipant?.some(
+  const myParticipantRecord = myParticipant?.find(
     (p) =>
       p.email === user?.email ||
       (myPerson && p.person_id === myPerson?.id)
   );
+  const isAssociated = !!myParticipantRecord;
 
   const isFinished = event?.status === "finished";
   const isReadOnly = isFinished;
@@ -203,7 +206,23 @@ export default function EventoParticipante() {
           transition={{ duration: 0.15 }}
         >
           {activeTab === "programacao" && <ProgramacaoView eventId={eventId} />}
-          {activeTab === "loja" && <LojaView eventId={eventId} isReadOnly={isReadOnly} />}
+          {activeTab === "loja" && (
+            <LojaView
+              eventId={eventId}
+              participantId={myParticipantRecord?.id}
+              personId={myPerson?.id}
+              isReadOnly={isReadOnly}
+            />
+          )}
+          {activeTab === "mural" && (
+            <MuralFeedback
+              eventId={eventId}
+              participantId={myParticipantRecord?.id}
+              personId={myPerson?.id}
+              userId={user?.id}
+              isReadOnly={isReadOnly}
+            />
+          )}
           {activeTab === "rede" && <RedeView />}
           {activeTab === "conquistas" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} />

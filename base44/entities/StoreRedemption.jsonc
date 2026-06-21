@@ -1,0 +1,50 @@
+{
+  "name": "StoreRedemption",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "participant_id": {
+      "type": "string",
+      "description": "ID do Participant"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person (se vinculada)"
+    },
+    "store_item_id": {
+      "type": "string",
+      "description": "ID do item resgatado"
+    },
+    "item_description": {
+      "type": "string",
+      "description": "Snapshot da descri\u00e7\u00e3o do item"
+    },
+    "pontos_debitados": {
+      "type": "number",
+      "description": "Pontos debitados do saldo de resgate"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "entregue",
+        "cancelado"
+      ],
+      "default": "pendente",
+      "description": "Status da entrega"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "participant_id",
+    "store_item_id",
+    "pontos_debitados"
+  ]
+}

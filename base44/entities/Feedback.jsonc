@@ -1,0 +1,43 @@
+{
+  "name": "Feedback",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da pessoa (opcional, se vinculada)"
+    },
+    "participant_id": {
+      "type": "string",
+      "description": "ID do Participant"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio que enviou"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "positivo",
+        "negativo"
+      ],
+      "description": "Classifica\u00e7\u00e3o do feedback"
+    },
+    "mensagem": {
+      "type": "string",
+      "description": "Mensagem de feedback (m\u00e1x 500 chars)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "tipo",
+    "mensagem"
+  ]
+}

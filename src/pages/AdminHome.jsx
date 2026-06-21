@@ -6,13 +6,14 @@ import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRi
 import { motion } from "framer-motion";
 
 const ADMIN_CARDS = [
-  { key: "systemHealth",    icon: Activity,   color: "bg-emerald-50 text-emerald-700 border-emerald-200", iconColor: "text-emerald-600", href: "/health" },
-  { key: "business",        icon: TrendingUp, color: "bg-sky-50 text-sky-700 border-sky-200",             iconColor: "text-sky-600",     href: "/business" },
-  { key: "eventManagement", icon: Calendar,   color: "bg-violet-50 text-violet-700 border-violet-200",    iconColor: "text-violet-600",  href: "/events" },
-  { key: "audit",           icon: Shield,     color: "bg-amber-50 text-amber-700 border-amber-200",       iconColor: "text-amber-600",   href: "/audit" },
-  { key: "notifications",   icon: Bell,       color: "bg-rose-50 text-rose-700 border-rose-200",          iconColor: "text-rose-600",    href: "/notifications" },
+  { key: "meusEventos",     icon: Calendar,   color: "bg-violet-50 text-violet-700 border-violet-200",    iconColor: "text-violet-600",  href: "/meus-eventos" },
+  { key: "eventManagement", icon: Calendar,   color: "bg-indigo-50 text-indigo-700 border-indigo-200",    iconColor: "text-indigo-600",  href: "/events" },
   { key: "people",          icon: Users,      color: "bg-teal-50 text-teal-700 border-teal-200",          iconColor: "text-teal-600",    href: "/admin/people" },
   { key: "partners",        icon: Building2,  color: "bg-orange-50 text-orange-700 border-orange-200",    iconColor: "text-orange-600",  href: "/admin/partners" },
+  { key: "notifications",   icon: Bell,       color: "bg-rose-50 text-rose-700 border-rose-200",          iconColor: "text-rose-600",    href: "/notifications" },
+  { key: "business",        icon: TrendingUp, color: "bg-sky-50 text-sky-700 border-sky-200",             iconColor: "text-sky-600",     href: "/business" },
+  { key: "audit",           icon: Shield,     color: "bg-amber-50 text-amber-700 border-amber-200",       iconColor: "text-amber-600",   href: "/audit" },
+  { key: "systemHealth",    icon: Activity,   color: "bg-emerald-50 text-emerald-700 border-emerald-200", iconColor: "text-emerald-600", href: "/health" },
 ];
 
 const USER_CARDS = [
@@ -37,7 +38,7 @@ export default function AdminHome() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(({ key, icon: Icon, color, iconColor, href }, i) => (
+        {cards.map(({ key, icon: IconComp, color, iconColor, href }, i) => (
           <Link key={key} to={href} className="no-underline">
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -46,7 +47,7 @@ export default function AdminHome() {
               className={`flex items-center gap-4 p-5 rounded-2xl border cursor-pointer hover:shadow-md transition-shadow ${color}`}
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white/70 shrink-0">
-                <Icon className={`w-6 h-6 ${iconColor}`} />
+                <IconComp className={`w-6 h-6 ${iconColor}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-display font-semibold text-base">{t(`home.${key}`) || key}</p>

@@ -4,6 +4,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
+import { isAdmin } from "@/lib/access";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -69,19 +70,20 @@ function EventCard({ event, index, isFinished }) {
 
 export default function MeusEventos() {
   const { user } = useAuth();
+  const admin = isAdmin(user);
 
-  // 1. Buscar Person vinculada ao user
+  // 1. Buscar Person vinculada ao user (não-admin)
   const { data: persons = [] } = useQuery({
     queryKey: ["my_person", user?.id],
     queryFn: () => base44.entities.Person.filter({ is_active: true }),
-    enabled: !!user,
+    enabled: !!user && !admin,
   });
 
-  // 2. Buscar participações deste usuário (via e-mail match ou person_id)
+  // 2. Buscar participações deste usuário (via e-mail match ou person_id) — não-admin apenas
   const { data: allParticipants = [] } = useQuery({
     queryKey: ["my_participants", user?.email],
     queryFn: () => base44.entities.Participant.filter({ is_deleted: false }),
-    enabled: !!user,
+    enabled: !!user && !admin,
   });
 
   // 3. Buscar todos os eventos ativos/finalizados
@@ -91,22 +93,24 @@ export default function MeusEventos() {
     enabled: !!user,
   });
 
-  // Mapeia event_ids onde o usuário é participante (por e-mail ou person_id)
+  // Admin vê todos os eventos active/finished; não-admin filtra por participação
   const myPersonIds = new Set(persons.filter((p) => p.contact_email === user?.email).map((p) => p.id));
-  const myEventIds = new Set(
-    allParticipants
-      .filter((p) =>
-        p.email === user?.email ||
-        (p.person_id && myPersonIds.has(p.person_id))
-      )
-      .map((p) => p.event_id)
-  );
+  const myEventIds = admin
+    ? null // null = sem restrição
+    : new Set(
+        allParticipants
+          .filter((p) =>
+            p.email === user?.email ||
+            (p.person_id && myPersonIds.has(p.person_id))
+          )
+          .map((p) => p.event_id)
+      );
 
   const activeEvents = allEvents.filter(
-    (e) => e.status === "active" && myEventIds.has(e.id)
+    (e) => e.status === "active" && (admin || myEventIds.has(e.id))
   );
   const finishedEvents = allEvents.filter(
-    (e) => e.status === "finished" && myEventIds.has(e.id)
+    (e) => e.status === "finished" && (admin || myEventIds.has(e.id))
   );
 
   if (isLoading) {
