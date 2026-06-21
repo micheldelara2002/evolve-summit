@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
+import { isAdmin } from "@/lib/access";
 import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,17 +10,23 @@ import { useState } from "react";
 import { useUnreadCount } from "@/components/notifications/NotificationInbox";
 import NotificationInbox from "@/components/notifications/NotificationInbox";
 
-const navItems = [
+const ADMIN_NAV = [
   { path: "/", icon: LayoutDashboard, label: "nav.home" },
   { path: "/events", icon: Calendar, label: "nav.events" },
   { path: "/notifications", icon: Bell, label: "nav.notifications" },
   { path: "/audit", icon: Shield, label: "nav.audit" },
 ];
 
+const USER_NAV = [
+  { path: "/", icon: LayoutDashboard, label: "nav.home" },
+  { path: "/meus-eventos", icon: Calendar, label: "Meus Eventos" },
+];
+
 export default function AdminLayout() {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navItems = isAdmin(user) ? ADMIN_NAV : USER_NAV;
 
   const handleLogout = () => {
     base44.auth.logout("/login");
@@ -75,7 +82,7 @@ export default function AdminLayout() {
                 }`}
               >
                 <item.icon className="w-4 h-4" />
-                {t(item.label)}
+                {item.label.includes(".") ? t(item.label) : item.label}
               </Link>
             );
           })}
@@ -112,7 +119,7 @@ export default function AdminLayout() {
               >
                 <div className="flex items-center gap-3">
                   <item.icon className="w-5 h-5" />
-                  {t(item.label)}
+                  {item.label.includes(".") ? t(item.label) : item.label}
                 </div>
                 <ChevronRight className="w-4 h-4 opacity-40" />
               </Link>

@@ -16,6 +16,7 @@ const ptBR = {
     notifications: "Notificações",
     people: "Pessoas (Global)",
     partners: "Parceiros (Global)",
+    meusEventos: "Meus Eventos",
   },
   health: {
     uptime: "Uptime Mensal",

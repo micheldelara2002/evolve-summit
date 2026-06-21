@@ -6,6 +6,7 @@ import PageNotFound from "./lib/PageNotFound";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AdminRoute from "@/components/AdminRoute";
 
 // Auth pages
 import Login from "@/pages/Login";
@@ -31,6 +32,8 @@ import AdminPeoplePlaceholder from "@/pages/AdminPeoplePlaceholder";
 import AdminPartners from "@/pages/AdminPartners";
 import UserProfile from "@/pages/UserProfile";
 import UserProfileEdit from "@/pages/UserProfileEdit";
+import MeusEventos from "@/pages/MeusEventos";
+import EventoParticipante from "@/pages/EventoParticipante";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -65,21 +68,28 @@ const AuthenticatedApp = () => {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AdminLayout />}>
+          {/* Routes for all authenticated users */}
           <Route path="/" element={<AdminHome />} />
-          <Route path="/health" element={<SystemHealth />} />
-          <Route path="/business" element={<BusinessDashboard />} />
-          <Route path="/events" element={<EventsList />} />
-          <Route path="/events/new" element={<EventCreate />} />
-          <Route path="/events/:eventId" element={<EventDetail />} />
-          <Route path="/events/:eventId/edit" element={<EventEdit />} />
-          <Route path="/audit" element={<AuditLog />} />
-          <Route path="/notifications" element={<AdminNotifications />} />
-          <Route path="/notifications/metrics" element={<NotificationMetrics />} />
-          <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
-          <Route path="/admin/people" element={<AdminPeoplePlaceholder />} />
-          <Route path="/admin/partners" element={<AdminPartners />} />
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
+          <Route path="/meus-eventos" element={<MeusEventos />} />
+          <Route path="/evento/:eventId" element={<EventoParticipante />} />
+
+          {/* Admin-only routes */}
+          <Route element={<AdminRoute />}>
+            <Route path="/health" element={<SystemHealth />} />
+            <Route path="/business" element={<BusinessDashboard />} />
+            <Route path="/events" element={<EventsList />} />
+            <Route path="/events/new" element={<EventCreate />} />
+            <Route path="/events/:eventId" element={<EventDetail />} />
+            <Route path="/events/:eventId/edit" element={<EventEdit />} />
+            <Route path="/audit" element={<AuditLog />} />
+            <Route path="/notifications" element={<AdminNotifications />} />
+            <Route path="/notifications/metrics" element={<NotificationMetrics />} />
+            <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
+            <Route path="/admin/people" element={<AdminPeoplePlaceholder />} />
+            <Route path="/admin/partners" element={<AdminPartners />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
