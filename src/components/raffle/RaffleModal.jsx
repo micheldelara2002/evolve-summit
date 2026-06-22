@@ -11,36 +11,15 @@
  *   badges        — array de badges do evento (para filtro por badge; opcional)
  *   user          — objeto user atual
  */
-import { useState, useEffect, useRef } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trophy, ThumbsUp, RefreshCw, Save, X, ChevronDown } from "lucide-react";
+import { Trophy, ThumbsUp, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
-
-// ── Countdown overlay ─────────────────────────────────────────────────────────
-function Countdown({ onDone }) {
-  const [count, setCount] = useState(3);
-  useEffect(() => {
-    if (count <= 0) { onDone(); return; }
-    const t = setTimeout(() => setCount((c) => c - 1), 900);
-    return () => clearTimeout(t);
-  }, [count, onDone]);
-
-  return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/95 rounded-2xl">
-      <div className="w-28 h-28 rounded-full border-4 border-primary flex items-center justify-center animate-pulse">
-        <span className="text-6xl font-display font-bold text-primary">
-          {count > 0 ? count : "🎉"}
-        </span>
-      </div>
-      <p className="mt-4 text-sm text-muted-foreground">Sorteando…</p>
-    </div>
-  );
-}
 
 // ── Winner card ───────────────────────────────────────────────────────────────
 function WinnerCard({ winner, onToggleConfirmed, locked }) {
@@ -101,7 +80,7 @@ export default function RaffleModal({
   const [sessionFilter, setSessionFilter] = useState("all");
 
   // Raffle state
-  const [phase, setPhase] = useState("form"); // "form" | "countdown" | "result"
+  const [phase, setPhase] = useState("form"); // "form" | "result"
   const [winners, setWinners] = useState([]);
   const [round, setRound] = useState(0);
   const [rounds, setRounds] = useState([]);
@@ -111,14 +90,8 @@ export default function RaffleModal({
   // Filter eligible pool by session if selected
   const filteredPool = (() => {
     if (sessionFilter === "all" || !sessions.length) return eligiblePool;
-    // Caller responsibility: eligiblePool already contains participant_ids or ids
-    // We need attendance for session — pass as-is if no sessions, filter if available
     return eligiblePool; // session-level filtering done in parent
   })();
-
-  const handleCountdownDone = () => {
-    executeDraw();
-  };
 
   const executeDraw = () => {
     const confirmed = winners.filter((w) => w.confirmed);
@@ -166,12 +139,12 @@ export default function RaffleModal({
     if (!title.trim()) { toast.error("Informe o título do sorteio."); return; }
     if (winnerCount < 1) { toast.error("Quantidade de vencedores deve ser >= 1."); return; }
     if (!filteredPool.length) { toast.error("Nenhum elegível disponível para sortear."); return; }
-    setPhase("countdown");
+    executeDraw();
   };
 
   const redraw = () => {
     if (!filteredPool.length) { toast.warning("Sem elegíveis disponíveis."); return; }
-    setPhase("countdown");
+    executeDraw();
   };
 
   const toggleConfirmed = (id) => {
@@ -230,10 +203,8 @@ export default function RaffleModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-lg w-full relative flex flex-col max-h-[90vh] overflow-hidden">
-        {phase === "countdown" && <Countdown onDone={handleCountdownDone} />}
-
-        <DialogHeader className="shrink-0">
+      <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display">
             <Trophy className="w-5 h-5 text-amber-500" /> Sorteio
           </DialogTitle>
@@ -241,7 +212,7 @@ export default function RaffleModal({
 
         {/* ── Phase: Form ── */}
         {phase === "form" && (
-          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
+          <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Título *</Label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Sorteio de Camiseta" />
@@ -306,8 +277,8 @@ export default function RaffleModal({
 
         {/* ── Phase: Result ── */}
         {phase === "result" && (
-          <div className="space-y-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="shrink-0">
+          <div className="space-y-4">
+            <div>
               <p className="font-display font-semibold text-base">{title}</p>
               {description && <p className="text-sm text-muted-foreground">{description}</p>}
               <p className="text-xs text-muted-foreground mt-1">
@@ -316,7 +287,7 @@ export default function RaffleModal({
             </div>
 
             {/* Winners */}
-            <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1">
+            <div className="space-y-2">
               {winners.map((w) => (
                 <WinnerCard key={w.id} winner={w} onToggleConfirmed={toggleConfirmed} locked={locked} />
               ))}
@@ -326,7 +297,7 @@ export default function RaffleModal({
             </div>
 
             {!locked ? (
-              <div className="flex flex-col sm:flex-row gap-2 pt-2 shrink-0">
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
                 <Button variant="outline" className="flex-1 gap-1.5" onClick={redraw} disabled={saveMut.isPending}>
                   <RefreshCw className="w-4 h-4" /> Sortear de novo
                 </Button>
@@ -336,7 +307,7 @@ export default function RaffleModal({
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-between pt-2 shrink-0">
+              <div className="flex items-center justify-between pt-2">
                 <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
                   ✓ Sorteio finalizado e salvo
                 </span>
