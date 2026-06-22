@@ -2,8 +2,8 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
-import { isAdmin } from "@/lib/access";
-import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight, Bell } from "lucide-react";
+import { isAdmin, isPartnerManager } from "@/lib/access";
+import { LayoutDashboard, Calendar, Shield, LogOut, Menu, X, ChevronRight, Bell, Handshake, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState } from "react";
@@ -22,11 +22,17 @@ const USER_NAV = [
   { path: "/meus-eventos", icon: Calendar, label: "Meus Eventos" },
 ];
 
+const PARTNER_MANAGER_NAV = [
+  { path: "/", icon: LayoutDashboard, label: "nav.home" },
+  { path: "/painel-parceiro", icon: Handshake, label: "Painel do Parceiro" },
+  { path: "/admin/partners", icon: Building2, label: "Minha Empresa" },
+];
+
 export default function AdminLayout() {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const navItems = isAdmin(user) ? ADMIN_NAV : USER_NAV;
+  const navItems = isAdmin(user) ? ADMIN_NAV : isPartnerManager(user) ? PARTNER_MANAGER_NAV : USER_NAV;
 
   const handleLogout = () => {
     base44.auth.logout("/login");

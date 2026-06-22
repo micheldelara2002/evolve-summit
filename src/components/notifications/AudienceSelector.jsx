@@ -20,14 +20,16 @@ const SEGMENT_LABELS = {
   attendee: "Participantes",
   my_leads: "Meus Leads",
   my_attendees: "Meus Participantes",
+  partner_all_event: "Todos do Evento",
+  partner_leads: "Leads do Parceiro",
 };
 
 export default function AudienceSelector({ userRole, scopeType, scopeEventId, value, onChange }) {
   const allowed = getAllowedSegments(userRole, scopeType);
 
   // Simple modes that don't need multi-select
-  const simpleModes = allowed.filter((s) => s === "my_leads" || s === "my_attendees");
-  const segmentModes = allowed.filter((s) => s !== "my_leads" && s !== "my_attendees");
+  const simpleModes = allowed.filter((s) => s === "my_leads" || s === "my_attendees" || s === "partner_all_event" || s === "partner_leads");
+  const segmentModes = allowed.filter((s) => s !== "my_leads" && s !== "my_attendees" && s !== "partner_all_event" && s !== "partner_leads");
 
   // Estimate count
   const { data: participants = [] } = useQuery({
@@ -54,6 +56,8 @@ export default function AudienceSelector({ userRole, scopeType, scopeEventId, va
     if (type === "all") onChange({ type: "all", segments: [] });
     else if (type === "my_leads") onChange({ type: "my_leads", segments: [] });
     else if (type === "my_attendees") onChange({ type: "my_attendees", segments: [] });
+    else if (type === "partner_all_event") onChange({ type: "partner_all_event", segments: [] });
+    else if (type === "partner_leads") onChange({ type: "partner_leads", segments: [] });
     else onChange({ type: "segment", segments: value?.segments || [] });
   };
 

@@ -32,6 +32,14 @@ export function isPartnerManager(user) {
   return user?.role === "partner_manager";
 }
 
+export function isRepresentative(user) {
+  return user?.role === "member";
+}
+
+export function canAccessPartnerAdmin(user) {
+  return isAdmin(user) || isPartnerManager(user);
+}
+
 /**
  * Filtra a lista de partners pelo escopo do usuário.
  * admin → todos; partner_manager → apenas partners vinculados via reps.

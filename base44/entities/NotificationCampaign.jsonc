@@ -26,7 +26,8 @@
         "gerente",
         "staff",
         "representante",
-        "palestrante"
+        "palestrante",
+        "partner_manager"
       ],
       "description": "Papel do emissor no envio"
     },
@@ -63,7 +64,9 @@
         "segment",
         "manual",
         "my_leads",
-        "my_attendees"
+        "my_attendees",
+        "partner_all_event",
+        "partner_leads"
       ],
       "default": "all",
       "description": "Tipo de audi\u00eancia"

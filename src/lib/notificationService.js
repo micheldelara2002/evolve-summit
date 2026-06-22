@@ -3,6 +3,7 @@
  * Resolve destinatários, garante idempotência e salva snapshots auditáveis.
  */
 import { base44 } from "@/api/base44Client";
+import { logAudit } from "@/lib/audit";
 
 // Mapa de roles de sistema para roles de participante
 const SYSTEM_ROLE_TO_PARTICIPANT = {
@@ -34,6 +35,9 @@ export function getAllowedSegments(userRole, scopeType) {
   if (userRole === "palestrante") {
     return ["my_attendees"];
   }
+  if (userRole === "partner_manager") {
+    return ["partner_all_event", "partner_leads"];
+  }
   return [];
 }
 
@@ -48,7 +52,7 @@ export function getAllowedSegments(userRole, scopeType) {
  * @param {string[]} params.audienceSegments - perfis selecionados quando audienceType="segment"
  * @param {object} params.senderUser - { id, full_name, email, role }
  */
-export async function resolveRecipients({ scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser }) {
+export async function resolveRecipients({ scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser, senderPartnerId }) {
   const recipients = [];
   const seen = new Set();
 
@@ -125,6 +129,14 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
     // Apenas leads do representante logado
     const leads = await base44.entities.Lead.filter({ event_id: scopeEventId });
     leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
+  } else if (audienceType === "partner_all_event" && scopeEventId) {
+    // Todos os participantes do evento (contexto parceiro)
+    const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
+    parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, p.role_in_event || "attendee"));
+  } else if (audienceType === "partner_leads" && scopeEventId && senderPartnerId) {
+    // Apenas leads do parceiro no evento
+    const leads = await base44.entities.Lead.filter({ event_id: scopeEventId, partner_id: senderPartnerId });
+    leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
   } else if (audienceType === "my_attendees" && senderUser) {
     // Participantes com presença nas sessões do palestrante
     if (scopeEventId) {
@@ -145,13 +157,14 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
  * Envia a campanha: cria recipients, atualiza contadores e marca como enviada.
  * Garante idempotência (não duplica recipients existentes).
  */
-export async function dispatchCampaign(campaign, senderUser) {
+export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
   const recipients = await resolveRecipients({
     scopeType: campaign.scope_type,
     scopeEventId: campaign.scope_event_id,
     audienceType: campaign.audience_type,
     audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
     senderUser,
+    senderPartnerId,
   });
 
   // Buscar recipients existentes para deduplicar
@@ -182,5 +195,22 @@ export async function dispatchCampaign(campaign, senderUser) {
     sent_at: now,
     recipients_count: totalRecipients,
     delivered_count: totalRecipients,
+  });
+
+  // Auditoria de envio
+  await logAudit({
+    event_id: campaign.scope_event_id,
+    action: "status_change",
+    entity_type: "NotificationCampaign",
+    entity_id: campaign.id,
+    details: {
+      action_label: "notification_sent",
+      title: campaign.title,
+      audience_type: campaign.audience_type,
+      recipients_count: totalRecipients,
+      sent_at: now,
+      partner_id: senderPartnerId || null,
+    },
+    user: senderUser,
   });
 }

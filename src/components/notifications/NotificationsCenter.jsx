@@ -40,7 +40,7 @@ const STATUS_LABELS = {
   failed: "Falhou",
 };
 
-export default function NotificationsCenter({ scopeType = "global", scopeEventId = null, metricsPath }) {
+export default function NotificationsCenter({ scopeType = "global", scopeEventId = null, metricsPath, partnerId, isReadOnly }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -85,7 +85,7 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
   });
 
   const sendMutation = useMutation({
-    mutationFn: (campaign) => dispatchCampaign(campaign, user),
+    mutationFn: (campaign) => dispatchCampaign(campaign, user, partnerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       // Invalidar sininho após envio
@@ -127,6 +127,8 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
         scopeEventId={scopeEventId}
         onClose={handleFormClose}
         currentUser={user}
+        partnerId={partnerId}
+        isReadOnly={isReadOnly}
       />
     );
   }
@@ -157,7 +159,7 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
               Métricas
             </Button>
           )}
-          <Button onClick={() => setShowForm(true)} size="sm">
+          <Button onClick={() => setShowForm(true)} size="sm" disabled={isReadOnly}>
             <Plus className="w-4 h-4 mr-2" />
             Nova Campanha
           </Button>
@@ -269,7 +271,7 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
                       <p className="text-sm text-muted-foreground line-clamp-2">{campaign.message}</p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {campaign.status === "draft" && (
+                      {campaign.status === "draft" && !isReadOnly && (
                         <>
                           <Button variant="ghost" size="sm" onClick={() => setEditingCampaign(campaign)}>
                             Editar

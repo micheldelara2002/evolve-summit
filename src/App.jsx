@@ -35,6 +35,7 @@ import UserProfileEdit from "@/pages/UserProfileEdit";
 import MeusEventos from "@/pages/MeusEventos";
 import EventoParticipante from "@/pages/EventoParticipante";
 import PainelPalestrante from "@/pages/PainelPalestrante";
+import PainelParceiro from "@/pages/PainelParceiro";
 import ValidaCertificado from "@/pages/ValidaCertificado";
 
 const AuthenticatedApp = () => {
@@ -77,6 +78,7 @@ const AuthenticatedApp = () => {
           <Route path="/meus-eventos" element={<MeusEventos />} />
           <Route path="/evento/:eventId" element={<EventoParticipante />} />
           <Route path="/painel-palestrante" element={<PainelPalestrante />} />
+          <Route path="/painel-parceiro" element={<PainelParceiro />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
@@ -91,8 +93,9 @@ const AuthenticatedApp = () => {
             <Route path="/notifications/metrics" element={<NotificationMetrics />} />
             <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
             <Route path="/admin/people" element={<AdminPeoplePlaceholder />} />
-            <Route path="/admin/partners" element={<AdminPartners />} />
           </Route>
+          {/* Partner management — admin + partner_manager (in-page guard) */}
+          <Route path="/admin/partners" element={<AdminPartners />} />
         </Route>
       </Route>
       <Route path="/valida-certificado" element={<ValidaCertificado />} />

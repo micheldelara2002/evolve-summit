@@ -12,7 +12,7 @@ import AudienceSelector from "./AudienceSelector";
 import { dispatchCampaign } from "@/lib/notificationService";
 import { toast } from "sonner";
 
-export default function CampaignForm({ campaign, scopeType = "global", scopeEventId = null, onClose, currentUser }) {
+export default function CampaignForm({ campaign, scopeType = "global", scopeEventId = null, onClose, currentUser, partnerId, isReadOnly }) {
   const queryClient = useQueryClient();
 
   // audience value: { type: "all"|"segment"|"my_leads"|"my_attendees", segments: [] }
@@ -58,7 +58,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
       } else {
         savedCampaign = await base44.entities.NotificationCampaign.create(campaignData);
       }
-      await dispatchCampaign(savedCampaign, currentUser);
+      await dispatchCampaign(savedCampaign, currentUser, partnerId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
@@ -73,7 +73,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     scope_type: scopeType,
     scope_event_id: scopeEventId || undefined,
     sender_user_id: currentUser?.id,
-    sender_role: currentUser?.role,
+    sender_role: currentUser?.role === "partner_manager" ? "representante" : currentUser?.role,
     status,
     audience_type: audience.type === "segment" ? "segment" : audience.type,
     audience_payload: audience.type === "segment" ? JSON.stringify(audience.segments) : null,
@@ -150,6 +150,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
               scopeEventId={scopeEventId}
               value={audience}
               onChange={setAudience}
+              partnerId={partnerId}
             />
           </div>
 
@@ -179,13 +180,13 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
         <Button
           variant="outline"
           onClick={() => saveDraftMutation.mutate(buildPayload("draft"))}
-          disabled={!isValid || isPending}
+          disabled={!isValid || isPending || isReadOnly}
         >
           Salvar Rascunho
         </Button>
         <Button
           onClick={() => sendMutation.mutate(buildPayload("processing"))}
-          disabled={!isValid || isPending}
+          disabled={!isValid || isPending || isReadOnly}
         >
           <Send className="w-4 h-4 mr-2" />
           {isPending ? "Enviando..." : "Enviar Agora"}

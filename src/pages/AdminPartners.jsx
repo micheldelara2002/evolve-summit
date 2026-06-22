@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
-import { filterPartnersByAccess, canManagePartner, isAdmin } from "@/lib/access";
+import { filterPartnersByAccess, canManagePartner, isAdmin, canAccessPartnerAdmin } from "@/lib/access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -408,10 +408,13 @@ export default function AdminPartners() {
     queryFn: () => base44.entities.Partner.list("-created_date", 500),
   });
 
-  // Reps do usuário atual (para partner_manager scope)
+  // Reps do usuário atual (para partner_manager scope) — busca por user_id OU person_id
   const { data: myReps = [] } = useQuery({
-    queryKey: ["my_partner_reps", user?.id],
-    queryFn: () => base44.entities.PartnerRepresentative.filter({ user_id: user?.id, is_deleted: false }),
+    queryKey: ["my_partner_reps", user?.id, user?.person_id],
+    queryFn: async () => {
+      const all = await base44.entities.PartnerRepresentative.filter({ is_deleted: false });
+      return all.filter((r) => r.is_active && (r.user_id === user?.id || r.person_id === user?.person_id));
+    },
     enabled: !!user?.id && !isAdmin(user),
   });
 
@@ -458,6 +461,21 @@ export default function AdminPartners() {
     setEditingPartner(null);
     toast.success("Empresa salva.");
   };
+
+  // Guard: apenas admin e partner_manager acessam; representantes (member) são bloqueados
+  if (!canAccessPartnerAdmin(user)) {
+    return (
+      <div className="text-center py-24 space-y-3 max-w-sm mx-auto">
+        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
+          <Building2 className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-display font-bold">Acesso Restrito</h2>
+        <p className="text-sm text-muted-foreground">
+          Apenas gestores de parceiros e administradores podem acessar esta área.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -552,7 +570,7 @@ export default function AdminPartners() {
                           <Pencil className="w-4 h-4 mr-2" /> Editar
                         </DropdownMenuItem>
                       )}
-                      {isAdmin(user) && (
+                      {canManagePartner(user, partner.id, myReps) && (
                         <DropdownMenuItem onClick={() => setRepsForPartner(partner)}>
                           <UserPlus className="w-4 h-4 mr-2" /> Representantes
                         </DropdownMenuItem>

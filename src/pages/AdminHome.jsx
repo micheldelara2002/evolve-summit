@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { isAdmin } from "@/lib/access";
+import { isAdmin, isPartnerManager } from "@/lib/access";
 import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -68,7 +68,7 @@ export default function AdminHome() {
   if (admin || participantRoles?.isSpeaker) {
     if (!cards.find((c) => c.key === "painelPalestrante")) cards = [...cards, SPEAKER_CARD];
   }
-  if (admin || participantRoles?.isPartnerRep) {
+  if (admin || participantRoles?.isPartnerRep || isPartnerManager(user)) {
     if (!cards.find((c) => c.key === "painelParceiro")) cards = [...cards, PARTNER_CARD];
   }
 
