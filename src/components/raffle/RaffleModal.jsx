@@ -230,10 +230,10 @@ export default function RaffleModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-lg w-full relative flex flex-col max-h-[90vh]">
+      <DialogContent className="max-w-lg w-full relative flex flex-col max-h-[90vh] overflow-hidden">
         {phase === "countdown" && <Countdown onDone={handleCountdownDone} />}
 
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 font-display">
             <Trophy className="w-5 h-5 text-amber-500" /> Sorteio
           </DialogTitle>
@@ -241,7 +241,7 @@ export default function RaffleModal({
 
         {/* ── Phase: Form ── */}
         {phase === "form" && (
-          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
             <div className="space-y-1.5">
               <Label>Título *</Label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Sorteio de Camiseta" />
@@ -306,8 +306,8 @@ export default function RaffleModal({
 
         {/* ── Phase: Result ── */}
         {phase === "result" && (
-          <div className="space-y-4 flex flex-col flex-1 overflow-hidden">
-            <div>
+          <div className="space-y-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="shrink-0">
               <p className="font-display font-semibold text-base">{title}</p>
               {description && <p className="text-sm text-muted-foreground">{description}</p>}
               <p className="text-xs text-muted-foreground mt-1">
