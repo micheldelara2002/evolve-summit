@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { processAction } from "@/lib/scoringEngine";
 
 // ── Item card ────────────────────────────────────────────────────────────────
 function ItemCard({ item, pontosDisponiveis, isReadOnly, onRedeem }) {
@@ -172,7 +173,7 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
       }
 
       // Registrar resgate
-      await base44.entities.StoreRedemption.create({
+      const redemption = await base44.entities.StoreRedemption.create({
         event_id: eventId,
         participant_id: participantId,
         person_id: personId || undefined,
@@ -186,6 +187,17 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
       await base44.entities.StoreItem.update(item.id, {
         quantidade_resgatada: (item.quantidade_resgatada ?? 0) + 1,
       });
+
+      // Trigger resgate event for badges (0 points, no scoring)
+      try {
+        await processAction({
+          eventId,
+          participantId,
+          personId,
+          acao: "resgate_realizado",
+          refId: redemption.id,
+        });
+      } catch (e) { /* best-effort */ }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["store-items", eventId] });

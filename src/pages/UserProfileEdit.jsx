@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Plus, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
+import { processAction } from "@/lib/scoringEngine";
+import { calcCompleteness } from "@/lib/profileCompleteness";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -139,6 +141,28 @@ export default function UserProfileEdit() {
         queryClient.invalidateQueries({ queryKey: ["my_person", personId] }),
         refreshUser(),
       ]);
+
+      // Trigger completude_perfil for all events the user is participating in
+      try {
+        if (personId) {
+          const updatedPersons = await base44.entities.Person.filter({ id: personId });
+          const updatedPerson = updatedPersons[0];
+          const completeness = calcCompleteness(updatedPerson);
+          if (completeness > 0) {
+            const participants = await base44.entities.Participant.filter({ person_id: personId, is_deleted: false });
+            await Promise.all(
+              participants.map((p) =>
+                processAction({
+                  eventId: p.event_id,
+                  participantId: p.id,
+                  personId: personId,
+                  acao: "completude_perfil",
+                })
+              )
+            );
+          }
+        }
+      } catch (e) { /* best-effort — don't block profile save */ }
 
       toast.success("Perfil atualizado com sucesso!");
       navigate("/profile");

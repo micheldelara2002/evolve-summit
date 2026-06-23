@@ -32,7 +32,6 @@ const DEFAULTS = [
   { acao: "completude_perfil", pontos: 100, limite_tipo: "one_shot",         limite_valor: 1, ativo: true },
   { acao: "conexao_aceita",    pontos: 200, limite_tipo: "por_par_usuarios", limite_valor: 1, ativo: true },
   { acao: "visita_estande",    pontos: 300, limite_tipo: "por_estande",      limite_valor: 1, ativo: true },
-  { acao: "resgate_realizado", pontos: 200, limite_tipo: "one_shot",         limite_valor: 1, ativo: true },
 ];
 
 // ── Form Dialog ───────────────────────────────────────────────────────────────

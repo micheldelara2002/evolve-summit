@@ -8,7 +8,7 @@
  * - Baixar material + Enviar por e-mail de contato
  * Motor de pontuação integrado.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { processAction } from "@/lib/scoringEngine";
@@ -254,10 +254,11 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
       visibility,
     }),
     onSuccess: async () => {
+      const questionText = text.trim();
       queryClient.invalidateQueries({ queryKey: ["session-questions", session.id] });
       setText("");
       toast.success("Pergunta enviada!");
-      if (participant?.id) {
+      if (participant?.id && questionText.length >= 25) {
         await processAction({
           eventId: session.event_id,
           participantId: participant.id,
@@ -329,6 +330,9 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
               <Send className="w-3.5 h-3.5" /> Enviar
             </Button>
           </div>
+          {text.trim().length > 0 && text.trim().length < 25 && (
+            <p className="text-xs text-muted-foreground">Mínimo de 25 caracteres para pontuar.</p>
+          )}
         </div>
       )}
 
@@ -412,17 +416,32 @@ function RatingSection({ session, participant, isReadOnly }) {
   });
   const myReview = existingReviews[0];
 
+  useEffect(() => {
+    if (myReview) {
+      setRating(myReview.rating);
+      setComment(myReview.comment || "");
+    }
+  }, [myReview]);
+
   const submitMut = useMutation({
-    mutationFn: () => base44.entities.SessionReview.create({
-      event_id: session.event_id,
-      session_id: session.id,
-      participant_id: participant?.id,
-      rating,
-      comment: comment.trim() || undefined,
-    }),
+    mutationFn: () => {
+      if (myReview) {
+        return base44.entities.SessionReview.update(myReview.id, {
+          rating,
+          comment: comment.trim() || undefined,
+        });
+      }
+      return base44.entities.SessionReview.create({
+        event_id: session.event_id,
+        session_id: session.id,
+        participant_id: participant?.id,
+        rating,
+        comment: comment.trim() || undefined,
+      });
+    },
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["session-reviews", session.id, participant?.id] });
-      toast.success("Avaliação enviada!");
+      toast.success(myReview ? "Avaliação atualizada!" : "Avaliação enviada!");
       if (participant?.id) {
         await processAction({
           eventId: session.event_id,
@@ -436,22 +455,15 @@ function RatingSection({ session, participant, isReadOnly }) {
     },
   });
 
-  if (myReview) {
-    return (
-      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-        <div>
-          <p className="text-sm font-medium">Avaliado: {myReview.rating}/10</p>
-          {myReview.comment && <p className="text-xs text-muted-foreground mt-0.5">{myReview.comment}</p>}
-        </div>
-      </div>
-    );
-  }
-
-  if (isReadOnly) return <p className="text-xs text-muted-foreground">Evento encerrado.</p>;
+  if (isReadOnly && !myReview) return <p className="text-xs text-muted-foreground">Evento encerrado.</p>;
 
   return (
     <div className="space-y-4">
+      {myReview && (
+        <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+          <CheckCircle2 className="w-4 h-4" /> Avaliação registrada — você pode atualizar sua nota.
+        </div>
+      )}
       {/* Slider */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -486,7 +498,7 @@ function RatingSection({ session, participant, isReadOnly }) {
         <p className="text-xs text-right text-muted-foreground">{comment.length}/500</p>
       </div>
       <Button className="w-full" disabled={submitMut.isPending} onClick={() => submitMut.mutate()}>
-        {submitMut.isPending ? "Enviando..." : "Enviar Avaliação"}
+        {submitMut.isPending ? "Enviando..." : myReview ? "Atualizar Avaliação" : "Enviar Avaliação"}
       </Button>
     </div>
   );

@@ -21,8 +21,25 @@ import { base44 } from "@/api/base44Client";
 export async function processAction({ eventId, participantId, personId, acao, refId = "" }) {
   if (!eventId || !participantId || !acao) return { credited: false, pontos: 0, reason: "params_missing" };
 
-  // Regra antifarming: resgate_realizado nunca credita pontos
-  if (acao === "resgate_realizado") return { credited: false, pontos: 0, reason: "resgate_no_points" };
+  // Resgate: cria PointTransaction com 0 pontos para badges, sem creditar pontos
+  if (acao === "resgate_realizado") {
+    const chave = `${eventId}:${participantId}:${acao}:${refId}`;
+    const existing = await base44.entities.PointTransaction.filter({ chave_idempotencia: chave });
+    if (existing && existing.length > 0) {
+      return { credited: false, pontos: 0, reason: "limit_reached" };
+    }
+    await base44.entities.PointTransaction.create({
+      event_id: eventId,
+      participant_id: participantId,
+      person_id: personId || undefined,
+      acao,
+      pontos: 0,
+      chave_idempotencia: chave,
+      ref_id: refId || undefined,
+      descricao: `resgate_realizado — ${refId || ""}`.trim(),
+    });
+    return { credited: false, pontos: 0, reason: "resgate_no_points" };
+  }
 
   // 1. Buscar regra ativa para esta ação no evento
   const rules = await base44.entities.ScoringRule.filter({ event_id: eventId, acao, ativo: true, is_deleted: false });
