@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
-const ACTIONS = ["create", "update", "soft_delete", "status_change", "role_change", "import", "checkin_revert", "export"];
+const ACTIONS = ["create", "update", "soft_delete", "status_change", "role_change", "import", "export"];
 
 const actionColors = {
   create: "bg-emerald-100 text-emerald-700",
@@ -22,7 +22,6 @@ const actionColors = {
   status_change: "bg-amber-100 text-amber-700",
   role_change: "bg-purple-100 text-purple-700",
   import: "bg-indigo-100 text-indigo-700",
-  checkin_revert: "bg-orange-100 text-orange-700",
   export: "bg-gray-100 text-gray-700",
 };
 

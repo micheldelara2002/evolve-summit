@@ -22,7 +22,6 @@ const ptBR = {
     activeEvents: "Eventos Ativos",
     finishedEvents: "Finalizados",
     totalParticipants: "Inscritos",
-    checkins: "Check-ins",
     attendanceRate: "Taxa Comparecimento",
     sessions: "Sessões Realizadas",
     avgRating: "Média Avaliação",
@@ -127,7 +126,6 @@ const ptBR = {
     status_change: "Mudança de Status",
     role_change: "Mudança de Papel",
     import: "Importação",
-    checkin_revert: "Check-in Revertido",
     export: "Exportação",
   },
   common: {
