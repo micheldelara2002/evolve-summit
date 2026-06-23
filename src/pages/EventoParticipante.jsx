@@ -20,6 +20,9 @@ import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
 import MuralFeedback from "@/components/participante/MuralFeedback";
 import SponsorsStrip from "@/components/participante/SponsorsStrip";
+import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
+import QRScanner from "@/components/participante/QRScanner";
+import { toast } from "sonner";
 
 const TABS = [
   { key: "programacao", label: "Programação", icon: Calendar },
@@ -35,6 +38,7 @@ export default function EventoParticipante() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("programacao");
+  const [scanPartnerId, setScanPartnerId] = useState(null);
 
   // Fetch event
   const { data: event, isLoading: loadingEvent, error: eventError } = useQuery({
@@ -88,6 +92,18 @@ export default function EventoParticipante() {
       root.style.removeProperty("--event-primary");
     };
   }, [event]);
+
+  // Detect partner_scan URL param (from external QR scan via phone camera)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const partnerScan = urlParams.get("partner_scan");
+    if (partnerScan) {
+      setScanPartnerId(partnerScan);
+      urlParams.delete("partner_scan");
+      const newSearch = urlParams.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`);
+    }
+  }, []);
 
   if (isLoading) {
     return (
@@ -239,9 +255,19 @@ export default function EventoParticipante() {
           {activeTab === "conquistas" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} />
           )}
-          {activeTab === "ferramentas" && <FerramentasView isReadOnly={isReadOnly} />}
+          {activeTab === "ferramentas" && <FerramentasView isReadOnly={isReadOnly} eventId={eventId} onScanPartner={setScanPartnerId} />}
         </motion.div>
       </div>
+
+      <PartnerVisitModal
+        partnerId={scanPartnerId}
+        eventId={eventId}
+        personId={myPerson?.id}
+        participantId={myParticipantRecord?.id}
+        person={myPerson}
+        isReadOnly={isReadOnly}
+        onClose={() => setScanPartnerId(null)}
+      />
     </div>
   );
 }
@@ -287,7 +313,28 @@ function RedeView() {
 }
 
 // ── Ferramentas ───────────────────────────────────────────────────────────────
-function FerramentasView({ isReadOnly }) {
+function FerramentasView({ isReadOnly, eventId, onScanPartner }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  const extractPartnerId = (raw) => {
+    try {
+      const u = new URL(raw);
+      return u.searchParams.get("partner_scan");
+    } catch {
+      return null;
+    }
+  };
+
+  const handleScan = (raw) => {
+    setScannerOpen(false);
+    const partnerId = extractPartnerId(raw) || raw;
+    if (partnerId && partnerId.trim()) {
+      onScanPartner(partnerId.trim());
+    } else {
+      toast.error("QR Code inválido. Tente novamente.");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-display font-semibold">Ferramentas</h2>
@@ -303,8 +350,14 @@ function FerramentasView({ isReadOnly }) {
               Escaneie o QR Code de parceiros para registrar visitas ao estande.
             </p>
           </div>
-          <Button variant="outline" size="sm" disabled className="w-full">
-            Em breve
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isReadOnly}
+            onClick={() => setScannerOpen(true)}
+            className="w-full"
+          >
+            {isReadOnly ? "Modo consulta" : "Escanear QR Code"}
           </Button>
         </div>
 
@@ -324,6 +377,8 @@ function FerramentasView({ isReadOnly }) {
           </Button>
         </div>
       </div>
+
+      <QRScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
     </div>
   );
 }

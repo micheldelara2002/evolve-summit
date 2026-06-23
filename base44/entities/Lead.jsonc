@@ -3,19 +3,28 @@
   "type": "object",
   "properties": {
     "event_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do evento"
     },
     "partner_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do parceiro"
     },
     "participant_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do Participant que gerou o lead"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person vinculada (chave de unicidade com event_id + partner_id)"
     },
     "participant_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Nome do participante (snapshot)"
     },
     "participant_email": {
-      "type": "string"
+      "type": "string",
+      "description": "E-mail do participante (snapshot)"
     },
     "source": {
       "type": "string",
@@ -25,10 +34,12 @@
         "networking",
         "manual"
       ],
-      "default": "manual"
+      "default": "manual",
+      "description": "Origem do lead"
     },
     "notes": {
-      "type": "string"
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
     },
     "quality": {
       "type": "string",
@@ -37,7 +48,29 @@
         "warm",
         "cold"
       ],
-      "default": "warm"
+      "default": "warm",
+      "description": "Qualifica\u00e7\u00e3o do lead"
+    },
+    "visited_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora da visita ao estande"
+    },
+    "person_phone": {
+      "type": "string",
+      "description": "Telefone (snapshot da Person)"
+    },
+    "person_linkedin": {
+      "type": "string",
+      "description": "LinkedIn (snapshot da Person)"
+    },
+    "person_company": {
+      "type": "string",
+      "description": "Empresa (snapshot da Person)"
+    },
+    "person_job_title": {
+      "type": "string",
+      "description": "Cargo (snapshot da Person)"
     }
   },
   "required": [
