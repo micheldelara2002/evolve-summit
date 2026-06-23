@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
 
-// ── Lê estoque_total com fallback para campo legado quantidade_total ───────────
+// ── Lê estoque_total ───────────
 const getEstoqueTotal = (item) => item?.estoque_total ?? 0;
 const getEstoqueDisponivel = (item) =>
   Math.max(0, getEstoqueTotal(item) - (item?.quantidade_resgatada ?? 0));
