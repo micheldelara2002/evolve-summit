@@ -15,7 +15,6 @@
         "status_change",
         "role_change",
         "import",
-        "checkin_revert",
         "export"
       ],
       "description": "Tipo de a\u00e7\u00e3o"

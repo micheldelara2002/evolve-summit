@@ -72,10 +72,9 @@ export async function processAction({ eventId, participantId, personId, acao, re
   const participants = await base44.entities.Participant.filter({ id: participantId });
   if (participants && participants.length > 0) {
     const p = participants[0];
-    const current = p.points_total ?? p.points ?? 0;
+    const current = p.points_total ?? 0;
     await base44.entities.Participant.update(participantId, {
       points_total: current + rule.pontos,
-      points: current + rule.pontos, // manter campo legado em sincronia
     });
   }
 

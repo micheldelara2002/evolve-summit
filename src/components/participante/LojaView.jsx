@@ -15,7 +15,7 @@ import { processAction } from "@/lib/scoringEngine";
 
 // ── Item card ────────────────────────────────────────────────────────────────
 function ItemCard({ item, pontosDisponiveis, isReadOnly, onRedeem }) {
-  const estoqueTotal = item.estoque_total ?? item.quantidade_total ?? 0;
+  const estoqueTotal = item.estoque_total ?? 0;
   const estoqueDisp = Math.max(0, estoqueTotal - (item.quantidade_resgatada ?? 0));
   const esgotado = estoqueDisp === 0;
   const semSaldo = pontosDisponiveis < item.pontos_necessarios;
@@ -146,7 +146,7 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
   });
 
   const myParticipant = participantData.find((p) => p.id === participantId);
-  const pontostotais = myParticipant?.points_total ?? myParticipant?.points ?? 0;
+  const pontostotais = myParticipant?.points_total ?? 0;
   const totalResgatado = redemptions.reduce((acc, r) => acc + (r.pontos_debitados || 0), 0);
   const pontosDisponiveis = Math.max(0, pontostotais - totalResgatado);
 
@@ -156,7 +156,7 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
       if (pontosDisponiveis < item.pontos_necessarios) {
         throw new Error("Saldo insuficiente para resgate.");
       }
-      const estoqueTotal = item.estoque_total ?? item.quantidade_total ?? 0;
+      const estoqueTotal = item.estoque_total ?? 0;
       const estoqueDisp = Math.max(0, estoqueTotal - (item.quantidade_resgatada ?? 0));
       if (estoqueDisp === 0) {
         throw new Error("Item sem estoque disponível.");

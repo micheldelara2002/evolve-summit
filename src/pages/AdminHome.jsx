@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { Activity, TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
 import { motion } from "framer-motion";
 
 const ADMIN_CARDS = [
@@ -15,7 +15,6 @@ const ADMIN_CARDS = [
   { key: "notifications",   icon: Bell,       color: "bg-rose-50 text-rose-700 border-rose-200",          iconColor: "text-rose-600",    href: "/notifications" },
   { key: "business",        icon: TrendingUp, color: "bg-sky-50 text-sky-700 border-sky-200",             iconColor: "text-sky-600",     href: "/business" },
   { key: "audit",           icon: Shield,     color: "bg-amber-50 text-amber-700 border-amber-200",       iconColor: "text-amber-600",   href: "/audit" },
-  { key: "systemHealth",    icon: Activity,   color: "bg-emerald-50 text-emerald-700 border-emerald-200", iconColor: "text-emerald-600", href: "/health" },
 ];
 
 const USER_CARDS = [

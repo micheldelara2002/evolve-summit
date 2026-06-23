@@ -38,10 +38,6 @@
       "type": "string",
       "format": "date-time"
     },
-    "location": {
-      "type": "string",
-      "description": "Sala/local (legado)"
-    },
     "capacity": {
       "type": "number"
     },

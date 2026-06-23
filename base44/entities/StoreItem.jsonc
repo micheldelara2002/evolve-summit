@@ -26,10 +26,6 @@
       "type": "number",
       "description": "Quantidade total em estoque (inteiro >= 0)"
     },
-    "quantidade_total": {
-      "type": "number",
-      "description": "Campo legado \u2014 use estoque_total. Mantido para compatibilidade."
-    },
     "quantidade_resgatada": {
       "type": "number",
       "default": 0,

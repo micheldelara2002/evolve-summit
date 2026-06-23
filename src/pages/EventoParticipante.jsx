@@ -284,7 +284,7 @@ function PointsChip({ eventId, userEmail, myPerson, primaryColor }) {
     (p) => p.email === userEmail || (myPerson && p.person_id === myPerson?.id)
   );
 
-  const points = myParticipant?.points_total ?? myParticipant?.points ?? 0;
+  const points = myParticipant?.points_total ?? 0;
 
   return (
     <div

@@ -83,11 +83,6 @@
       "default": 0,
       "description": "Pontos totais acumulados no evento (n\u00e3o reduz com resgate)"
     },
-    "points": {
-      "type": "number",
-      "default": 0,
-      "description": "Campo legado \u2014 mantido em sincronia com points_total"
-    },
     "is_deleted": {
       "type": "boolean",
       "default": false

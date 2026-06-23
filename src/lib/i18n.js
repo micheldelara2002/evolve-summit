@@ -9,7 +9,6 @@ const ptBR = {
   },
   home: {
     title: "Painel Administrativo",
-    systemHealth: "Saúde do Sistema",
     business: "Negócio",
     eventManagement: "Gestão de Eventos",
     audit: "Auditoria",
@@ -17,15 +16,6 @@ const ptBR = {
     people: "Pessoas (Global)",
     partners: "Parceiros (Global)",
     meusEventos: "Meus Eventos",
-  },
-  health: {
-    uptime: "Uptime Mensal",
-    apiLatency: "Latência API p95",
-    checkinLatency: "Latência Check-in p95",
-    errorRate: "Taxa de Erro API",
-    importFailures24h: "Falhas Importação (24h)",
-    importFailures7d: "Falhas Importação (7d)",
-    activeAlerts: "Alertas Ativos",
   },
   business: {
     totalEvents: "Eventos Totais",
