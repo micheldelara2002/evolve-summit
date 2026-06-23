@@ -3,7 +3,8 @@
  * com score ponderado (média * taxa). Somente leitura.
  * Mínimo 5 avaliações para ranking principal; abaixo = "Em observação".
  */
-import { useQuery, useMemo } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Trophy, Eye, Medal } from "lucide-react";
 import { buildSessionMetrics } from "@/lib/rankingUtils";
