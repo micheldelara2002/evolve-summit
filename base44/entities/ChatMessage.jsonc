@@ -1,0 +1,36 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "thread_id": {
+      "type": "string",
+      "description": "ID da ChatThread"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "sender_person_id": {
+      "type": "string",
+      "description": "ID da Person que enviou"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Nome do remetente (snapshot)"
+    },
+    "message_text": {
+      "type": "string",
+      "description": "Texto da mensagem"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de leitura (nullable)"
+    }
+  },
+  "required": [
+    "thread_id",
+    "sender_person_id",
+    "message_text"
+  ]
+}

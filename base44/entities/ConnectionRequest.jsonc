@@ -1,0 +1,47 @@
+{
+  "name": "ConnectionRequest",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "requester_person_id": {
+      "type": "string",
+      "description": "ID da Person que enviou o pedido"
+    },
+    "requester_name": {
+      "type": "string",
+      "description": "Nome de quem enviou (snapshot)"
+    },
+    "receiver_person_id": {
+      "type": "string",
+      "description": "ID da Person que recebeu o pedido"
+    },
+    "receiver_name": {
+      "type": "string",
+      "description": "Nome de quem recebeu (snapshot)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "refused",
+        "canceled"
+      ],
+      "default": "pending",
+      "description": "Status do pedido"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "requester_person_id",
+    "receiver_person_id",
+    "status"
+  ]
+}

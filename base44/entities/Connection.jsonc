@@ -1,0 +1,35 @@
+{
+  "name": "Connection",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "person_a_id": {
+      "type": "string",
+      "description": "Menor person_id (ordena\u00e7\u00e3o para unicidade do par)"
+    },
+    "person_b_id": {
+      "type": "string",
+      "description": "Maior person_id"
+    },
+    "person_a_name": {
+      "type": "string",
+      "description": "Nome da pessoa A (snapshot)"
+    },
+    "person_b_name": {
+      "type": "string",
+      "description": "Nome da pessoa B (snapshot)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "person_a_id",
+    "person_b_id"
+  ]
+}

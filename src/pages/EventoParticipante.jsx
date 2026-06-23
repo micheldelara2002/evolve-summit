@@ -19,6 +19,7 @@ import ProgramacaoView from "@/components/participante/ProgramacaoView";
 import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
 import MuralFeedback from "@/components/participante/MuralFeedback";
+import RedeView from "@/components/rede/RedeView";
 import SponsorsStrip from "@/components/participante/SponsorsStrip";
 import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
 import QRScanner from "@/components/participante/QRScanner";
@@ -251,7 +252,15 @@ export default function EventoParticipante() {
               isReadOnly={isReadOnly}
             />
           )}
-          {activeTab === "rede" && <RedeView />}
+          {activeTab === "rede" && (
+            <RedeView
+              eventId={eventId}
+              myPerson={myPerson}
+              myParticipant={myParticipantRecord}
+              user={user}
+              isReadOnly={isReadOnly}
+            />
+          )}
           {activeTab === "conquistas" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} />
           )}
@@ -293,21 +302,6 @@ function PointsChip({ eventId, userEmail, myPerson, primaryColor }) {
     >
       <Star className="w-3.5 h-3.5" />
       <span>{points} pts</span>
-    </div>
-  );
-}
-
-// ── Rede placeholder ──────────────────────────────────────────────────────────
-function RedeView() {
-  return (
-    <div className="text-center py-16 space-y-3">
-      <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
-        <Users className="w-8 h-8 text-muted-foreground" />
-      </div>
-      <h3 className="text-lg font-display font-semibold">Rede / Conexões</h3>
-      <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-        Aqui você poderá ver e conectar-se com outros participantes do evento. Em breve!
-      </p>
     </div>
   );
 }
