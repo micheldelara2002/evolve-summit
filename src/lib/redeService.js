@@ -188,7 +188,7 @@ export async function getOrCreateThread({ eventId, myPersonId, myPersonName, oth
   });
 }
 
-/** Envia mensagem e atualiza preview da thread. */
+/** Envia mensagem, atualiza preview da thread e notifica o destinatário (não o remetente). */
 export async function sendMessage({ threadId, eventId, senderPersonId, senderName, messageText }) {
   const msg = await base44.entities.ChatMessage.create({
     thread_id: threadId,
@@ -201,5 +201,30 @@ export async function sendMessage({ threadId, eventId, senderPersonId, senderNam
     last_message_at: new Date().toISOString(),
     last_message_preview: messageText.substring(0, 100),
   });
+
+  // Notificar o destinatário (o outro lado da thread), nunca o remetente
+  try {
+    const threads = await base44.entities.ChatThread.filter({ id: threadId, is_deleted: false });
+    const thread = threads?.[0];
+    if (thread) {
+      const otherPersonId = thread.person_a_id === senderPersonId ? thread.person_b_id : thread.person_a_id;
+      if (otherPersonId && otherPersonId !== senderPersonId) {
+        const otherPerson = await getPersonById(otherPersonId);
+        if (otherPerson) {
+          await sendDirectNotification({
+            eventId,
+            recipientPerson: otherPerson,
+            title: `Nova mensagem de ${senderName}`,
+            message: messageText.substring(0, 100),
+            ctaLabel: "Ver conversa",
+            ctaTarget: `/evento/${eventId}`,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("chat notification failed:", e);
+  }
+
   return msg;
 }

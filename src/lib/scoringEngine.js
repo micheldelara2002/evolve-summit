@@ -91,8 +91,9 @@ function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }
       // uma vez por sessão/estande
       return `${eventId}:${participantId}:${acao}:${refId}`;
     case "por_par_usuarios":
-      // chave por par — refId deve ser o outro participantId ordenado
-      return `${eventId}:${acao}:${[participantId, refId].sort().join(":")}`;
+      // chave por participante+par — cada usuário do par pontua independentemente,
+      // mas não pode pontuar duas vezes pelo mesmo par (refId = outro participantId)
+      return `${eventId}:${participantId}:${acao}:${refId}`;
     default:
       return `${eventId}:${participantId}:${acao}:${refId}`;
   }

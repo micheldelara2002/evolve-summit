@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { isBadgeUnlocked } from "@/lib/badgeEngine";
 import { Trophy } from "lucide-react";
 
 const CAT_LABELS = {
@@ -52,15 +53,19 @@ function BadgeCard({ badge, earned }) {
   );
 }
 
-export default function ConquistasView({ eventId, userEmail, myPerson }) {
+export default function ConquistasView({ eventId, userEmail, myPerson, participantId }) {
   const { data: badges = [], isLoading } = useQuery({
     queryKey: ["badges", eventId],
     queryFn: () => base44.entities.Badge.filter({ event_id: eventId, is_deleted: false, ativo: true }),
   });
 
-  // Placeholder: no real earned badges yet — all shown as unearned for now
-  // TODO: connect to real scoring/achievement engine
-  const earnedBadgeIds = new Set();
+  const { data: transactions = [] } = useQuery({
+    queryKey: ["badge_transactions", eventId, participantId],
+    queryFn: () => base44.entities.PointTransaction.filter({ event_id: eventId, participant_id: participantId }),
+    enabled: !!participantId,
+  });
+
+  const earnedBadgeIds = new Set(badges.filter((b) => isBadgeUnlocked(b, transactions)).map((b) => b.id));
 
   const getCell = (cat, col) => badges.find((b) => b.categoria === cat && b.coluna_progresso === col);
 

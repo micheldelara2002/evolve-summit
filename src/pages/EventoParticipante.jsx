@@ -262,7 +262,7 @@ export default function EventoParticipante() {
             />
           )}
           {activeTab === "conquistas" && (
-            <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} />
+            <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} participantId={myParticipantRecord?.id} />
           )}
           {activeTab === "ferramentas" && <FerramentasView isReadOnly={isReadOnly} eventId={eventId} onScanPartner={setScanPartnerId} />}
         </motion.div>

@@ -4,6 +4,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { isBadgeUnlocked } from "@/lib/badgeEngine";
 
 function BadgePill({ badge, unlocked }) {
   return (
@@ -47,21 +48,7 @@ export default function BadgesEventCard({ eventId, participantId }) {
 
   if (!badges.length) return null;
 
-  // Avaliar quais badges foram desbloqueadas com base em transações
-  function isUnlocked(badge) {
-    if (!badge.criterio_tipo || !badge.acao_referencia) return false;
-    const relevant = transactions.filter((t) => t.acao === badge.acao_referencia);
-
-    if (badge.criterio_tipo === "first") return relevant.length >= 1;
-    if (badge.criterio_tipo === "count") return relevant.length >= (badge.valor_meta || 1);
-    if (badge.criterio_tipo === "points_total") {
-      const total = transactions.reduce((s, t) => s + (t.pontos || 0), 0);
-      return total >= (badge.valor_meta || 0);
-    }
-    return false;
-  }
-
-  const unlockedIds = new Set(badges.filter(isUnlocked).map((b) => b.id));
+  const unlockedIds = new Set(badges.filter((b) => isBadgeUnlocked(b, transactions)).map((b) => b.id));
   const sorted = [...badges].sort((a, b) => (unlockedIds.has(b.id) ? 1 : 0) - (unlockedIds.has(a.id) ? 1 : 0));
 
   return (
