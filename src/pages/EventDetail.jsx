@@ -228,6 +228,9 @@ export default function EventDetail() {
           <TabsTrigger value="sessions" className="gap-1">
             <Layout className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.sessions")}</span><span className="sm:hidden">Ses.</span>
           </TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-1">
+            <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Ranking</span><span className="sm:hidden">Rank.</span>
+          </TabsTrigger>
           <TabsTrigger value="partners" className="gap-1">
             <Handshake className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.partners")}</span><span className="sm:hidden">Par.</span>
           </TabsTrigger>
@@ -309,8 +312,7 @@ export default function EventDetail() {
         </TabsContent>
 
         {/* ── Sessões ── */}
-        <TabsContent value="sessions" className="mt-4 space-y-4">
-          <SessionRankingSection eventId={eventId} sessions={sessions} />
+        <TabsContent value="sessions" className="mt-4">
           <EntityTable
             items={sessions}
             columns={[
@@ -325,6 +327,11 @@ export default function EventDetail() {
             onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "session", id: item.id }) : undefined}
             addLabel="Nova"
           />
+        </TabsContent>
+
+        {/* ── Ranking de Palestras ── */}
+        <TabsContent value="ranking" className="mt-4">
+          <SessionRankingSection eventId={eventId} sessions={sessions} />
         </TabsContent>
 
         {/* ── Parceiros ── */}
