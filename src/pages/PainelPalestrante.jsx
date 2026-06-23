@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mic } from "lucide-react";
 import SpeakerKPIs from "@/components/palestrante/SpeakerKPIs";
 import SpeakerEventCard from "@/components/palestrante/SpeakerEventCard";
+import SpeakerRankingView from "@/components/palestrante/SpeakerRankingView";
 
 export default function PainelPalestrante() {
   const { user } = useAuth();
@@ -99,6 +100,9 @@ export default function PainelPalestrante() {
         personId={user?.person_id}
         userEmail={user?.email}
       />
+
+      {/* Ranking de avaliações */}
+      <SpeakerRankingView speakerParticipants={speakerParticipants} />
 
       {/* Por evento */}
       <div className="space-y-4">

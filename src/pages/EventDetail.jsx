@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell, MessageSquare, Ticket, Award } from "lucide-react";
 import SorteioTab from "@/components/admin/SorteioTab";
 import CertificadosTab from "@/components/admin/CertificadosTab";
+import SessionRankingSection from "@/components/admin/SessionRankingSection";
 import NotificationsCenter from "@/components/notifications/NotificationsCenter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -308,7 +309,8 @@ export default function EventDetail() {
         </TabsContent>
 
         {/* ── Sessões ── */}
-        <TabsContent value="sessions" className="mt-4">
+        <TabsContent value="sessions" className="mt-4 space-y-4">
+          <SessionRankingSection eventId={eventId} sessions={sessions} />
           <EntityTable
             items={sessions}
             columns={[

@@ -11,6 +11,7 @@ import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
 } from "lucide-react";
 import BadgesEventCard from "@/components/profile/BadgesEventCard";
+import RankingModal from "@/components/profile/RankingModal";
 import { toast } from "sonner";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import PointsModal from "@/components/profile/PointsModal";
@@ -45,6 +46,7 @@ export default function UserProfile() {
   const [showPoints, setShowPoints] = useState(false);
   const [showResgates, setShowResgates] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
 
   // Participações do usuário (para badges por evento)
   const { data: myParticipants = [] } = useQuery({
@@ -138,7 +140,7 @@ export default function UserProfile() {
     { label: "Pontos", icon: Star, onClick: () => setShowPoints(true), active: true },
     { label: "Badges", icon: Award, onClick: () => setShowBadges((v) => !v), active: true },
     { label: "Conexões", icon: Users, onClick: null, active: false },
-    { label: "Ranking", icon: Trophy, onClick: null, active: false },
+    { label: "Ranking", icon: Trophy, onClick: () => setShowRanking(true), active: true },
     { label: "Resgates", icon: ShoppingBag, onClick: () => setShowResgates(true), active: true },
   ];
 
@@ -281,6 +283,11 @@ export default function UserProfile() {
         onClose={() => setShowResgates(false)}
         personId={user?.person_id}
         userEmail={user?.email}
+      />
+      <RankingModal
+        open={showRanking}
+        onClose={() => setShowRanking(false)}
+        myParticipants={myParticipants}
       />
     </div>
   );
