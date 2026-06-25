@@ -19,6 +19,7 @@ import {
   UserCheck, BookOpen, Mail, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
+import LivePollCard from "@/components/participante/LivePollCard";
 
 function formatTime(dt) {
   if (!dt) return "";
@@ -665,6 +666,9 @@ export default function SessionDetail({ session, track, room, participant, isRea
               <Lock className="w-4 h-4" /> Evento encerrado — modo consulta.
             </div>
           )}
+
+          {/* Enquete ao vivo */}
+          {isPresent && <LivePollCard session={session} participant={participant} />}
 
           {/* Recursos da sessão */}
           <Section title="Perguntas e Respostas" icon={MessageCircleQuestion} locked={blocked}>

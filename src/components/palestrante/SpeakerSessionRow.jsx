@@ -7,9 +7,10 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import {
   Clock, ChevronDown, ChevronUp, Upload, MessageCircleQuestion,
-  Star, BookUser, Users, ThumbsUp, Send, CheckCircle2, Link as LinkIcon,
+  Star, BookUser, Users, ThumbsUp, Send, CheckCircle2, Link as LinkIcon, Radio,
 } from "lucide-react";
 import { toast } from "sonner";
+import PollsTab from "@/components/palestrante/PollsTab";
 
 function formatTime(dt) {
   if (!dt) return "";
@@ -18,6 +19,7 @@ function formatTime(dt) {
 
 const TABS = [
   { key: "perguntas", label: "Perguntas", icon: MessageCircleQuestion },
+  { key: "enquetes", label: "Enquetes", icon: Radio },
   { key: "avaliacoes", label: "Avaliações", icon: Star },
   { key: "mentorias", label: "Mentorias", icon: BookUser },
   { key: "leads", label: "Leads", icon: Users },
@@ -431,6 +433,7 @@ export default function SpeakerSessionRow({ session, myParticipant, personId, us
 
           <div className="bg-background border-t border-border px-4 py-4">
             {activeTab === "perguntas" && <PerguntasTab session={session} myParticipant={myParticipant} />}
+            {activeTab === "enquetes" && <PollsTab session={session} myParticipant={myParticipant} />}
             {activeTab === "avaliacoes" && <AvaliacoesTab session={session} />}
             {activeTab === "mentorias" && <MentoriasTab session={session} myParticipant={myParticipant} />}
             {activeTab === "leads" && <LeadsTab session={session} />}

@@ -1,0 +1,33 @@
+{
+  "name": "SessionPollAnswer",
+  "type": "object",
+  "description": "Resposta de um participante a uma enquete.",
+  "properties": {
+    "poll_id": {
+      "type": "string",
+      "description": "ID da enquete"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person que respondeu"
+    },
+    "selected_option_ids": {
+      "type": "string",
+      "description": "JSON array de IDs de op\u00e7\u00f5es selecionadas"
+    },
+    "answered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora da resposta"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "poll_id",
+    "person_id",
+    "selected_option_ids"
+  ]
+}

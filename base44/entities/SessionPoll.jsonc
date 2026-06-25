@@ -1,0 +1,79 @@
+{
+  "name": "SessionPoll",
+  "type": "object",
+  "description": "Enquetes ao vivo vinculadas a uma sess\u00e3o/palestra.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "ID da sess\u00e3o"
+    },
+    "created_by_person_id": {
+      "type": "string",
+      "description": "ID da Person do palestrante criador"
+    },
+    "question": {
+      "type": "string",
+      "description": "Pergunta da enquete"
+    },
+    "answer_type": {
+      "type": "string",
+      "enum": [
+        "yes_no",
+        "single_choice",
+        "multiple_choice"
+      ],
+      "default": "single_choice",
+      "description": "Tipo de resposta"
+    },
+    "max_options": {
+      "type": "number",
+      "default": 1,
+      "description": "M\u00e1ximo de op\u00e7\u00f5es selecion\u00e1veis (m\u00faltipla escolha)"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "default": 15,
+      "description": "Dura\u00e7\u00e3o da vota\u00e7\u00e3o em segundos"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "live",
+        "closed"
+      ],
+      "default": "draft",
+      "description": "Status da enquete"
+    },
+    "live_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando foi ao vivo"
+    },
+    "live_ends_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando a vota\u00e7\u00e3o encerra automaticamente"
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando foi encerrada"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "session_id",
+    "question",
+    "answer_type",
+    "status"
+  ]
+}
