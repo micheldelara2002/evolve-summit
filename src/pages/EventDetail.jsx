@@ -15,7 +15,8 @@ import LojaTab from "@/components/admin/LojaTab";
 import PontuacaoTab from "@/components/admin/PontuacaoTab";
 import ConquistasTab from "@/components/admin/ConquistasTab";
 import FeedbacksTab from "@/components/admin/FeedbacksTab";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import { useSectionParam } from "@/lib/useSectionParam";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell, MessageSquare, Ticket, Award } from "lucide-react";
 import SorteioTab from "@/components/admin/SorteioTab";
@@ -35,7 +36,7 @@ export default function EventDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("pessoas");
+  const [tab, setTab] = useSectionParam({ defaultSection: "pessoas" });
   const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
@@ -213,52 +214,29 @@ export default function EventDetail() {
         )}
       </div>
 
-      {/* Tabs */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
-          <TabsTrigger value="pessoas" className="gap-1">
-            <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline">Pessoas</span><span className="sm:hidden">Pess.</span>
-          </TabsTrigger>
-          <TabsTrigger value="tracks" className="gap-1">
-            <Route className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.tracks")}</span><span className="sm:hidden">Tri.</span>
-          </TabsTrigger>
-          <TabsTrigger value="rooms" className="gap-1">
-            <DoorOpen className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.rooms")}</span><span className="sm:hidden">Sal.</span>
-          </TabsTrigger>
-          <TabsTrigger value="sessions" className="gap-1">
-            <Layout className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.sessions")}</span><span className="sm:hidden">Ses.</span>
-          </TabsTrigger>
-          <TabsTrigger value="ranking" className="gap-1">
-            <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Ranking</span><span className="sm:hidden">Rank.</span>
-          </TabsTrigger>
-          <TabsTrigger value="partners" className="gap-1">
-            <Handshake className="w-3.5 h-3.5" /><span className="hidden sm:inline">{t("events.partners")}</span><span className="sm:hidden">Par.</span>
-          </TabsTrigger>
-          <TabsTrigger value="loja" className="gap-1">
-            <ShoppingBag className="w-3.5 h-3.5" /><span className="hidden sm:inline">Loja</span><span className="sm:hidden">Loj.</span>
-          </TabsTrigger>
-          <TabsTrigger value="pontuacao" className="gap-1">
-            <Star className="w-3.5 h-3.5" /><span className="hidden sm:inline">Pontuação</span><span className="sm:hidden">Pont.</span>
-          </TabsTrigger>
-          <TabsTrigger value="conquistas" className="gap-1">
-            <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Conquistas</span><span className="sm:hidden">Conq.</span>
-          </TabsTrigger>
-          <TabsTrigger value="notificacoes" className="gap-1">
-            <Bell className="w-3.5 h-3.5" /><span className="hidden sm:inline">Notificações</span><span className="sm:hidden">Not.</span>
-          </TabsTrigger>
-          <TabsTrigger value="feedbacks" className="gap-1">
-            <MessageSquare className="w-3.5 h-3.5" /><span className="hidden sm:inline">Feedbacks</span><span className="sm:hidden">Feed.</span>
-          </TabsTrigger>
-          <TabsTrigger value="sorteio" className="gap-1">
-            <Ticket className="w-3.5 h-3.5" /><span className="hidden sm:inline">Sorteio</span><span className="sm:hidden">Sort.</span>
-          </TabsTrigger>
-          <TabsTrigger value="certificados" className="gap-1">
-            <Award className="w-3.5 h-3.5" /><span className="hidden sm:inline">Certificados</span><span className="sm:hidden">Cert.</span>
-          </TabsTrigger>
-        </TabsList>
+      {/* Section switcher */}
+      <SectionSwitcher
+        sections={[
+          { id: "pessoas", label: t("adminSections.pessoas"), icon: Users },
+          { id: "tracks", label: t("adminSections.tracks"), icon: Route },
+          { id: "rooms", label: t("adminSections.rooms"), icon: DoorOpen },
+          { id: "sessions", label: t("adminSections.sessions"), icon: Layout },
+          { id: "ranking", label: t("adminSections.ranking"), icon: Trophy },
+          { id: "partners", label: t("adminSections.partners"), icon: Handshake },
+          { id: "loja", label: t("adminSections.loja"), icon: ShoppingBag },
+          { id: "pontuacao", label: t("adminSections.pontuacao"), icon: Star },
+          { id: "conquistas", label: t("adminSections.conquistas"), icon: Trophy },
+          { id: "notificacoes", label: t("adminSections.notificacoes"), icon: Bell },
+          { id: "feedbacks", label: t("adminSections.feedbacks"), icon: MessageSquare },
+          { id: "sorteio", label: t("adminSections.sorteio"), icon: Ticket },
+          { id: "certificados", label: t("adminSections.certificados"), icon: Award },
+        ]}
+        activeSection={tab}
+        onSectionChange={setTab}
+      />
 
-        {/* ── Pessoas do Evento (tela única) ── */}
-        <TabsContent value="pessoas" className="mt-4">
+      <div>
+        {tab === "pessoas" && (
           <PessoasTab
             eventId={eventId}
             participants={participants}
@@ -268,10 +246,8 @@ export default function EventDetail() {
             onShowImport={() => setShowImport(true)}
             onHideImport={() => setShowImport(false)}
           />
-        </TabsContent>
-
-        {/* ── Trilhas ── */}
-        <TabsContent value="tracks" className="mt-4">
+        )}
+        {tab === "tracks" && (
           <TracksList
             tracks={tracks}
             sessions={sessions}
@@ -284,12 +260,8 @@ export default function EventDetail() {
               setTrackDeleteConfirm(track);
             }}
           />
-        </TabsContent>
-
-
-
-        {/* ── Salas ── */}
-        <TabsContent value="rooms" className="mt-4">
+        )}
+        {tab === "rooms" && (
           <EntityTable
             items={rooms}
             columns={[
@@ -309,10 +281,8 @@ export default function EventDetail() {
             onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "room", id: item.id }) : undefined}
             addLabel="Nova"
           />
-        </TabsContent>
-
-        {/* ── Sessões ── */}
-        <TabsContent value="sessions" className="mt-4">
+        )}
+        {tab === "sessions" && (
           <EntityTable
             items={sessions}
             columns={[
@@ -327,57 +297,39 @@ export default function EventDetail() {
             onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "session", id: item.id }) : undefined}
             addLabel="Nova"
           />
-        </TabsContent>
-
-        {/* ── Ranking de Palestras ── */}
-        <TabsContent value="ranking" className="mt-4">
+        )}
+        {tab === "ranking" && (
           <SessionRankingSection eventId={eventId} sessions={sessions} />
-        </TabsContent>
-
-        {/* ── Parceiros ── */}
-        <TabsContent value="partners" className="mt-4">
+        )}
+        {tab === "partners" && (
           <PartnersTab eventId={eventId} hasAccess={hasAccess} />
-        </TabsContent>
-
-        {/* ── Loja ── */}
-        <TabsContent value="loja" className="mt-4">
+        )}
+        {tab === "loja" && (
           <LojaTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        </TabsContent>
-
-        {/* ── Pontuação ── */}
-        <TabsContent value="pontuacao" className="mt-4">
+        )}
+        {tab === "pontuacao" && (
           <PontuacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        </TabsContent>
-
-        {/* ── Conquistas ── */}
-        <TabsContent value="conquistas" className="mt-4">
+        )}
+        {tab === "conquistas" && (
           <ConquistasTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        </TabsContent>
-
-        {/* ── Notificações ── */}
-        <TabsContent value="notificacoes" className="mt-4">
+        )}
+        {tab === "notificacoes" && (
           <NotificationsCenter
             scopeType="event"
             scopeEventId={eventId}
             metricsPath={`/events/${eventId}/notifications/metrics`}
           />
-        </TabsContent>
-
-        {/* ── Feedbacks ── */}
-        <TabsContent value="feedbacks" className="mt-4">
+        )}
+        {tab === "feedbacks" && (
           <FeedbacksTab eventId={eventId} />
-        </TabsContent>
-
-        {/* ── Sorteio ── */}
-        <TabsContent value="sorteio" className="mt-4">
+        )}
+        {tab === "sorteio" && (
           <SorteioTab eventId={eventId} user={user} />
-        </TabsContent>
-
-        {/* ── Certificados ── */}
-        <TabsContent value="certificados" className="mt-4">
+        )}
+        {tab === "certificados" && (
           <CertificadosTab eventId={eventId} user={user} />
-        </TabsContent>
-      </Tabs>
+        )}
+      </div>
 
       {/* Generic Form Dialog (rooms, sessions, partners) */}
       {formDialog.open && (

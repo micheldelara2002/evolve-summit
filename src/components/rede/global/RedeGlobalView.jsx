@@ -11,17 +11,19 @@ import GlobalConversationsTab from "./GlobalConversationsTab";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { t } from "@/lib/i18n";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import { useSectionParam } from "@/lib/useSectionParam";
 
-const TABS = [
-  { key: "descobrir", labelKey: "rede.discover", icon: UserPlus },
-  { key: "pedidos", labelKey: "rede.requests", icon: Inbox },
-  { key: "conexoes", labelKey: "rede.connections", icon: Users },
-  { key: "conversas", labelKey: "rede.conversations", icon: MessageSquare },
+const SECTIONS = [
+  { id: "descobrir", labelKey: "rede.discover", icon: UserPlus },
+  { id: "pedidos", labelKey: "rede.requests", icon: Inbox },
+  { id: "conexoes", labelKey: "rede.connections", icon: Users },
+  { id: "conversas", labelKey: "rede.conversations", icon: MessageSquare },
 ];
 
 export default function RedeGlobalView() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("descobrir");
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "descobrir" });
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState("all");
 
@@ -114,23 +116,11 @@ export default function RedeGlobalView() {
         </SelectContent>
       </Select>
 
-      {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto scrollbar-hide border-b border-border">
-        {TABS.map(({ key, labelKey, icon: Icon }) => {
-          const active = activeTab === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap shrink-0
-                ${active ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {t(labelKey)}
-            </button>
-          );
-        })}
-      </div>
+      <SectionSwitcher
+        sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
+        activeSection={activeTab}
+        onSectionChange={setActiveTab}
+      />
 
       {activeTab === "descobrir" && (
         <GlobalDiscoverTab

@@ -4,16 +4,19 @@ import DiscoverTab from "./DiscoverTab";
 import RequestsTab from "./RequestsTab";
 import ConnectionsTab from "./ConnectionsTab";
 import ConversationsTab from "./ConversationsTab";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import { useSectionParam } from "@/lib/useSectionParam";
+import { t } from "@/lib/i18n";
 
-const TABS = [
-  { key: "descobrir", label: "Descobrir", icon: UserPlus },
-  { key: "pedidos", label: "Pedidos", icon: Inbox },
-  { key: "conexoes", label: "Conexões", icon: Users },
-  { key: "conversas", label: "Conversas", icon: MessageSquare },
+const SECTIONS = [
+  { id: "descobrir", labelKey: "rede.discover", icon: UserPlus },
+  { id: "pedidos", labelKey: "rede.requests", icon: Inbox },
+  { id: "conexoes", labelKey: "rede.connections", icon: Users },
+  { id: "conversas", labelKey: "rede.conversations", icon: MessageSquare },
 ];
 
 export default function RedeView({ eventId, myPerson, myParticipant, user, isReadOnly }) {
-  const [activeTab, setActiveTab] = useState("descobrir");
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "descobrir" });
   const [activeThreadId, setActiveThreadId] = useState(null);
 
   if (!myPerson) {
@@ -37,22 +40,11 @@ export default function RedeView({ eventId, myPerson, myParticipant, user, isRea
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 overflow-x-auto scrollbar-hide border-b border-border">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const active = activeTab === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap shrink-0
-                ${active ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      <SectionSwitcher
+        sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
+        activeSection={activeTab}
+        onSectionChange={setActiveTab}
+      />
 
       {activeTab === "descobrir" && (
         <DiscoverTab eventId={eventId} myPerson={myPerson} isReadOnly={isReadOnly} />

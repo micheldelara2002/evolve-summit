@@ -24,21 +24,24 @@ import SponsorsStrip from "@/components/participante/SponsorsStrip";
 import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
 import QRScanner from "@/components/participante/QRScanner";
 import { toast } from "sonner";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import { useSectionParam } from "@/lib/useSectionParam";
+import { t } from "@/lib/i18n";
 
-const TABS = [
-  { key: "programacao", label: "Programação", icon: Calendar },
-  { key: "loja",        label: "Loja",         icon: ShoppingBag },
-  { key: "rede",        label: "Rede",          icon: Users },
-  { key: "conquistas",  label: "Conquistas",    icon: Trophy },
-  { key: "mural",       label: "Feedback",      icon: SmilePlus },
-  { key: "ferramentas", label: "Ferramentas",   icon: Wrench },
+const SECTIONS = [
+  { id: "programacao", labelKey: "eventSections.programacao", icon: Calendar },
+  { id: "loja",        labelKey: "eventSections.loja",        icon: ShoppingBag },
+  { id: "rede",        labelKey: "eventSections.rede",         icon: Users },
+  { id: "conquistas",  labelKey: "eventSections.conquistas",   icon: Trophy },
+  { id: "mural",       labelKey: "eventSections.mural",        icon: SmilePlus },
+  { id: "ferramentas", labelKey: "eventSections.ferramentas",  icon: Wrench },
 ];
 
 export default function EventoParticipante() {
   const { eventId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("programacao");
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "programacao" });
   const [scanPartnerId, setScanPartnerId] = useState(null);
 
   // Fetch event
@@ -190,25 +193,13 @@ export default function EventoParticipante() {
           <SponsorsStrip eventId={eventId} />
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-0.5 overflow-x-auto max-w-4xl mx-auto pb-0 scrollbar-hide">
-          {TABS.map(({ key, label, icon: Icon }) => {
-            const active = activeTab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap shrink-0
-                  ${active
-                    ? "bg-background text-foreground shadow-sm border border-b-0 border-border"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            );
-          })}
+        {/* Section switcher */}
+        <div className="max-w-4xl mx-auto pb-0">
+          <SectionSwitcher
+            sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
+            activeSection={activeTab}
+            onSectionChange={setActiveTab}
+          />
         </div>
       </div>
 

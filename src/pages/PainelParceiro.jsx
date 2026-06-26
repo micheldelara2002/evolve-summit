@@ -18,20 +18,23 @@ import PartnerQRTab from "@/components/parceiro/PartnerQRTab";
 import PartnerSponsorshipTab from "@/components/parceiro/PartnerSponsorshipTab";
 import PartnerNotificationsTab from "@/components/parceiro/PartnerNotificationsTab";
 import PartnerRaffleSection from "@/components/parceiro/PartnerRaffleSection";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import { useSectionParam } from "@/lib/useSectionParam";
+import { t } from "@/lib/i18n";
 
-const TABS = [
-  { key: "leads", label: "Leads", icon: Users },
-  { key: "sorteio", label: "Sorteio", icon: Trophy },
-  { key: "qr", label: "QR Code", icon: QrCode },
-  { key: "patrocinio", label: "Patrocínio", icon: Award },
-  { key: "notificacoes", label: "Notificações", icon: Bell },
+const SECTIONS = [
+  { id: "leads", labelKey: "partnerSections.leads", icon: Users },
+  { id: "sorteio", labelKey: "partnerSections.sorteio", icon: Trophy },
+  { id: "qr", labelKey: "partnerSections.qr", icon: QrCode },
+  { id: "patrocinio", labelKey: "partnerSections.patrocinio", icon: Award },
+  { id: "notificacoes", labelKey: "partnerSections.notificacoes", icon: Bell },
 ];
 
 export default function PainelParceiro() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [activeTab, setActiveTab] = useState("leads");
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "leads" });
 
   // Resolve person do usuário
   const { data: myPerson } = useQuery({
@@ -201,26 +204,11 @@ export default function PainelParceiro() {
       {/* Dashboard — apenas manager */}
       {isManager && <PartnerDashboard partnerId={partnerId} />}
 
-      {/* Tabs */}
-      <div className="flex gap-0.5 overflow-x-auto border-b border-border scrollbar-hide">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const active = activeTab === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap shrink-0
-                ${active
-                  ? "bg-background text-foreground shadow-sm border border-b-0 border-border -mb-px"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      <SectionSwitcher
+        sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
+        activeSection={activeTab}
+        onSectionChange={setActiveTab}
+      />
 
       {/* Tab content */}
       <div>
