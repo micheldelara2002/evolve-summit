@@ -1,10 +1,8 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { useTheme } from "@/lib/ThemeContext";
-import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { LayoutDashboard, Calendar, Shield, LogOut, Bell, Handshake, Building2, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Calendar, Shield, Bell, Handshake, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState } from "react";
@@ -33,12 +31,7 @@ const PARTNER_MANAGER_NAV = [
 export default function AdminLayout() {
   const { pathname } = useLocation();
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
   const navItems = isAdmin(user) ? ADMIN_NAV : isPartnerManager(user) ? PARTNER_MANAGER_NAV : USER_NAV;
-
-  const handleLogout = () => base44.auth.logout("/login");
-
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -55,12 +48,6 @@ export default function AdminLayout() {
           <div className="flex items-center gap-1">
             <UserChip user={user} />
             <InboxBell />
-            <Button variant="ghost" size="icon" onClick={toggleTheme} title="Alternar tema" aria-label="Alternar tema">
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} title={t("nav.logout")} aria-label={t("nav.logout")}>
-              <LogOut className="w-4 h-4" />
-            </Button>
           </div>
         </div>
 

@@ -36,6 +36,8 @@ import EventoParticipante from "@/pages/EventoParticipante";
 import PainelPalestrante from "@/pages/PainelPalestrante";
 import PainelParceiro from "@/pages/PainelParceiro";
 import ValidaCertificado from "@/pages/ValidaCertificado";
+import Rede from "@/pages/Rede";
+import QRScan from "@/pages/QRScan";
 import { ThemeProvider } from "@/lib/ThemeContext";
 
 const AuthenticatedApp = () => {
@@ -76,6 +78,8 @@ const AuthenticatedApp = () => {
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
           <Route path="/meus-eventos" element={<MeusEventos />} />
+          <Route path="/rede" element={<Rede />} />
+          <Route path="/qr-scan" element={<QRScan />} />
           <Route path="/evento/:eventId" element={<EventoParticipante />} />
           <Route path="/painel-palestrante" element={<PainelPalestrante />} />
           <Route path="/painel-parceiro" element={<PainelParceiro />} />

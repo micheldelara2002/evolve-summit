@@ -1,37 +1,16 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Bell, User, Handshake, Building2 } from "lucide-react";
-import { useAuth } from "@/lib/AuthContext";
-import { isAdmin, isPartnerManager } from "@/lib/access";
+import { LayoutDashboard, Calendar, Users, QrCode } from "lucide-react";
 import { t } from "@/lib/i18n";
 
-function getNavItems(user) {
-  if (isAdmin(user)) {
-    return [
-      { path: "/", icon: LayoutDashboard, label: t("nav.home") },
-      { path: "/events", icon: Calendar, label: t("nav.events") },
-      { path: "/notifications", icon: Bell, label: t("nav.notifications") },
-      { path: "/profile", icon: User, label: "Perfil" },
-    ];
-  }
-  if (isPartnerManager(user)) {
-    return [
-      { path: "/", icon: LayoutDashboard, label: t("nav.home") },
-      { path: "/painel-parceiro", icon: Handshake, label: "Painel" },
-      { path: "/admin/partners", icon: Building2, label: "Empresa" },
-      { path: "/profile", icon: User, label: "Perfil" },
-    ];
-  }
-  return [
-    { path: "/", icon: LayoutDashboard, label: t("nav.home") },
-    { path: "/meus-eventos", icon: Calendar, label: "Meus Eventos" },
-    { path: "/profile", icon: User, label: "Perfil" },
-  ];
-}
+const NAV_ITEMS = [
+  { path: "/", icon: LayoutDashboard, labelKey: "nav.home" },
+  { path: "/meus-eventos", icon: Calendar, labelKey: "nav.events" },
+  { path: "/rede", icon: Users, labelKey: "nav.network" },
+  { path: "/qr-scan", icon: QrCode, labelKey: "nav.scanQR" },
+];
 
 export default function BottomNav() {
   const { pathname } = useLocation();
-  const { user } = useAuth();
-  const items = getNavItems(user);
 
   return (
     <nav
@@ -39,7 +18,7 @@ export default function BottomNav() {
       aria-label="Navegação principal"
     >
       <div className="flex items-stretch justify-around h-16">
-        {items.map(({ path, icon: Icon, label }) => {
+        {NAV_ITEMS.map(({ path, icon: Icon, labelKey }) => {
           const isActive = pathname === path || (path !== "/" && pathname.startsWith(path));
           return (
             <Link
@@ -56,7 +35,7 @@ export default function BottomNav() {
                 <Icon className="w-5 h-5" />
               </span>
               <span className={`text-[10px] font-medium leading-none truncate max-w-full px-1 ${isActive ? "text-foreground" : ""}`}>
-                {label}
+                {t(labelKey)}
               </span>
             </Link>
           );

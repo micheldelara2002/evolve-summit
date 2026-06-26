@@ -3,6 +3,8 @@ const ptBR = {
   nav: {
     home: "Início",
     events: "Eventos",
+    network: "Rede",
+    scanQR: "Ler QR Code",
     notifications: "Notificações",
     audit: "Auditoria",
     logout: "Sair",
@@ -23,6 +25,10 @@ const ptBR = {
     dark: "Escuro",
     light: "Claro",
     system: "Seguir sistema",
+  },
+  rede: {
+    comingSoon: "Em breve",
+    description: "O networking estará disponível em breve. Acesse a rede de conexões dentro de cada evento.",
   },
   business: {
     totalEvents: "Eventos Totais",
@@ -172,14 +178,41 @@ const ptBR = {
   },
 };
 
+const en = {
+  app: { name: "Evolve Summit" },
+  nav: {
+    home: "Home",
+    events: "Events",
+    network: "Network",
+    scanQR: "Scan QR Code",
+    notifications: "Notifications",
+    audit: "Audit",
+    logout: "Sign out",
+  },
+  rede: {
+    comingSoon: "Coming soon",
+    description: "Networking will be available soon. Access the connections network inside each event.",
+  },
+};
+
+function getLocale() {
+  if (typeof navigator === "undefined") return ptBR;
+  const lang = navigator.language || "pt-BR";
+  return lang.startsWith("en") ? en : ptBR;
+}
+
 export function t(path) {
   const keys = path.split(".");
-  let value = ptBR;
-  for (const key of keys) {
-    value = value?.[key];
-    if (value === undefined) return path;
+  for (const dict of [getLocale(), ptBR]) {
+    let value = dict;
+    let found = true;
+    for (const key of keys) {
+      value = value?.[key];
+      if (value === undefined) { found = false; break; }
+    }
+    if (found) return value;
   }
-  return value;
+  return path;
 }
 
 export default ptBR;

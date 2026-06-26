@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
-  Moon, Sun, Monitor,
+  Moon, Sun, Monitor, LogOut,
 } from "lucide-react";
 import { useTheme } from "@/lib/ThemeContext";
+import { t } from "@/lib/i18n";
 import BadgesEventCard from "@/components/profile/BadgesEventCard";
 import RankingModal from "@/components/profile/RankingModal";
 import { toast } from "sonner";
@@ -335,6 +336,15 @@ export default function UserProfile() {
         onClose={() => setShowRanking(false)}
         myParticipants={myParticipants}
       />
+
+      {/* Sign out */}
+      <Button
+        variant="outline"
+        className="w-full gap-2 text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+        onClick={() => base44.auth.logout("/login")}
+      >
+        <LogOut className="w-4 h-4" /> {t("nav.logout")}
+      </Button>
     </div>
   );
 }
