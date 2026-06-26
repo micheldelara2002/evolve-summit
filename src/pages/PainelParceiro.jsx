@@ -24,17 +24,23 @@ import { t } from "@/lib/i18n";
 
 const SECTIONS = [
   { id: "leads", labelKey: "partnerSections.leads", icon: Users },
-  { id: "sorteio", labelKey: "partnerSections.sorteio", icon: Trophy },
+  { id: "raffle", labelKey: "partnerSections.raffle", icon: Trophy },
   { id: "qr", labelKey: "partnerSections.qr", icon: QrCode },
-  { id: "patrocinio", labelKey: "partnerSections.patrocinio", icon: Award },
-  { id: "notificacoes", labelKey: "partnerSections.notificacoes", icon: Bell },
+  { id: "sponsorship", labelKey: "partnerSections.sponsorship", icon: Award },
+  { id: "notifications", labelKey: "partnerSections.notifications", icon: Bell },
 ];
+
+const LEGACY_TAB_MAP = {
+  sorteio: "raffle",
+  patrocinio: "sponsorship",
+  notificacoes: "notifications",
+};
 
 export default function PainelParceiro() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "leads" });
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "leads", legacyTabMap: LEGACY_TAB_MAP });
 
   // Resolve person do usuário
   const { data: myPerson } = useQuery({
@@ -215,16 +221,16 @@ export default function PainelParceiro() {
         {activeTab === "leads" && (
           <PartnerLeadsTab eventId={selectedEventId} partnerId={partnerId} isReadOnly={isReadOnly} user={user} myPerson={myPerson} />
         )}
-        {activeTab === "sorteio" && (
+        {activeTab === "raffle" && (
           <PartnerRaffleSection eventId={selectedEventId} partnerId={partnerId} user={user} isReadOnly={isReadOnly} drawnByLabel={partner?.trade_name || user?.full_name} />
         )}
         {activeTab === "qr" && (
           <PartnerQRTab eventId={selectedEventId} partnerId={partnerId} partner={partner} event={selectedEvent} />
         )}
-        {activeTab === "patrocinio" && (
+        {activeTab === "sponsorship" && (
           <PartnerSponsorshipTab eventId={selectedEventId} partnerId={partnerId} />
         )}
-        {activeTab === "notificacoes" && (
+        {activeTab === "notifications" && (
           <PartnerNotificationsTab eventId={selectedEventId} partnerId={partnerId} user={user} isReadOnly={isReadOnly} />
         )}
       </div>

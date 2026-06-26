@@ -29,19 +29,28 @@ import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
 
 const SECTIONS = [
-  { id: "programacao", labelKey: "eventSections.programacao", icon: Calendar },
-  { id: "loja",        labelKey: "eventSections.loja",        icon: ShoppingBag },
-  { id: "rede",        labelKey: "eventSections.rede",         icon: Users },
-  { id: "conquistas",  labelKey: "eventSections.conquistas",   icon: Trophy },
-  { id: "mural",       labelKey: "eventSections.mural",        icon: SmilePlus },
-  { id: "ferramentas", labelKey: "eventSections.ferramentas",  icon: Wrench },
+  { id: "schedule", labelKey: "eventSections.schedule", icon: Calendar },
+  { id: "store",    labelKey: "eventSections.store",    icon: ShoppingBag },
+  { id: "network",  labelKey: "eventSections.network",   icon: Users },
+  { id: "badges",   labelKey: "eventSections.badges",    icon: Trophy },
+  { id: "feedback", labelKey: "eventSections.feedback", icon: SmilePlus },
+  { id: "tools",    labelKey: "eventSections.tools",     icon: Wrench },
 ];
+
+const LEGACY_TAB_MAP = {
+  programacao: "schedule",
+  loja: "store",
+  rede: "network",
+  conquistas: "badges",
+  mural: "feedback",
+  ferramentas: "tools",
+};
 
 export default function EventoParticipante() {
   const { eventId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "programacao" });
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "schedule", legacyTabMap: LEGACY_TAB_MAP });
   const [scanPartnerId, setScanPartnerId] = useState(null);
 
   // Fetch event
@@ -218,7 +227,7 @@ export default function EventoParticipante() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.15 }}
         >
-          {activeTab === "programacao" && (
+          {activeTab === "schedule" && (
             <ProgramacaoView
               eventId={eventId}
               participant={myParticipantRecord}
@@ -226,7 +235,7 @@ export default function EventoParticipante() {
               event={event}
             />
           )}
-          {activeTab === "loja" && (
+          {activeTab === "store" && (
             <LojaView
               eventId={eventId}
               participantId={myParticipantRecord?.id}
@@ -234,7 +243,7 @@ export default function EventoParticipante() {
               isReadOnly={isReadOnly}
             />
           )}
-          {activeTab === "mural" && (
+          {activeTab === "feedback" && (
             <MuralFeedback
               eventId={eventId}
               participantId={myParticipantRecord?.id}
@@ -243,7 +252,7 @@ export default function EventoParticipante() {
               isReadOnly={isReadOnly}
             />
           )}
-          {activeTab === "rede" && (
+          {activeTab === "network" && (
             <RedeView
               eventId={eventId}
               myPerson={myPerson}
@@ -252,10 +261,10 @@ export default function EventoParticipante() {
               isReadOnly={isReadOnly}
             />
           )}
-          {activeTab === "conquistas" && (
+          {activeTab === "badges" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} participantId={myParticipantRecord?.id} />
           )}
-          {activeTab === "ferramentas" && <FerramentasView isReadOnly={isReadOnly} eventId={eventId} onScanPartner={setScanPartnerId} />}
+          {activeTab === "tools" && <FerramentasView isReadOnly={isReadOnly} eventId={eventId} onScanPartner={setScanPartnerId} />}
         </motion.div>
       </div>
 

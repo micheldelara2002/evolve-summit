@@ -15,15 +15,22 @@ import SectionSwitcher from "@/components/ui/SectionSwitcher";
 import { useSectionParam } from "@/lib/useSectionParam";
 
 const SECTIONS = [
-  { id: "descobrir", labelKey: "rede.discover", icon: UserPlus },
-  { id: "pedidos", labelKey: "rede.requests", icon: Inbox },
-  { id: "conexoes", labelKey: "rede.connections", icon: Users },
-  { id: "conversas", labelKey: "rede.conversations", icon: MessageSquare },
+  { id: "discover", labelKey: "rede.discover", icon: UserPlus },
+  { id: "requests", labelKey: "rede.requests", icon: Inbox },
+  { id: "connections", labelKey: "rede.connections", icon: Users },
+  { id: "conversations", labelKey: "rede.conversations", icon: MessageSquare },
 ];
+
+const LEGACY_TAB_MAP = {
+  descobrir: "discover",
+  pedidos: "requests",
+  conexoes: "connections",
+  conversas: "conversations",
+};
 
 export default function RedeGlobalView() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "descobrir" });
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "discover", legacyTabMap: LEGACY_TAB_MAP });
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState("all");
 
@@ -96,7 +103,7 @@ export default function RedeGlobalView() {
 
   const handleStartChat = (threadId) => {
     setActiveThreadId(threadId);
-    setActiveTab("conversas");
+    setActiveTab("conversations");
   };
 
   const effectiveEventIds = selectedEventId === "all" ? myEventIds : [selectedEventId];
@@ -122,7 +129,7 @@ export default function RedeGlobalView() {
         onSectionChange={setActiveTab}
       />
 
-      {activeTab === "descobrir" && (
+      {activeTab === "discover" && (
         <GlobalDiscoverTab
           eventIds={effectiveEventIds}
           eventMap={eventMap}
@@ -131,7 +138,7 @@ export default function RedeGlobalView() {
           selectedEventId={selectedEventId}
         />
       )}
-      {activeTab === "pedidos" && (
+      {activeTab === "requests" && (
         <GlobalRequestsTab
           eventIds={effectiveEventIds}
           eventMap={eventMap}
@@ -139,7 +146,7 @@ export default function RedeGlobalView() {
           myParticipantRecords={myParticipantRecords}
         />
       )}
-      {activeTab === "conexoes" && (
+      {activeTab === "connections" && (
         <GlobalConnectionsTab
           eventIds={effectiveEventIds}
           eventMap={eventMap}
@@ -148,7 +155,7 @@ export default function RedeGlobalView() {
           onStartChat={handleStartChat}
         />
       )}
-      {activeTab === "conversas" && (
+      {activeTab === "conversations" && (
         <GlobalConversationsTab
           eventIds={effectiveEventIds}
           eventMap={eventMap}

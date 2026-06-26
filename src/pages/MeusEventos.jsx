@@ -20,7 +20,7 @@ function EventCard({ event, index, isFinished }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
-      onClick={() => navigate(`/evento/${event.id}`)}
+      onClick={() => navigate(`/event/${event.id}`)}
       className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer hover:shadow-md transition-all group
         ${isFinished ? "bg-muted/40 border-border" : "bg-card border-border hover:border-primary/30"}`}
     >

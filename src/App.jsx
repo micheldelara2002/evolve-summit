@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
-import { BrowserRouter as Router, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Route, Routes, Navigate, useParams, useLocation } from "react-router-dom";
 import PageNotFound from "./lib/PageNotFound";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
@@ -40,6 +40,12 @@ import Rede from "@/pages/Rede";
 import QRScan from "@/pages/QRScan";
 import { ThemeProvider } from "@/lib/ThemeContext";
 
+function EventRedirect() {
+  const { eventId } = useParams();
+  const location = useLocation();
+  return <Navigate to={`/event/${eventId}${location.search}`} replace />;
+}
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
@@ -77,12 +83,12 @@ const AuthenticatedApp = () => {
           <Route path="/" element={<AdminHome />} />
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
-          <Route path="/meus-eventos" element={<MeusEventos />} />
-          <Route path="/rede" element={<Rede />} />
+          <Route path="/my-events" element={<MeusEventos />} />
+          <Route path="/network" element={<Rede />} />
           <Route path="/qr-scan" element={<QRScan />} />
-          <Route path="/evento/:eventId" element={<EventoParticipante />} />
-          <Route path="/painel-palestrante" element={<PainelPalestrante />} />
-          <Route path="/painel-parceiro" element={<PainelParceiro />} />
+          <Route path="/event/:eventId" element={<EventoParticipante />} />
+          <Route path="/speaker-dashboard" element={<PainelPalestrante />} />
+          <Route path="/partner-dashboard" element={<PainelParceiro />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
@@ -95,13 +101,23 @@ const AuthenticatedApp = () => {
             <Route path="/notifications" element={<AdminNotifications />} />
             <Route path="/notifications/metrics" element={<NotificationMetrics />} />
             <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
-            <Route path="/admin/people" element={<AdminPeoplePlaceholder />} />
+            <Route path="/people" element={<AdminPeoplePlaceholder />} />
           </Route>
           {/* Partner management — admin + partner_manager (in-page guard) */}
-          <Route path="/admin/partners" element={<AdminPartners />} />
+          <Route path="/partner" element={<AdminPartners />} />
+
+          {/* Legacy URL redirects */}
+          <Route path="/meus-eventos" element={<Navigate to="/my-events" replace />} />
+          <Route path="/rede" element={<Navigate to="/network" replace />} />
+          <Route path="/evento/:eventId" element={<EventRedirect />} />
+          <Route path="/painel-palestrante" element={<Navigate to="/speaker-dashboard" replace />} />
+          <Route path="/painel-parceiro" element={<Navigate to="/partner-dashboard" replace />} />
+          <Route path="/admin/people" element={<Navigate to="/people" replace />} />
+          <Route path="/admin/partners" element={<Navigate to="/partner" replace />} />
         </Route>
       </Route>
-      <Route path="/valida-certificado" element={<ValidaCertificado />} />
+      <Route path="/validate-certificate" element={<ValidaCertificado />} />
+      <Route path="/valida-certificado" element={<Navigate to="/validate-certificate" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

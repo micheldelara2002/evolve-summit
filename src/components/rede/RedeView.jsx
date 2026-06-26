@@ -9,14 +9,21 @@ import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
 
 const SECTIONS = [
-  { id: "descobrir", labelKey: "rede.discover", icon: UserPlus },
-  { id: "pedidos", labelKey: "rede.requests", icon: Inbox },
-  { id: "conexoes", labelKey: "rede.connections", icon: Users },
-  { id: "conversas", labelKey: "rede.conversations", icon: MessageSquare },
+  { id: "discover", labelKey: "rede.discover", icon: UserPlus },
+  { id: "requests", labelKey: "rede.requests", icon: Inbox },
+  { id: "connections", labelKey: "rede.connections", icon: Users },
+  { id: "conversations", labelKey: "rede.conversations", icon: MessageSquare },
 ];
 
+const LEGACY_TAB_MAP = {
+  descobrir: "discover",
+  pedidos: "requests",
+  conexoes: "connections",
+  conversas: "conversations",
+};
+
 export default function RedeView({ eventId, myPerson, myParticipant, user, isReadOnly }) {
-  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "descobrir" });
+  const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "discover", legacyTabMap: LEGACY_TAB_MAP });
   const [activeThreadId, setActiveThreadId] = useState(null);
 
   if (!myPerson) {
@@ -35,7 +42,7 @@ export default function RedeView({ eventId, myPerson, myParticipant, user, isRea
 
   const handleStartChat = (threadId) => {
     setActiveThreadId(threadId);
-    setActiveTab("conversas");
+    setActiveTab("conversations");
   };
 
   return (
@@ -46,16 +53,16 @@ export default function RedeView({ eventId, myPerson, myParticipant, user, isRea
         onSectionChange={setActiveTab}
       />
 
-      {activeTab === "descobrir" && (
+      {activeTab === "discover" && (
         <DiscoverTab eventId={eventId} myPerson={myPerson} isReadOnly={isReadOnly} />
       )}
-      {activeTab === "pedidos" && (
+      {activeTab === "requests" && (
         <RequestsTab eventId={eventId} myPerson={myPerson} myParticipant={myParticipant} user={user} isReadOnly={isReadOnly} />
       )}
-      {activeTab === "conexoes" && (
+      {activeTab === "connections" && (
         <ConnectionsTab eventId={eventId} myPerson={myPerson} isReadOnly={isReadOnly} onStartChat={handleStartChat} />
       )}
-      {activeTab === "conversas" && (
+      {activeTab === "conversations" && (
         <ConversationsTab
           eventId={eventId}
           myPerson={myPerson}

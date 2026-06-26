@@ -15,24 +15,24 @@ const TONE_CLASSES = {
 };
 
 const ADMIN_CARDS = [
-  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/meus-eventos" },
+  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
   { key: "eventManagement", icon: Calendar, tone: "secondary", href: "/events" },
-  { key: "people", icon: Users, tone: "success", href: "/admin/people" },
-  { key: "partners", icon: Building2, tone: "warning", href: "/admin/partners" },
+  { key: "people", icon: Users, tone: "success", href: "/people" },
+  { key: "partners", icon: Building2, tone: "warning", href: "/partner" },
   { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
   { key: "business", icon: TrendingUp, tone: "primary", href: "/business" },
   { key: "audit", icon: Shield, tone: "warning", href: "/audit" },
 ];
 
 const USER_CARDS = [
-  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/meus-eventos" },
+  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
 ];
 
 const SPEAKER_CARD = {
   key: "painelPalestrante",
   icon: Mic,
   tone: "secondary",
-  href: "/painel-palestrante",
+  href: "/speaker-dashboard",
   label: "Painel do Palestrante",
 };
 
@@ -40,7 +40,7 @@ const PARTNER_CARD = {
   key: "painelParceiro",
   icon: Handshake,
   tone: "warning",
-  href: "/painel-parceiro",
+  href: "/partner-dashboard",
   label: "Painel do Parceiro",
 };
 

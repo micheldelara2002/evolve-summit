@@ -31,12 +31,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 
+const LEGACY_TAB_MAP = {
+  pessoas: "people",
+  loja: "store",
+  pontuacao: "score",
+  conquistas: "badges",
+  notificacoes: "notifications",
+  feedbacks: "feedback",
+  sorteio: "raffle",
+  certificados: "certificates",
+};
+
 export default function EventDetail() {
   const { eventId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useSectionParam({ defaultSection: "pessoas" });
+  const [tab, setTab] = useSectionParam({ defaultSection: "people", legacyTabMap: LEGACY_TAB_MAP });
   const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
   const [showImport, setShowImport] = useState(false);
   const [trackColorEdit, setTrackColorEdit] = useState(null);
@@ -217,26 +228,26 @@ export default function EventDetail() {
       {/* Section switcher */}
       <SectionSwitcher
         sections={[
-          { id: "pessoas", label: t("adminSections.pessoas"), icon: Users },
+          { id: "people", label: t("adminSections.people"), icon: Users },
           { id: "tracks", label: t("adminSections.tracks"), icon: Route },
           { id: "rooms", label: t("adminSections.rooms"), icon: DoorOpen },
           { id: "sessions", label: t("adminSections.sessions"), icon: Layout },
           { id: "ranking", label: t("adminSections.ranking"), icon: Trophy },
           { id: "partners", label: t("adminSections.partners"), icon: Handshake },
-          { id: "loja", label: t("adminSections.loja"), icon: ShoppingBag },
-          { id: "pontuacao", label: t("adminSections.pontuacao"), icon: Star },
-          { id: "conquistas", label: t("adminSections.conquistas"), icon: Trophy },
-          { id: "notificacoes", label: t("adminSections.notificacoes"), icon: Bell },
-          { id: "feedbacks", label: t("adminSections.feedbacks"), icon: MessageSquare },
-          { id: "sorteio", label: t("adminSections.sorteio"), icon: Ticket },
-          { id: "certificados", label: t("adminSections.certificados"), icon: Award },
+          { id: "store", label: t("adminSections.store"), icon: ShoppingBag },
+          { id: "score", label: t("adminSections.score"), icon: Star },
+          { id: "badges", label: t("adminSections.badges"), icon: Trophy },
+          { id: "notifications", label: t("adminSections.notifications"), icon: Bell },
+          { id: "feedback", label: t("adminSections.feedback"), icon: MessageSquare },
+          { id: "raffle", label: t("adminSections.raffle"), icon: Ticket },
+          { id: "certificates", label: t("adminSections.certificates"), icon: Award },
         ]}
         activeSection={tab}
         onSectionChange={setTab}
       />
 
       <div>
-        {tab === "pessoas" && (
+        {tab === "people" && (
           <PessoasTab
             eventId={eventId}
             participants={participants}
@@ -304,29 +315,29 @@ export default function EventDetail() {
         {tab === "partners" && (
           <PartnersTab eventId={eventId} hasAccess={hasAccess} />
         )}
-        {tab === "loja" && (
+        {tab === "store" && (
           <LojaTab eventId={eventId} hasAccess={hasAccess} user={user} />
         )}
-        {tab === "pontuacao" && (
+        {tab === "score" && (
           <PontuacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />
         )}
-        {tab === "conquistas" && (
+        {tab === "badges" && (
           <ConquistasTab eventId={eventId} hasAccess={hasAccess} user={user} />
         )}
-        {tab === "notificacoes" && (
+        {tab === "notifications" && (
           <NotificationsCenter
             scopeType="event"
             scopeEventId={eventId}
             metricsPath={`/events/${eventId}/notifications/metrics`}
           />
         )}
-        {tab === "feedbacks" && (
+        {tab === "feedback" && (
           <FeedbacksTab eventId={eventId} />
         )}
-        {tab === "sorteio" && (
+        {tab === "raffle" && (
           <SorteioTab eventId={eventId} user={user} />
         )}
-        {tab === "certificados" && (
+        {tab === "certificates" && (
           <CertificadosTab eventId={eventId} user={user} />
         )}
       </div>

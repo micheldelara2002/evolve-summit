@@ -1,6 +1,6 @@
 /**
  * Página pública de validação de certificados.
- * Rota: /valida-certificado
+ * Rota: /validate-certificate
  * Simples CAPTCHA matemático para evitar abuso.
  */
 import { useState } from "react";

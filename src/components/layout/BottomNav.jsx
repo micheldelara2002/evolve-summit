@@ -4,8 +4,8 @@ import { t } from "@/lib/i18n";
 
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, labelKey: "nav.home" },
-  { path: "/meus-eventos", icon: Calendar, labelKey: "nav.events" },
-  { path: "/rede", icon: Users, labelKey: "nav.network" },
+  { path: "/my-events", icon: Calendar, labelKey: "nav.events" },
+  { path: "/network", icon: Users, labelKey: "nav.network" },
   { path: "/qr-scan", icon: QrCode, labelKey: "nav.scanQR" },
 ];
 

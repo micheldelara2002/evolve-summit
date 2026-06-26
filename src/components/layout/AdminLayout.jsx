@@ -19,13 +19,13 @@ const ADMIN_NAV = [
 
 const USER_NAV = [
   { path: "/", icon: LayoutDashboard, label: "nav.home" },
-  { path: "/meus-eventos", icon: Calendar, label: "Meus Eventos" },
+  { path: "/my-events", icon: Calendar, label: "Meus Eventos" },
 ];
 
 const PARTNER_MANAGER_NAV = [
   { path: "/", icon: LayoutDashboard, label: "nav.home" },
-  { path: "/painel-parceiro", icon: Handshake, label: "Painel do Parceiro" },
-  { path: "/admin/partners", icon: Building2, label: "Minha Empresa" },
+  { path: "/partner-dashboard", icon: Handshake, label: "Painel do Parceiro" },
+  { path: "/partner", icon: Building2, label: "Minha Empresa" },
 ];
 
 export default function AdminLayout() {

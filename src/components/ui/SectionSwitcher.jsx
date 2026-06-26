@@ -1,72 +1,41 @@
-import { useState, useMemo } from "react";
-import { ChevronDown, Check, Search } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
- * SectionSwitcher — seletor de seção reutilizável (Protótipo 1).
- * Mobile: abre em bottom sheet. Web: abre em dropdown.
+ * SectionSwitcher — reusable section selector.
+ * Mobile: bottom sheet. Web: dropdown with native scroll.
  *
  * Props:
  *  - sections: [{ id, label, icon? }]
  *  - activeSection: string
  *  - onSectionChange: (id) => void
- *  - searchable: boolean (auto quando > 6 seções)
- *  - className: string (aplicada ao trigger)
+ *  - className: string (applied to trigger)
  */
 export default function SectionSwitcher({
   sections,
   activeSection,
   onSectionChange,
-  searchable,
   className,
 }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
 
   const activeItem = sections.find((s) => s.id === activeSection) || sections[0];
-  const showSearch = searchable ?? sections.length > 6;
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return sections;
-    const q = search.toLowerCase();
-    return sections.filter((s) =>
-      (s.label || s.id).toLowerCase().includes(q)
-    );
-  }, [sections, search]);
 
   const handleSelect = (id) => {
     onSectionChange(id);
     setOpen(false);
-    setSearch("");
   };
 
   const renderList = () => (
     <div className="space-y-1">
-      {showSearch && (
-        <div className="relative mb-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder={t("sectionSwitcher.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
-            autoFocus={isMobile}
-          />
-        </div>
-      )}
-      {filtered.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-4">
-          {t("common.noData")}
-        </p>
-      )}
-      {filtered.map(({ id, label, icon: Icon }) => {
+      {sections.map(({ id, label, icon: Icon }) => {
         const active = id === activeSection;
         return (
           <button
@@ -133,7 +102,7 @@ export default function SectionSwitcher({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{TriggerButton}</PopoverTrigger>
-      <PopoverContent className="w-72 p-3" align="start">
+      <PopoverContent className="w-72 p-3 max-h-[70vh] overflow-y-auto" align="start">
         {renderList()}
       </PopoverContent>
     </Popover>
