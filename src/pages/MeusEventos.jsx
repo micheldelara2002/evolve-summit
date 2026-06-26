@@ -10,6 +10,8 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calendar, Clock, Lock } from "lucide-react";
 import StatusBadge from "@/components/admin/StatusBadge";
+import ListSkeleton from "@/components/ui/ListSkeleton";
+import EmptyState from "@/components/ui/EmptyState";
 
 function EventCard({ event, index, isFinished }) {
   const navigate = useNavigate();
@@ -114,11 +116,7 @@ export default function MeusEventos() {
   );
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <ListSkeleton count={4} />;
   }
 
   return (
@@ -136,9 +134,7 @@ export default function MeusEventos() {
           Eventos Ativos
         </h2>
         {activeEvents.length === 0 ? (
-          <p className="text-sm text-muted-foreground bg-muted/40 rounded-xl px-4 py-6 text-center">
-            Você não está inscrito em nenhum evento ativo no momento.
-          </p>
+          <EmptyState icon={Calendar} title="Nenhum evento ativo" description="Você não está inscrito em nenhum evento ativo no momento." />
         ) : (
           <div className="space-y-3">
             {activeEvents.map((e, i) => (

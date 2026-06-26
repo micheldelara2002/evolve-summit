@@ -192,7 +192,7 @@ export default function PainelParceiro() {
           ))}
         </select>
         {isReadOnly && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20">
             <Lock className="w-3 h-3" /> Modo consulta
           </span>
         )}
@@ -251,11 +251,11 @@ function Header({ user, partner, navigate }) {
         <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
       </Button>
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-center shrink-0 overflow-hidden">
+        <div className="w-10 h-10 rounded-xl bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0 overflow-hidden">
           {partner?.logo_url ? (
             <img src={partner.logo_url} alt={partner.trade_name} className="w-full h-full object-contain" />
           ) : (
-            <Handshake className="w-5 h-5 text-orange-600" />
+            <Handshake className="w-5 h-5 text-warning" />
           )}
         </div>
         <div className="min-w-0">

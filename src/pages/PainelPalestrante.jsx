@@ -12,6 +12,9 @@ import { ArrowLeft, Mic } from "lucide-react";
 import SpeakerKPIs from "@/components/palestrante/SpeakerKPIs";
 import SpeakerEventCard from "@/components/palestrante/SpeakerEventCard";
 import SpeakerRankingView from "@/components/palestrante/SpeakerRankingView";
+import TopAppBar from "@/components/layout/TopAppBar";
+import EmptyState from "@/components/ui/EmptyState";
+import ListSkeleton from "@/components/ui/ListSkeleton";
 
 export default function PainelPalestrante() {
   const { user } = useAuth();
@@ -56,42 +59,27 @@ export default function PainelPalestrante() {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-24">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <ListSkeleton count={3} />;
   }
 
   if (!speakerParticipants.length) {
     return (
-      <div className="text-center py-24 space-y-3 max-w-sm mx-auto">
-        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
-          <Mic className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <h2 className="text-xl font-display font-bold">Nenhuma palestra encontrada</h2>
-        <p className="text-sm text-muted-foreground">Você ainda não está cadastrado como palestrante em nenhum evento.</p>
-        <Button variant="outline" onClick={() => navigate("/")}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
-        </Button>
-      </div>
+      <EmptyState
+        icon={Mic}
+        title="Nenhuma palestra encontrada"
+        description="Você ainda não está cadastrado como palestrante em nenhum evento."
+        action={<Button variant="outline" onClick={() => navigate("/")}>Voltar</Button>}
+      />
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="-ml-2">
-          <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
-        </Button>
-        <div>
-          <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-            <Mic className="w-6 h-6 text-primary" /> Painel do Palestrante
-          </h1>
-          <p className="text-sm text-muted-foreground">{myPerson?.full_name || user?.full_name}</p>
-        </div>
-      </div>
+      <TopAppBar
+        title="Painel do Palestrante"
+        subtitle={myPerson?.full_name || user?.full_name}
+        onBack={() => navigate("/")}
+      />
 
       {/* KPIs consolidados */}
       <SpeakerKPIs

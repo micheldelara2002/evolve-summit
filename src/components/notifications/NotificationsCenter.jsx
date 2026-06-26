@@ -19,15 +19,17 @@ import CampaignForm from "./CampaignForm";
 import { dispatchCampaign } from "@/lib/notificationService";
 import { toast } from "sonner";
 import { TypeIcon, PriorityBadge, getCardHighlightClasses } from "./NotificationIcons";
+import EmptyState from "@/components/ui/EmptyState";
+import ListSkeleton from "@/components/ui/ListSkeleton";
 
 const STATUS_COLORS = {
   draft: "bg-muted text-muted-foreground",
-  scheduled: "bg-blue-100 text-blue-700",
-  processing: "bg-yellow-100 text-yellow-700",
-  sent: "bg-green-100 text-green-700",
-  partially_sent: "bg-orange-100 text-orange-700",
-  canceled: "bg-red-100 text-red-700",
-  failed: "bg-red-100 text-red-700",
+  scheduled: "bg-secondary/15 text-secondary",
+  processing: "bg-warning/15 text-warning",
+  sent: "bg-success/15 text-success",
+  partially_sent: "bg-warning/15 text-warning",
+  canceled: "bg-muted text-muted-foreground",
+  failed: "bg-destructive/15 text-destructive",
 };
 
 const STATUS_LABELS = {
@@ -225,18 +227,13 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
 
       {/* Lista */}
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando...</div>
+        <ListSkeleton count={3} />
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Bell className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
-            <p className="text-muted-foreground">Nenhuma campanha encontrada</p>
-            <Button className="mt-4" onClick={() => setShowForm(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Criar primeira campanha
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Bell}
+          title="Nenhuma campanha encontrada"
+          action={<Button onClick={() => setShowForm(true)}><Plus className="w-4 h-4 mr-2" />Criar primeira campanha</Button>}
+        />
       ) : (
         <div className="space-y-3">
           {filtered.map((campaign) => {

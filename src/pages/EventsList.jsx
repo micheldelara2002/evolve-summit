@@ -19,6 +19,9 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import TopAppBar from "@/components/layout/TopAppBar";
+import EmptyState from "@/components/ui/EmptyState";
+import ListSkeleton from "@/components/ui/ListSkeleton";
 
 export default function EventsList() {
   const { user } = useAuth();
@@ -49,40 +52,30 @@ export default function EventsList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-violet-600" />
-            <h1 className="text-xl font-display font-bold">{t("events.title")}</h1>
-          </div>
-        </div>
-        {isAdmin(user) && (
+      <TopAppBar
+        title={t("events.title")}
+        onBack={() => navigate(-1)}
+        actions={isAdmin(user) ? (
           <Link to="/events/new">
             <Button size="sm" className="gap-1.5">
               <Plus className="w-4 h-4" /> {t("events.create")}
             </Button>
           </Link>
-        )}
-      </div>
+        ) : undefined}
+        search={
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder={t("events.search")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        }
+      />
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder={t("events.search")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {isLoading && (
-        <div className="flex justify-center py-12">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+      {isLoading && <ListSkeleton count={4} />}
 
       <div className="grid gap-3">
         <AnimatePresence>
@@ -146,7 +139,7 @@ export default function EventsList() {
         </AnimatePresence>
 
         {!isLoading && filtered.length === 0 && (
-          <p className="text-center text-muted-foreground py-8">{t("events.noEvents")}</p>
+          <EmptyState icon={Calendar} title={t("events.noEvents")} />
         )}
       </div>
 

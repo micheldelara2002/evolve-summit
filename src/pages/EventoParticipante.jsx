@@ -158,7 +158,7 @@ export default function EventoParticipante() {
             <ArrowLeft className="w-4 h-4" /> Meus Eventos
           </Button>
           {isReadOnly && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20">
               <Lock className="w-3 h-3" /> Modo consulta
             </span>
           )}
@@ -215,7 +215,7 @@ export default function EventoParticipante() {
       {/* Tab content */}
       <div className="max-w-4xl mx-auto px-4 py-6">
         {isReadOnly && (
-          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-warning/10 border border-warning/20 text-warning text-sm">
             <Lock className="w-4 h-4 shrink-0" />
             Este evento está encerrado. Visualização somente leitura.
           </div>
