@@ -102,7 +102,7 @@ export default function SectionSwitcher({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{TriggerButton}</PopoverTrigger>
-      <PopoverContent className="w-72 p-3 max-h-[70vh] overflow-y-auto" align="start">
+      <PopoverContent className="w-72 p-3 max-h-[calc(100vh-4rem)] overflow-y-auto" align="start" collisionPadding={16}>
         {renderList()}
       </PopoverContent>
     </Popover>

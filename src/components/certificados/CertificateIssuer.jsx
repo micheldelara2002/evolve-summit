@@ -155,7 +155,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
     }
     if (!person) person = { full_name: participant.full_name };
 
-    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code });
+    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo, template });
   };
 
   // Emissão em lote
@@ -207,6 +207,18 @@ export default function CertificateIssuer({ eventId, event, user }) {
   };
 
   const issuedCount = certificates.length;
+
+  const handleViewCert = async (cert) => {
+    const participant = participants.find((p) => p.id === cert.participant_id);
+    const session = sessions.find((s) => s.id === cert.session_id);
+    let person = null;
+    if (participant?.person_id) {
+      const pList = await base44.entities.Person.filter({ id: participant.person_id });
+      person = pList[0];
+    }
+    if (!person) person = { full_name: participant?.full_name || "—" };
+    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo: cert.tipo, template: cert.template });
+  };
 
   return (
     <div className="space-y-6">
@@ -317,8 +329,12 @@ export default function CertificateIssuer({ eventId, event, user }) {
           const participant = participants.find((p) => p.id === cert.participant_id);
           const session = sessions.find((s) => s.id === cert.session_id);
           return (
-            <div key={cert.id} className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
-              <Award className="w-4 h-4 text-primary shrink-0" />
+            <div
+                key={cert.id}
+                className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm cursor-pointer hover:bg-muted/30 transition-colors"
+                onClick={() => handleViewCert(cert)}
+              >
+                <Award className="w-4 h-4 text-primary shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{participant?.full_name || "—"}</p>
                 <p className="text-xs text-muted-foreground">
@@ -344,8 +360,8 @@ export default function CertificateIssuer({ eventId, event, user }) {
           event={event}
           person={previewData.person}
           session={previewData.session}
-          tipo={tipo}
-          template={template}
+          tipo={previewData.tipo || tipo}
+          template={previewData.template || template}
           hashCode={previewData.hashCode}
           issuedByName={user?.full_name}
           onSendEmail={handleSendEmail}

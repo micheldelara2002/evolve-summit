@@ -11,19 +11,20 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PollsTab from "@/components/palestrante/PollsTab";
+import SectionSwitcher from "@/components/ui/SectionSwitcher";
 
 function formatTime(dt) {
   if (!dt) return "";
   return new Date(dt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-const TABS = [
-  { key: "perguntas", label: "Perguntas", icon: MessageCircleQuestion },
-  { key: "enquetes", label: "Enquetes", icon: Radio },
-  { key: "avaliacoes", label: "Avaliações", icon: Star },
-  { key: "mentorias", label: "Mentorias", icon: BookUser },
-  { key: "leads", label: "Leads", icon: Users },
-  { key: "material", label: "Material", icon: Upload },
+const SESSION_SECTIONS = [
+  { id: "perguntas", label: "Perguntas", icon: MessageCircleQuestion },
+  { id: "enquetes", label: "Enquetes", icon: Radio },
+  { id: "avaliacoes", label: "Avaliações", icon: Star },
+  { id: "mentorias", label: "Mentorias", icon: BookUser },
+  { id: "leads", label: "Leads", icon: Users },
+  { id: "material", label: "Material", icon: Upload },
 ];
 
 // ── Tab: Perguntas ────────────────────────────────────────────────────────────
@@ -413,22 +414,13 @@ export default function SpeakerSessionRow({ session, myParticipant, personId, us
 
       {expanded && (
         <div className="border-t border-border bg-muted/10">
-          {/* Tabs */}
-          <div className="flex gap-0.5 overflow-x-auto px-4 pt-3 pb-0">
-            {TABS.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg whitespace-nowrap transition-colors ${
-                  activeTab === key
-                    ? "bg-background border border-b-0 border-border text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
+          {/* Section switcher */}
+          <div className="px-4 pt-3">
+            <SectionSwitcher
+              sections={SESSION_SECTIONS}
+              activeSection={activeTab}
+              onSectionChange={setActiveTab}
+            />
           </div>
 
           <div className="bg-background border-t border-border px-4 py-4">

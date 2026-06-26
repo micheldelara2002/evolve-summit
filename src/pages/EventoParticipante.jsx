@@ -1,6 +1,6 @@
 /**
  * Experiência principal do participante dentro de um evento.
- * Abas: Programação | Loja | Rede | Conquistas | Ferramentas
+ * Abas: Programação | Loja | Conquistas | Feedback
  * Branding dinâmico por evento.
  * Modo leitura para eventos "finished".
  */
@@ -11,19 +11,16 @@ import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import {
-  Calendar, ShoppingBag, Users, Trophy, Wrench,
-  ArrowLeft, Lock, Star, QrCode, MessageSquare, SmilePlus,
+  Calendar, ShoppingBag, Trophy,
+  ArrowLeft, Lock, Star, SmilePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProgramacaoView from "@/components/participante/ProgramacaoView";
 import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
 import MuralFeedback from "@/components/participante/MuralFeedback";
-import RedeView from "@/components/rede/RedeView";
 import SponsorsStrip from "@/components/participante/SponsorsStrip";
 import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
-import QRScanner from "@/components/participante/QRScanner";
-import { toast } from "sonner";
 import SectionSwitcher from "@/components/ui/SectionSwitcher";
 import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
@@ -31,19 +28,17 @@ import { t } from "@/lib/i18n";
 const SECTIONS = [
   { id: "schedule", labelKey: "eventSections.schedule", icon: Calendar },
   { id: "store",    labelKey: "eventSections.store",    icon: ShoppingBag },
-  { id: "network",  labelKey: "eventSections.network",   icon: Users },
   { id: "badges",   labelKey: "eventSections.badges",    icon: Trophy },
   { id: "feedback", labelKey: "eventSections.feedback", icon: SmilePlus },
-  { id: "tools",    labelKey: "eventSections.tools",     icon: Wrench },
 ];
 
 const LEGACY_TAB_MAP = {
   programacao: "schedule",
   loja: "store",
-  rede: "network",
+  rede: "schedule",
   conquistas: "badges",
   mural: "feedback",
-  ferramentas: "tools",
+  ferramentas: "feedback",
 };
 
 export default function EventoParticipante() {
@@ -252,19 +247,9 @@ export default function EventoParticipante() {
               isReadOnly={isReadOnly}
             />
           )}
-          {activeTab === "network" && (
-            <RedeView
-              eventId={eventId}
-              myPerson={myPerson}
-              myParticipant={myParticipantRecord}
-              user={user}
-              isReadOnly={isReadOnly}
-            />
-          )}
           {activeTab === "badges" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} participantId={myParticipantRecord?.id} />
           )}
-          {activeTab === "tools" && <FerramentasView isReadOnly={isReadOnly} eventId={eventId} onScanPartner={setScanPartnerId} />}
         </motion.div>
       </div>
 
@@ -302,77 +287,6 @@ function PointsChip({ eventId, userEmail, myPerson, primaryColor }) {
     >
       <Star className="w-3.5 h-3.5" />
       <span>{points} pts</span>
-    </div>
-  );
-}
-
-// ── Ferramentas ───────────────────────────────────────────────────────────────
-function FerramentasView({ isReadOnly, eventId, onScanPartner }) {
-  const [scannerOpen, setScannerOpen] = useState(false);
-
-  const extractPartnerId = (raw) => {
-    try {
-      const u = new URL(raw);
-      return u.searchParams.get("partner_scan");
-    } catch {
-      return null;
-    }
-  };
-
-  const handleScan = (raw) => {
-    setScannerOpen(false);
-    const partnerId = extractPartnerId(raw) || raw;
-    if (partnerId && partnerId.trim()) {
-      onScanPartner(partnerId.trim());
-    } else {
-      toast.error("QR Code inválido. Tente novamente.");
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-display font-semibold">Ferramentas</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* QR Code Reader */}
-        <div className="rounded-2xl border border-border bg-card p-5 flex flex-col items-center gap-3 text-center">
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-            <QrCode className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <p className="font-semibold">Ler QR Code</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Escaneie o QR Code de parceiros para registrar visitas ao estande.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isReadOnly}
-            onClick={() => setScannerOpen(true)}
-            className="w-full"
-          >
-            {isReadOnly ? "Modo consulta" : "Escanear QR Code"}
-          </Button>
-        </div>
-
-        {/* Mural de Feedback */}
-        <div className="rounded-2xl border border-border bg-card p-5 flex flex-col items-center gap-3 text-center">
-          <div className="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center">
-            <MessageSquare className="w-6 h-6 text-secondary" />
-          </div>
-          <div>
-            <p className="font-semibold">Mural de Feedback</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Envie feedback sobre sessões, o evento e sua experiência.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" disabled={isReadOnly} className="w-full">
-            {isReadOnly ? "Modo consulta" : "Em breve"}
-          </Button>
-        </div>
-      </div>
-
-      <QRScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
     </div>
   );
 }

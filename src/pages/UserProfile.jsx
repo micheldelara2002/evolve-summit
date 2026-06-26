@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +84,7 @@ function AppearanceSection() {
 
 export default function UserProfile() {
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -183,7 +184,7 @@ export default function UserProfile() {
   const MINI_DASHBOARD_CARDS = [
     { label: "Pontos", icon: Star, onClick: () => setShowPoints(true), active: true },
     { label: "Badges", icon: Award, onClick: () => setShowBadges((v) => !v), active: true },
-    { label: "Conexões", icon: Users, onClick: null, active: false },
+    { label: "Conexões", icon: Users, onClick: () => navigate("/network"), active: true },
     { label: "Ranking", icon: Trophy, onClick: () => setShowRanking(true), active: true },
     { label: "Resgates", icon: ShoppingBag, onClick: () => setShowResgates(true), active: true },
   ];

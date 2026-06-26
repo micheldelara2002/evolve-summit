@@ -4,6 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Mic, Star, BookUser, MessageCircleQuestion, CheckCircle2 } from "lucide-react";
+import { normalizeRating } from "@/lib/rankingUtils";
 
 function KpiCard({ icon: Icon, label, value, color = "text-primary" }) {
   return (
@@ -65,7 +66,7 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
   });
 
   const avgRating = reviews.length
-    ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1)
+    ? normalizeRating(reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1)
     : null;
 
   const totalQ = questions.length;
