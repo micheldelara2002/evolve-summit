@@ -17,6 +17,13 @@ const ptBR = {
     partners: "Parceiros (Global)",
     meusEventos: "Meus Eventos",
   },
+  theme: {
+    title: "Aparência",
+    description: "Escolha como o app deve aparecer",
+    dark: "Escuro",
+    light: "Claro",
+    system: "Seguir sistema",
+  },
   business: {
     totalEvents: "Eventos Totais",
     activeEvents: "Eventos Ativos",

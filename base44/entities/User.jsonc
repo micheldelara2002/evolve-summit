@@ -19,6 +19,16 @@
     "person_id": {
       "type": "string",
       "description": "ID da pessoa vinculada (Person entity)"
+    },
+    "theme_preference": {
+      "type": "string",
+      "enum": [
+        "dark",
+        "light",
+        "system"
+      ],
+      "default": "dark",
+      "description": "Prefer\u00eancia de tema visual do usu\u00e1rio"
     }
   }
 }

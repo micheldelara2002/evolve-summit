@@ -36,6 +36,7 @@ import EventoParticipante from "@/pages/EventoParticipante";
 import PainelPalestrante from "@/pages/PainelPalestrante";
 import PainelParceiro from "@/pages/PainelParceiro";
 import ValidaCertificado from "@/pages/ValidaCertificado";
+import { ThemeProvider } from "@/lib/ThemeContext";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -105,12 +106,14 @@ const AuthenticatedApp = () => {
 function App() {
   return (
     <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <AuthenticatedApp />
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
+  Moon, Sun, Monitor,
 } from "lucide-react";
+import { useTheme } from "@/lib/ThemeContext";
 import BadgesEventCard from "@/components/profile/BadgesEventCard";
 import RankingModal from "@/components/profile/RankingModal";
 import { toast } from "sonner";
@@ -37,6 +39,47 @@ const ROLE_LABELS = {
   member: "Membro",
   partner_manager: "Gestor Parceiro",
 };
+
+const THEME_OPTIONS = [
+  { value: "dark", icon: Moon, label: "Escuro" },
+  { value: "light", icon: Sun, label: "Claro" },
+  { value: "system", icon: Monitor, label: "Sistema" },
+];
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Aparência</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-3">Escolha como o app deve aparecer</p>
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_OPTIONS.map(({ value, icon: Icon, label }) => {
+            const active = theme === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTheme(value)}
+                className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${
+                  active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-card hover:bg-muted/50 text-muted-foreground"
+                }`}
+                aria-pressed={active}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-xs font-medium">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function UserProfile() {
   const { user, refreshUser } = useAuth();
@@ -256,6 +299,9 @@ export default function UserProfile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Aparência */}
+      <AppearanceSection />
 
       {/* Badges por evento */}
       {showBadges && myParticipants.length > 0 && (

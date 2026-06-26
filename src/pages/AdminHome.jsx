@@ -5,27 +5,33 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin, isPartnerManager } from "@/lib/access";
 import { TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
-import { motion } from "framer-motion";
+
+const TONE_CLASSES = {
+  primary: "bg-primary/10 text-primary",
+  secondary: "bg-secondary/15 text-secondary",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  destructive: "bg-destructive/10 text-destructive",
+};
 
 const ADMIN_CARDS = [
-  { key: "meusEventos",     icon: Calendar,   color: "bg-violet-50 text-violet-700 border-violet-200",    iconColor: "text-violet-600",  href: "/meus-eventos" },
-  { key: "eventManagement", icon: Calendar,   color: "bg-indigo-50 text-indigo-700 border-indigo-200",    iconColor: "text-indigo-600",  href: "/events" },
-  { key: "people",          icon: Users,      color: "bg-teal-50 text-teal-700 border-teal-200",          iconColor: "text-teal-600",    href: "/admin/people" },
-  { key: "partners",        icon: Building2,  color: "bg-orange-50 text-orange-700 border-orange-200",    iconColor: "text-orange-600",  href: "/admin/partners" },
-  { key: "notifications",   icon: Bell,       color: "bg-rose-50 text-rose-700 border-rose-200",          iconColor: "text-rose-600",    href: "/notifications" },
-  { key: "business",        icon: TrendingUp, color: "bg-sky-50 text-sky-700 border-sky-200",             iconColor: "text-sky-600",     href: "/business" },
-  { key: "audit",           icon: Shield,     color: "bg-amber-50 text-amber-700 border-amber-200",       iconColor: "text-amber-600",   href: "/audit" },
+  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/meus-eventos" },
+  { key: "eventManagement", icon: Calendar, tone: "secondary", href: "/events" },
+  { key: "people", icon: Users, tone: "success", href: "/admin/people" },
+  { key: "partners", icon: Building2, tone: "warning", href: "/admin/partners" },
+  { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
+  { key: "business", icon: TrendingUp, tone: "primary", href: "/business" },
+  { key: "audit", icon: Shield, tone: "warning", href: "/audit" },
 ];
 
 const USER_CARDS = [
-  { key: "meusEventos", icon: Calendar, color: "bg-violet-50 text-violet-700 border-violet-200", iconColor: "text-violet-600", href: "/meus-eventos" },
+  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/meus-eventos" },
 ];
 
 const SPEAKER_CARD = {
   key: "painelPalestrante",
   icon: Mic,
-  color: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
-  iconColor: "text-fuchsia-600",
+  tone: "secondary",
   href: "/painel-palestrante",
   label: "Painel do Palestrante",
 };
@@ -33,8 +39,7 @@ const SPEAKER_CARD = {
 const PARTNER_CARD = {
   key: "painelParceiro",
   icon: Handshake,
-  color: "bg-orange-50 text-orange-700 border-orange-200",
-  iconColor: "text-orange-600",
+  tone: "warning",
   href: "/painel-parceiro",
   label: "Painel do Parceiro",
 };
@@ -45,7 +50,6 @@ export default function AdminHome() {
   const { user } = useAuth();
   const admin = isAdmin(user);
 
-  // Verificar se o usuário é palestrante em algum evento
   const { data: participantRoles } = useQuery({
     queryKey: ["home-role-check", user?.person_id, user?.email],
     queryFn: async () => {
@@ -63,7 +67,6 @@ export default function AdminHome() {
 
   const baseCards = admin ? ADMIN_CARDS : USER_CARDS;
   let cards = [...baseCards];
-  // Admin sempre vê todos os cards
   if (admin || participantRoles?.isSpeaker) {
     if (!cards.find((c) => c.key === "painelPalestrante")) cards = [...cards, SPEAKER_CARD];
   }
@@ -72,35 +75,33 @@ export default function AdminHome() {
   }
 
   const title = admin ? t("home.title") : "Início";
+  const greeting = admin ? "Bem-vindo de volta" : "Olá";
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-display font-bold">{title}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {user?.full_name} · {ROLE_LABELS[user?.role] ?? "Participante"}
+          {greeting}, <span className="text-foreground font-medium">{user?.full_name}</span> · {ROLE_LABELS[user?.role] ?? "Participante"}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(({ key, icon: IconComp, color, iconColor, href, label }, i) => (
-          <Link key={key} to={href} className="no-underline">
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-              className={`flex items-center gap-4 p-5 rounded-2xl border cursor-pointer hover:shadow-md transition-shadow ${color}`}
-            >
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white/70 shrink-0">
-                <IconComp className={`w-6 h-6 ${iconColor}`} />
+      {/* Quick actions grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {cards.map(({ key, icon: Icon, tone, href, label }) => (
+          <Link key={key} to={href} className="no-underline group">
+            <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-surface transition-all cursor-pointer h-full">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${TONE_CLASSES[tone] || TONE_CLASSES.primary}`}>
+                <Icon className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-display font-semibold text-base">
+                <p className="font-display font-semibold text-sm">
                   {label || t(`home.${key}`) || key}
                 </p>
               </div>
-              <ArrowRight className="w-5 h-5 opacity-60 shrink-0" />
-            </motion.div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
+            </div>
           </Link>
         ))}
       </div>
