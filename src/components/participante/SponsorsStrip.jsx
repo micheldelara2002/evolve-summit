@@ -9,11 +9,11 @@ import { Building2 } from "lucide-react";
 const PLAN_ORDER = ["diamante", "ouro", "prata", "bronze", "apoiador"];
 
 const PLAN_CONFIG = {
-  diamante: { label: "Diamante", logoH: "h-12", textSize: "text-sm" },
-  ouro:     { label: "Ouro",     logoH: "h-9",  textSize: "text-xs" },
-  prata:    { label: "Prata",    logoH: "h-7",  textSize: "text-xs" },
-  bronze:   { label: "Bronze",   logoH: "h-6",  textSize: "text-[11px]" },
-  apoiador: { label: "Apoiador", logoH: "h-5",  textSize: "text-[10px]" },
+  diamante: { label: "Diamante", maxH: "max-h-16", textSize: "text-sm" },
+  ouro:     { label: "Ouro",     maxH: "max-h-14", textSize: "text-xs" },
+  prata:    { label: "Prata",    maxH: "max-h-12", textSize: "text-xs" },
+  bronze:   { label: "Bronze",   maxH: "max-h-10", textSize: "text-[11px]" },
+  apoiador: { label: "Apoiador", maxH: "max-h-8",  textSize: "text-[10px]" },
 };
 
 export default function SponsorsStrip({ eventId }) {
@@ -56,22 +56,22 @@ export default function SponsorsStrip({ eventId }) {
         return (
           <div key={plan} className="space-y-1.5">
             <p className={`${config.textSize} font-medium text-white/50 uppercase tracking-wider`}>{config.label}</p>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-6">
               {eps.map((ep) => {
                 const partner = partnerMap[ep.partner_id];
                 if (!partner) return null;
                 return (
-                  <div key={ep.id} className="flex items-center">
+                  <div key={ep.id} className="flex items-center justify-center bg-white/5 p-3 rounded-xl">
                     {partner.logo_url ? (
                       <img
                         src={partner.logo_url}
                         alt={partner.trade_name}
-                        className={`${config.logoH} w-auto object-contain`}
+                        className={`${config.maxH} w-auto object-contain transition-transform hover:scale-105`}
                         title={partner.trade_name}
                       />
                     ) : (
-                      <div className="flex items-center gap-1 text-white/70">
-                        <Building2 className="w-3.5 h-3.5 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-white/70">
+                        <Building2 className="w-4 h-4 shrink-0" />
                         <span className={`${config.textSize} font-medium`}>{partner.trade_name}</span>
                       </div>
                     )}
