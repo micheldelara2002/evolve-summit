@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import {
-  Calendar, ShoppingBag, Trophy,
+  Calendar, ShoppingBag, Trophy, Briefcase,
   ArrowLeft, Lock, Star, SmilePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import ProgramacaoView from "@/components/participante/ProgramacaoView";
 import LojaView from "@/components/participante/LojaView";
 import ConquistasView from "@/components/participante/ConquistasView";
 import MuralFeedback from "@/components/participante/MuralFeedback";
+import JobBoardView from "@/components/participante/JobBoardView";
 import SponsorsStrip from "@/components/participante/SponsorsStrip";
 import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
 import SectionSwitcher from "@/components/ui/SectionSwitcher";
@@ -29,6 +30,7 @@ const SECTIONS = [
   { id: "schedule", labelKey: "eventSections.schedule", icon: Calendar },
   { id: "store",    labelKey: "eventSections.store",    icon: ShoppingBag },
   { id: "badges",   labelKey: "eventSections.badges",    icon: Trophy },
+  { id: "jobs",     labelKey: "eventSections.jobs",      icon: Briefcase },
   { id: "feedback", labelKey: "eventSections.feedback", icon: SmilePlus },
 ];
 
@@ -38,6 +40,7 @@ const LEGACY_TAB_MAP = {
   rede: "schedule",
   conquistas: "badges",
   mural: "feedback",
+  vagas: "jobs",
   ferramentas: "feedback",
 };
 
@@ -249,6 +252,15 @@ export default function EventoParticipante() {
           )}
           {activeTab === "badges" && (
             <ConquistasView eventId={eventId} userEmail={user?.email} myPerson={myPerson} participantId={myParticipantRecord?.id} />
+          )}
+          {activeTab === "jobs" && (
+            <JobBoardView
+              eventId={eventId}
+              myPerson={myPerson}
+              myParticipant={myParticipantRecord}
+              user={user}
+              isReadOnly={isReadOnly}
+            />
           )}
         </motion.div>
       </div>
