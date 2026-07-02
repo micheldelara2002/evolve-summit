@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Upload, Save, Image as ImageIcon, Move } from "lucide-react";
+import { Upload, Save, Image as ImageIcon, Move, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   FIELD_DEFINITIONS,
@@ -146,6 +146,25 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
 
   const visibleFields = FIELD_DEFINITIONS.filter(f => f.key !== "session_title" || tipo === "palestra");
 
+  const customFields = Object.entries(fieldConfigs)
+    .filter(([key]) => key.startsWith("custom_text_"))
+    .map(([key, cfg]) => ({ key, ...cfg }));
+
+  const addCustomField = () => {
+    const newKey = `custom_text_${Date.now()}`;
+    updateConfig(newKey, { enabled: true, custom_text: "", x: 50, y: 50, font_size: 16, font_color: "#000000", font_family: "Arial, sans-serif", text_align: "center" });
+    setSelectedField(newKey);
+  };
+
+  const removeCustomField = (key) => {
+    setFieldConfigs(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (selectedField === key) setSelectedField(null);
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-6xl w-full max-h-[92vh] overflow-y-auto">
@@ -227,6 +246,43 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
                   </div>
                 );
               })}
+
+              {/* Custom free-text fields */}
+              {customFields.map(({ key, custom_text, ...rest }) => {
+                const cfg = { ...(fieldConfigs[key] || DEFAULT_FIELD_CONFIG) };
+                if (!cfg.enabled) return null;
+                const transform = cfg.text_align === "center"
+                  ? "translate(-50%, -50%)"
+                  : cfg.text_align === "right"
+                  ? "translate(-100%, -50%)"
+                  : "translate(0, -50%)";
+                const isActive = draggingField === key;
+                const isSelected = selectedField === key;
+                return (
+                  <div
+                    key={key}
+                    onMouseDown={(e) => { e.preventDefault(); setDraggingField(key); setSelectedField(key); }}
+                    onClick={() => setSelectedField(key)}
+                    style={{
+                      position: "absolute",
+                      left: `${cfg.x}%`,
+                      top: `${cfg.y}%`,
+                      transform,
+                      fontSize: `${cfg.font_size * PREVIEW_SCALE}px`,
+                      color: cfg.font_color,
+                      fontFamily: cfg.font_family,
+                      textAlign: cfg.text_align,
+                      cursor: "grab",
+                      whiteSpace: "pre-wrap",
+                      zIndex: 10,
+                      outline: isSelected ? "2px solid hsl(var(--primary))" : "none",
+                      outlineOffset: "2px",
+                    }}
+                  >
+                    {custom_text || "Texto livre..."}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Upload button */}
@@ -259,6 +315,10 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
           {/* ── Field config panel ── */}
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
             <h3 className="text-sm font-semibold sticky top-0 bg-card pb-1">Campos / Variáveis</h3>
+            <Button variant="outline" size="sm" className="w-full gap-2 mb-2" onClick={addCustomField}>
+              <Plus className="w-4 h-4" />
+              Adicionar Texto Livre
+            </Button>
             {visibleFields.map(({ key, label, sample }) => {
               const cfg = getConfig(key);
               const isSelected = selectedField === key;
@@ -348,6 +408,123 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
                 </div>
               );
             })}
+
+            {/* Custom free-text fields config */}
+            {customFields.length > 0 && (
+              <div className="space-y-1 pt-2">
+                <h3 className="text-sm font-semibold sticky top-0 bg-card pb-1">Textos Livres</h3>
+                {customFields.map(({ key, custom_text }) => {
+                  const cfg = getConfig(key);
+                  const isSelected = selectedField === key;
+                  return (
+                    <div
+                      key={key}
+                      className={`rounded-xl border p-3 space-y-2 transition-colors cursor-pointer ${
+                        isSelected ? "border-primary bg-primary/5" : "border-border"
+                      }`}
+                      onClick={() => setSelectedField(key)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs font-medium cursor-pointer">Texto personalizado</Label>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={cfg.enabled}
+                            onCheckedChange={(v) => updateConfig(key, { enabled: v })}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive"
+                            onClick={(e) => { e.stopPropagation(); removeCustomField(key); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      {cfg.enabled && (
+                        <div className="space-y-2">
+                          <div className="space-y-0.5">
+                            <Label className="text-[10px] text-muted-foreground">Conteúdo do texto</Label>
+                            <textarea
+                              value={custom_text || ""}
+                              onChange={(e) => updateConfig(key, { custom_text: e.target.value })}
+                              placeholder="Digite o texto que deseja exibir no certificado..."
+                              className="w-full min-h-[60px] rounded-md border border-input bg-transparent px-3 py-1.5 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Tamanho</Label>
+                              <Input
+                                type="number"
+                                min="8"
+                                max="80"
+                                value={cfg.font_size}
+                                onChange={(e) => updateConfig(key, { font_size: parseInt(e.target.value) || 20 })}
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Cor</Label>
+                              <input
+                                type="color"
+                                value={cfg.font_color}
+                                onChange={(e) => updateConfig(key, { font_color: e.target.value })}
+                                className="w-full h-8 rounded-md border border-border cursor-pointer"
+                              />
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Fonte</Label>
+                              <Select value={cfg.font_family} onValueChange={(v) => updateConfig(key, { font_family: v })}>
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {FONT_FAMILIES.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Alinhamento</Label>
+                              <Select value={cfg.text_align} onValueChange={(v) => updateConfig(key, { text_align: v })}>
+                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="left">Esquerda</SelectItem>
+                                  <SelectItem value="center">Centro</SelectItem>
+                                  <SelectItem value="right">Direita</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Posição X (%)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.5"
+                                value={cfg.x}
+                                onChange={(e) => updateConfig(key, { x: parseFloat(e.target.value) || 0 })}
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">Posição Y (%)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.5"
+                                value={cfg.y}
+                                onChange={(e) => updateConfig(key, { y: parseFloat(e.target.value) || 0 })}
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

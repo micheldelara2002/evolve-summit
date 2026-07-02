@@ -76,7 +76,8 @@ export default function CustomCertificatePreview({ event, person, session, tipo,
       )}
       {Object.entries(fieldConfigs).map(([key, config]) => {
         if (!config?.enabled) return null;
-        const value = values[key];
+        const isCustom = key.startsWith("custom_text_");
+        const value = isCustom ? config.custom_text : values[key];
         if (!value) return null;
         return (
           <div
