@@ -2,7 +2,7 @@
  * Módulo de emissão de certificados (individual e em lote).
  * Usado na aba "Certificados" do EventDetail.
  */
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -121,6 +121,12 @@ export default function CertificateIssuer({ eventId, event, user }) {
   const customTemplateId = template.startsWith("custom:") ? template.substring(7) : null;
   const activeCustomTemplate = customTemplateId ? availableCustomTemplates.find((t) => t.id === customTemplateId) : null;
 
+  // Sessões do palestrante selecionado — garante que só se emite certificado de palestra que ele realmente deu
+  const speakerSessions = useMemo(() => {
+    if (tipo !== "palestra" || !selectedParticipantId) return [];
+    return sessions.filter((s) => s.speaker_id === selectedParticipantId);
+  }, [tipo, selectedParticipantId, sessions]);
+
   const speakers = participants.filter((p) => p.role_in_event === "speaker");
   const attendees = participants.filter((p) => p.registration_status !== "cancelled");
 
@@ -130,6 +136,10 @@ export default function CertificateIssuer({ eventId, event, user }) {
         (c) => c.participant_id === participant.id && c.tipo === tipo && (tipo === "participacao" || c.session_id === session?.id)
       );
       if (existing) return existing;
+      // Validação de consistência: palestrante só pode receber certificado de sessão que ele efetivamente palestrou
+      if (tipo === "palestra" && session && session.speaker_id !== participant.id) {
+        throw new Error("Este palestrante não está vinculado a esta sessão.");
+      }
       return base44.entities.Certificate.create({
         event_id: eventId,
         person_id: participant.person_id || "",
@@ -171,14 +181,27 @@ export default function CertificateIssuer({ eventId, event, user }) {
 
   // Emissão em lote
   const handleBatch = async () => {
-    if (tipo === "palestra" && !selectedSessionId) { toast.error("Selecione uma sessão para emissão em lote de palestrante."); return; }
+    if (tipo === "palestra") {
+      if (!selectedSessionId) { toast.error("Selecione uma sessão para emissão em lote de palestrante."); return; }
+      const session = sessions.find((s) => s.id === selectedSessionId);
+      const speaker = speakers.find((p) => p.id === session?.speaker_id);
+      if (!speaker) { toast.error("Nenhum palestrante vinculado a esta sessão."); return; }
+      // Lote de palestra: apenas o palestrante da sessão selecionada
+      const pool = [speaker];
+      setBatchStatus({ total: pool.length, done: 0, errors: 0 });
+      for (const participant of pool) {
+        try {
+          await issueMut.mutateAsync({ participant, session, hashCode: generateHash() });
+          setBatchStatus((prev) => prev ? { ...prev, done: prev.done + 1 } : null);
+        } catch {
+          setBatchStatus((prev) => prev ? { ...prev, errors: prev.errors + 1 } : null);
+        }
+      }
+      toast.success("Emissão em lote concluída!");
+      return;
+    }
 
-    const pool = tipo === "palestra"
-      ? speakers.filter((p) => sessions.find((s) => s.id === selectedSessionId)?.speaker_id === p.id ? [p] : []).concat(
-          // fallback: all speakers
-          speakers
-        ).slice(0, 1)
-      : attendees;
+    const pool = attendees;
 
     if (!pool.length) { toast.warning("Nenhum participante elegível."); return; }
 
@@ -286,7 +309,13 @@ export default function CertificateIssuer({ eventId, event, user }) {
           {/* Participante (individual) */}
           <div className="space-y-1.5">
             <Label>Participante (individual)</Label>
-            <Select value={selectedParticipantId} onValueChange={setSelectedParticipantId}>
+            <Select
+              value={selectedParticipantId}
+              onValueChange={(v) => {
+                setSelectedParticipantId(v);
+                if (tipo === "palestra") setSelectedSessionId("");
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
               <SelectContent>
                 {(tipo === "palestra" ? speakers : attendees).map((p) => (
@@ -296,16 +325,28 @@ export default function CertificateIssuer({ eventId, event, user }) {
             </Select>
           </div>
 
-          {/* Sessão (para palestra) */}
+          {/* Sessão (para palestra) — filtrada pelo palestrante selecionado */}
           {tipo === "palestra" && (
             <div className="space-y-1.5">
               <Label>Sessão/Palestra</Label>
-              <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <Select
+                value={selectedSessionId}
+                onValueChange={setSelectedSessionId}
+                disabled={!selectedParticipantId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={selectedParticipantId ? "Selecione a palestra..." : "Escolha o palestrante primeiro"} />
+                </SelectTrigger>
                 <SelectContent>
-                  {sessions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-                  ))}
+                  {speakerSessions.length > 0 ? (
+                    speakerSessions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      {selectedParticipantId ? "Este palestrante não possui sessões vinculadas." : "Selecione um palestrante."}
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
