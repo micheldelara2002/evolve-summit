@@ -165,7 +165,10 @@ function MinimalistaTemplate({ event, person, session, tipo, hashCode, issuedByN
 }
 
 // ── Exported component ────────────────────────────────────────────────────────
-export default function CertificatePreview({ template = "classico", ...props }) {
+import CustomCertificatePreview from "./CustomCertificatePreview";
+
+export default function CertificatePreview({ template = "classico", customTemplate, ...props }) {
+  if (customTemplate) return <CustomCertificatePreview customTemplate={customTemplate} {...props} />;
   if (template === "moderno") return <ModernoTemplate {...props} />;
   if (template === "minimalista") return <MinimalistaTemplate {...props} />;
   return <ClassicoTemplate {...props} />;

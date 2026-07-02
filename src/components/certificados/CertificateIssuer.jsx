@@ -37,7 +37,7 @@ async function downloadCertPDF(elementId, filename) {
 }
 
 // ── Preview + download modal ──────────────────────────────────────────────────
-function CertPreviewModal({ open, onClose, event, person, session, tipo, template, hashCode, issuedByName, onSendEmail, sendingEmail }) {
+function CertPreviewModal({ open, onClose, event, person, session, tipo, template, hashCode, issuedByName, onSendEmail, sendingEmail, customTemplate }) {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownload = async () => {
@@ -59,6 +59,7 @@ function CertPreviewModal({ open, onClose, event, person, session, tipo, templat
           <div className="origin-top-left" style={{ transform: "scale(0.75)", transformOrigin: "top left", width: "794px", marginBottom: "-140px" }}>
             <CertificatePreview
               template={template}
+              customTemplate={customTemplate}
               event={event}
               person={person}
               session={session}
@@ -111,6 +112,15 @@ export default function CertificateIssuer({ eventId, event, user }) {
     queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  const { data: customTemplates = [] } = useQuery({
+    queryKey: ["cert-templates", eventId],
+    queryFn: () => base44.entities.CertificateTemplate.filter({ event_id: eventId, is_deleted: false, is_active: true }),
+  });
+
+  const availableCustomTemplates = customTemplates.filter((t) => t.tipo === tipo);
+  const customTemplateId = template.startsWith("custom:") ? template.substring(7) : null;
+  const activeCustomTemplate = customTemplateId ? availableCustomTemplates.find((t) => t.id === customTemplateId) : null;
+
   const speakers = participants.filter((p) => p.role_in_event === "speaker");
   const attendees = participants.filter((p) => p.registration_status !== "cancelled");
 
@@ -126,7 +136,8 @@ export default function CertificateIssuer({ eventId, event, user }) {
         participant_id: participant.id,
         session_id: session?.id || undefined,
         tipo,
-        template,
+        template: activeCustomTemplate ? "classico" : template,
+        custom_template_id: activeCustomTemplate?.id || undefined,
         hash_code: hashCode || generateHash(),
         issued_by_user_id: user?.id,
         issued_by_name: user?.full_name,
@@ -155,7 +166,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
     }
     if (!person) person = { full_name: participant.full_name };
 
-    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo, template });
+    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo, template, customTemplate: activeCustomTemplate });
   };
 
   // Emissão em lote
@@ -217,7 +228,8 @@ export default function CertificateIssuer({ eventId, event, user }) {
       person = pList[0];
     }
     if (!person) person = { full_name: participant?.full_name || "—" };
-    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo: cert.tipo, template: cert.template });
+    const customT = cert.custom_template_id ? customTemplates.find((t) => t.id === cert.custom_template_id) : null;
+    setPreviewData({ cert, participant, person, session, hashCode: cert.hash_code, tipo: cert.tipo, template: cert.template, customTemplate: customT });
   };
 
   return (
@@ -260,6 +272,13 @@ export default function CertificateIssuer({ eventId, event, user }) {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TEMPLATES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                {availableCustomTemplates.length > 0 && (
+                  availableCustomTemplates.map((t) => (
+                    <SelectItem key={t.id} value={`custom:${t.id}`}>
+                      📎 {t.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -338,7 +357,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{participant?.full_name || "—"}</p>
                 <p className="text-xs text-muted-foreground">
-                  {cert.tipo === "palestra" ? `Palestra: ${session?.title || "—"}` : "Participação"} · {cert.template}
+                  {cert.tipo === "palestra" ? `Palestra: ${session?.title || "—"}` : "Participação"} · {cert.custom_template_id ? (customTemplates.find((t) => t.id === cert.custom_template_id)?.name || "Personalizado") : cert.template}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -362,6 +381,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
           session={previewData.session}
           tipo={previewData.tipo || tipo}
           template={previewData.template || template}
+          customTemplate={previewData.customTemplate || activeCustomTemplate}
           hashCode={previewData.hashCode}
           issuedByName={user?.full_name}
           onSendEmail={handleSendEmail}

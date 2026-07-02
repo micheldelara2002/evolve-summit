@@ -1,0 +1,46 @@
+{
+  "name": "CertificateTemplate",
+  "type": "object",
+  "description": "Templates personalizados de certificado enviados pelo gerente do evento. Isolado por evento \u2014 um evento n\u00e3o enxerga templates de outro.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (chave de isolamento)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome identificador do template"
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "participacao",
+        "palestra"
+      ],
+      "description": "Tipo de certificado: participacao ou palestra"
+    },
+    "background_url": {
+      "type": "string",
+      "description": "URL da imagem de fundo do certificado (PNG, JPG, etc.)"
+    },
+    "field_configs": {
+      "type": "string",
+      "description": "JSON com configura\u00e7\u00f5es de posicionamento dos campos din\u00e2micos"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se o template est\u00e1 ativo para uso"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "name",
+    "tipo",
+    "background_url"
+  ]
+}

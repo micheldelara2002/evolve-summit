@@ -4,6 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import CertificateIssuer from "@/components/certificados/CertificateIssuer";
+import TemplateManager from "@/components/certificados/TemplateManager";
 
 export default function CertificadosTab({ eventId, user }) {
   const { data: event } = useQuery({
@@ -16,5 +17,10 @@ export default function CertificadosTab({ eventId, user }) {
 
   if (!event) return null;
 
-  return <CertificateIssuer eventId={eventId} event={event} user={user} />;
+  return (
+    <div className="space-y-6">
+      <TemplateManager eventId={eventId} event={event} />
+      <CertificateIssuer eventId={eventId} event={event} user={user} />
+    </div>
+  );
 }
