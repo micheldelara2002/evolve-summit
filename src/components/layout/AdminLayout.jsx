@@ -39,9 +39,11 @@ export default function AdminLayout() {
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between px-4 h-14">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center glow-primary-sm">
-              <span className="text-primary-foreground font-display font-bold text-sm">ES</span>
-            </div>
+            <img
+              src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/bec53a245_2f8e3660c_logo.png"
+              alt="Logo"
+              className="w-8 h-8 object-contain"
+            />
             <span className="font-display font-bold text-lg hidden sm:block">{t("app.name")}</span>
           </Link>
 
