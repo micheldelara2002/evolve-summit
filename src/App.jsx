@@ -54,7 +54,7 @@ const AuthenticatedApp = () => {
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <img
-            src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/bec53a245_2f8e3660c_logo.png"
+            src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/93082474a_logoevolvesummittransparente.png"
             alt="Logo"
             className="w-10 h-10 object-contain"
           />

@@ -40,7 +40,7 @@ export default function AdminLayout() {
         <div className="flex items-center justify-between px-4 h-14">
           <Link to="/" className="flex items-center gap-2">
             <img
-              src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/bec53a245_2f8e3660c_logo.png"
+              src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/93082474a_logoevolvesummittransparente.png"
               alt="Logo"
               className="w-8 h-8 object-contain"
             />
