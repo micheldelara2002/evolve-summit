@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { sanitizeText } from "@/utils/sanitize";
 import { toast } from "sonner";
 
 const FIELDS = [
@@ -51,12 +52,16 @@ export default function PersonFormDialog({ person, onClose, onSaved }) {
     }
     setSaving(true);
     try {
+      // Sanitize all string fields before saving
+      const cleanForm = Object.fromEntries(
+        Object.entries(form).map(([k, v]) => [k, typeof v === "string" ? sanitizeText(v) : v])
+      );
       let saved;
       if (person?.id) {
-        await base44.entities.Person.update(person.id, form);
-        saved = { ...person, ...form };
+        await base44.entities.Person.update(person.id, cleanForm);
+        saved = { ...person, ...cleanForm };
       } else {
-        saved = await base44.entities.Person.create(form);
+        saved = await base44.entities.Person.create(cleanForm);
       }
       onSaved(saved);
     } catch (err) {

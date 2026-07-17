@@ -13,6 +13,7 @@ import { ArrowLeft, Plus, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
 import { processAction } from "@/lib/scoringEngine";
 import { calcCompleteness } from "@/lib/profileCompleteness";
+import { sanitizeText } from "@/utils/sanitize";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -118,7 +119,7 @@ export default function UserProfileEdit() {
     try {
       const payload = {};
       Object.keys(form).forEach((key) => {
-        payload[key] = typeof form[key] === "string" ? form[key].trim() : (form[key] ?? "");
+        payload[key] = typeof form[key] === "string" ? sanitizeText(form[key].trim()) : (form[key] ?? "");
       });
 
       let personId = person?.id;
@@ -189,7 +190,7 @@ export default function UserProfileEdit() {
       }
       const payload = {};
       Object.keys(form).forEach((key) => {
-        payload[key] = typeof form[key] === "string" ? form[key].trim() : (form[key] ?? "");
+        payload[key] = typeof form[key] === "string" ? sanitizeText(form[key].trim()) : (form[key] ?? "");
       });
       const created = await base44.entities.Person.create(payload);
       personId = created.id;

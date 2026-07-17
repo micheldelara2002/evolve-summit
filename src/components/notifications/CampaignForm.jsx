@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Send } from "lucide-react";
 import AudienceSelector from "./AudienceSelector";
 import { dispatchCampaign } from "@/lib/notificationService";
+import { sanitizeText } from "@/utils/sanitize";
 import { toast } from "sonner";
 
 export default function CampaignForm({ campaign, scopeType = "global", scopeEventId = null, onClose, currentUser, partnerId, isReadOnly }) {
@@ -69,7 +70,12 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
   });
 
   const buildPayload = (status) => ({
-    ...form,
+    title: sanitizeText(form.title),
+    message: sanitizeText(form.message),
+    type: form.type,
+    priority: form.priority,
+    cta_label: form.cta_label ? sanitizeText(form.cta_label) : "",
+    cta_target: form.cta_target ? sanitizeText(form.cta_target) : "",
     scope_type: scopeType,
     scope_event_id: scopeEventId || undefined,
     sender_user_id: currentUser?.id,

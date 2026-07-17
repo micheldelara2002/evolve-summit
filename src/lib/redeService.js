@@ -4,6 +4,7 @@
  */
 import { base44 } from "@/api/base44Client";
 import { processAction } from "@/lib/scoringEngine";
+import { sanitizeText } from "@/utils/sanitize";
 
 /** Ordena dois IDs para garantir unicidade do par. */
 export function sortPersonIds(a, b) {
@@ -96,12 +97,14 @@ export async function sendConnectionRequest({ eventId, requesterPerson, receiver
   }
 
   // 3. Criar pedido
+  const safeReqName = sanitizeText(requesterPerson.full_name);
+  const safeRcvName = sanitizeText(receiverPerson.full_name);
   await base44.entities.ConnectionRequest.create({
     event_id: eventId,
     requester_person_id: requesterPerson.id,
-    requester_name: requesterPerson.full_name,
+    requester_name: safeReqName,
     receiver_person_id: receiverPerson.id,
-    receiver_name: receiverPerson.full_name,
+    receiver_name: safeRcvName,
     status: "pending",
   });
 
@@ -110,7 +113,7 @@ export async function sendConnectionRequest({ eventId, requesterPerson, receiver
     eventId,
     recipientPerson: receiverPerson,
     title: "Novo pedido de conexão",
-    message: `${requesterPerson.full_name} quer se conectar com você.`,
+    message: `${safeReqName} quer se conectar com você.`,
     ctaLabel: "Ver pedidos",
     ctaTarget: `/evento/${eventId}`,
   });
@@ -125,12 +128,14 @@ async function acceptConnectionRequestInternal({ request, eventId, accepterPerso
 
   // Criar conexão (IDs ordenados)
   const [aId, bId] = sortPersonIds(request.requester_person_id, accepterPerson.id);
+  const safeAccepterName = sanitizeText(accepterPerson.full_name);
+  const safeReqName = sanitizeText(request.requester_name);
   await base44.entities.Connection.create({
     event_id: eventId,
     person_a_id: aId,
     person_b_id: bId,
-    person_a_name: aId === request.requester_person_id ? request.requester_name : accepterPerson.full_name,
-    person_b_name: bId === request.requester_person_id ? request.requester_name : accepterPerson.full_name,
+    person_a_name: aId === request.requester_person_id ? safeReqName : safeAccepterName,
+    person_b_name: bId === request.requester_person_id ? safeReqName : safeAccepterName,
   });
 
   // Disparar pontuação para ambos (dedup por par+evento no scoringEngine)
@@ -150,7 +155,7 @@ async function acceptConnectionRequestInternal({ request, eventId, accepterPerso
       eventId,
       recipientPerson: requesterPerson,
       title: "Conexão aceita!",
-      message: `${accepterPerson.full_name} aceitou seu pedido de conexão.`,
+      message: `${safeAccepterName} aceitou seu pedido de conexão.`,
       ctaLabel: "Iniciar conversa",
       ctaTarget: `/evento/${eventId}`,
     });
@@ -179,27 +184,31 @@ export async function getOrCreateThread({ eventId, myPersonId, myPersonName, oth
     event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
   });
   if (existing?.length > 0) return existing[0];
+  const safeMyName = sanitizeText(myPersonName);
+  const safeOtherName = sanitizeText(otherPersonName);
   return await base44.entities.ChatThread.create({
     event_id: eventId,
     person_a_id: aId,
     person_b_id: bId,
-    person_a_name: aId === myPersonId ? myPersonName : otherPersonName,
-    person_b_name: bId === myPersonId ? myPersonName : otherPersonName,
+    person_a_name: aId === myPersonId ? safeMyName : safeOtherName,
+    person_b_name: bId === myPersonId ? safeMyName : safeOtherName,
   });
 }
 
 /** Envia mensagem, atualiza preview da thread e notifica o destinatário (não o remetente). */
 export async function sendMessage({ threadId, eventId, senderPersonId, senderName, messageText }) {
+  const safeText = sanitizeText(messageText);
+  const safeSenderName = sanitizeText(senderName);
   const msg = await base44.entities.ChatMessage.create({
     thread_id: threadId,
     event_id: eventId,
     sender_person_id: senderPersonId,
-    sender_name: senderName,
-    message_text: messageText,
+    sender_name: safeSenderName,
+    message_text: safeText,
   });
   await base44.entities.ChatThread.update(threadId, {
     last_message_at: new Date().toISOString(),
-    last_message_preview: messageText.substring(0, 100),
+    last_message_preview: safeText.substring(0, 100),
   });
 
   // Notificar o destinatário (o outro lado da thread), nunca o remetente
@@ -214,8 +223,8 @@ export async function sendMessage({ threadId, eventId, senderPersonId, senderNam
           await sendDirectNotification({
             eventId,
             recipientPerson: otherPerson,
-            title: `Nova mensagem de ${senderName}`,
-            message: messageText.substring(0, 100),
+            title: `Nova mensagem de ${safeSenderName}`,
+            message: safeText.substring(0, 100),
             ctaLabel: "Ver conversa",
             ctaTarget: `/evento/${eventId}`,
           });

@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, MoreVertical, Pencil, Trash2, ToggleLeft, ToggleRight, ImageIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeText } from "@/utils/sanitize";
 
 const PAGE_SIZE = 10;
 
@@ -130,8 +131,8 @@ function StoreItemForm({ item, existingCodes, onSubmit, onClose, isSubmitting })
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     onSubmit({
-      codigo_item: form.codigo_item.trim(),
-      descricao_item: form.descricao_item.trim(),
+      codigo_item: sanitizeText(form.codigo_item.trim()),
+      descricao_item: sanitizeText(form.descricao_item.trim()),
       imagem_url: form.imagem_url || null,
       pontos_necessarios: Number(form.pontos_necessarios),
       estoque_total: Number(form.estoque_total),

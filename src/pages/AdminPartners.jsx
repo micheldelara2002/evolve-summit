@@ -20,6 +20,7 @@ import {
   UserCheck, UserX, Star, Trash2, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeText } from "@/utils/sanitize";
 
 // ────────────────────────────────────────────────────────────────
 // Enums fixos
@@ -108,15 +109,15 @@ function PartnerFormDialog({ partner, onClose, onSaved, allPartners = [] }) {
     setSaving(true);
     try {
       const payload = {
-        trade_name: form.trade_name.trim(),
-        legal_name: form.legal_name.trim(),
+        trade_name: sanitizeText(form.trade_name.trim()),
+        legal_name: sanitizeText(form.legal_name.trim()),
         legal_country_code: form.legal_country_code,
         legal_document_type: form.legal_document_type,
         legal_document_number: form.legal_document_number.trim(),
         contact_email: form.contact_email?.trim() || "",
         contact_phone: form.contact_phone?.trim() || "",
         website: form.website?.trim() || "",
-        about: form.about?.trim() || "",
+        about: sanitizeText(form.about?.trim() || ""),
         logo_url: form.logo_url || "",
         is_active: form.is_active ?? true,
       };

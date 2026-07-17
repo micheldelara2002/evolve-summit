@@ -19,6 +19,7 @@ import {
   UserCheck, BookOpen, Mail, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeText } from "@/utils/sanitize";
 import LivePollCard from "@/components/participante/LivePollCard";
 
 function formatTime(dt) {
@@ -251,7 +252,7 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
       session_id: session.id,
       participant_id: participant?.id,
       person_id: participant?.person_id,
-      question: text.trim(),
+      question: sanitizeText(text.trim()),
       visibility,
     }),
     onSuccess: async () => {
@@ -280,8 +281,9 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
   const replyMut = useMutation({
     mutationFn: async ({ question, replyText }) => {
       const existing = answerMap[question.id];
+      const safeReply = sanitizeText(replyText);
       if (existing) {
-        await base44.entities.SessionAnswer.update(existing.id, { answer_text: replyText });
+        await base44.entities.SessionAnswer.update(existing.id, { answer_text: safeReply });
       } else {
         await base44.entities.SessionAnswer.create({
           question_id: question.id,
@@ -289,7 +291,7 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
           event_id: session.event_id,
           speaker_participant_id: participant?.id,
           speaker_person_id: participant?.person_id,
-          answer_text: replyText,
+          answer_text: safeReply,
         });
       }
       await base44.entities.SessionQuestion.update(question.id, { is_answered: true });
@@ -426,10 +428,11 @@ function RatingSection({ session, participant, isReadOnly }) {
 
   const submitMut = useMutation({
     mutationFn: () => {
+      const safeComment = comment.trim() ? sanitizeText(comment.trim()) : undefined;
       if (myReview) {
         return base44.entities.SessionReview.update(myReview.id, {
           rating,
-          comment: comment.trim() || undefined,
+          comment: safeComment,
         });
       }
       return base44.entities.SessionReview.create({
@@ -437,7 +440,7 @@ function RatingSection({ session, participant, isReadOnly }) {
         session_id: session.id,
         participant_id: participant?.id,
         rating,
-        comment: comment.trim() || undefined,
+        comment: safeComment,
       });
     },
     onSuccess: async () => {

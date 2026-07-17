@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { base44 } from "@/api/base44Client";
+import { sanitizeText } from "@/utils/sanitize";
 import { Upload, X } from "lucide-react";
 
 const STATUSES = ["draft", "active", "finished", "cancelled"];
@@ -58,6 +59,10 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
     const data = { ...form };
     if (data.max_participants) data.max_participants = Number(data.max_participants);
     else delete data.max_participants;
+    // Sanitize free-text fields
+    ["name", "description", "location", "manager_name"].forEach((k) => {
+      if (typeof data[k] === "string") data[k] = sanitizeText(data[k]);
+    });
     onSubmit(data);
   };
 

@@ -9,6 +9,7 @@ import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Info } from "luc
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { sanitizeText } from "@/utils/sanitize";
 
 function normalizeCpf(cpf) {
   return (cpf || "").replace(/\D/g, "");
@@ -143,17 +144,17 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
           line: lineNum,
           payload: {
             event_id: eventId,
-            full_name: name,
+            full_name: sanitizeText(name),
             email,
             cpf,
-            phone,
-            company: (row.empresa || "").trim(),
-            job_title: (row.cargo || "").trim(),
-            linkedin: (row.linkedin || "").trim(),
-            instagram: (row.instagram || "").trim(),
-            youtube: (row.youtube || "").trim(),
-            website: (row.site || "").trim(),
-            bio: (row.sobre_mim || "").trim(),
+            phone: sanitizeText(phone),
+            company: sanitizeText((row.empresa || "").trim()),
+            job_title: sanitizeText((row.cargo || "").trim()),
+            linkedin: sanitizeText((row.linkedin || "").trim()),
+            instagram: sanitizeText((row.instagram || "").trim()),
+            youtube: sanitizeText((row.youtube || "").trim()),
+            website: sanitizeText((row.site || "").trim()),
+            bio: sanitizeText((row.sobre_mim || "").trim()),
             role_in_event: "attendee",
             registration_status: "registered",
             is_deleted: false,
@@ -207,17 +208,17 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         try {
           await base44.entities.Participant.create({
             event_id: eventId,
-            full_name: gp.full_name,
+            full_name: sanitizeText(gp.full_name),
             email: gp.email,
             cpf: gp.cpf,
-            phone: gp.phone,
-            company: gp.company || "",
-            job_title: gp.job_title || "",
-            linkedin: gp.linkedin || "",
-            instagram: gp.instagram || "",
-            youtube: gp.youtube || "",
-            website: gp.website || "",
-            bio: gp.bio || "",
+            phone: sanitizeText(gp.phone),
+            company: sanitizeText(gp.company || ""),
+            job_title: sanitizeText(gp.job_title || ""),
+            linkedin: sanitizeText(gp.linkedin || ""),
+            instagram: sanitizeText(gp.instagram || ""),
+            youtube: sanitizeText(gp.youtube || ""),
+            website: sanitizeText(gp.website || ""),
+            bio: sanitizeText(gp.bio || ""),
             role_in_event: "attendee",
             registration_status: "registered",
             is_deleted: false,

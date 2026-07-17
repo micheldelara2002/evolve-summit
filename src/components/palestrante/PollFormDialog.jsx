@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2 } from "lucide-react";
+import { sanitizeText } from "@/utils/sanitize";
 
 const ANSWER_TYPES = [
   { value: "yes_no", label: "Sim / Não" },
@@ -66,10 +67,10 @@ export default function PollFormDialog({ open, onClose, onSubmit, editing }) {
   const handleSubmit = () => {
     const cleanOptions = isYesNo
       ? ["Sim", "Não"]
-      : options.map((o) => o.trim()).filter(Boolean);
+      : options.map((o) => sanitizeText(o.trim())).filter(Boolean);
     if (cleanOptions.length < 2) return;
     onSubmit({
-      question: question.trim(),
+      question: sanitizeText(question.trim()),
       answer_type: answerType,
       options: cleanOptions,
       max_options: answerType === "multiple_choice" ? Math.min(maxOptions, cleanOptions.length) : 1,

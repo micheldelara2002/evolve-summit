@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { sanitizeText } from "@/utils/sanitize";
 
 // Radix Select does not accept empty string as value — use this sentinel instead
 const NONE_VALUE = "__none__";
@@ -37,6 +38,8 @@ export default function EntityFormDialog({ open, onOpenChange, title, fields, it
     });
     // Remove null/undefined fields so optional fields don't erase existing values
     Object.keys(data).forEach((k) => { if (data[k] === null || data[k] === undefined) delete data[k]; });
+    // Sanitize all string fields (defense-in-depth against XSS)
+    Object.keys(data).forEach((k) => { if (typeof data[k] === "string") data[k] = sanitizeText(data[k]); });
     onSubmit(data);
   };
 

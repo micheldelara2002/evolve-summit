@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PersonAvatar from "./PersonAvatar";
 import { sendMessage } from "@/lib/redeService";
+import { sanitizeText } from "@/utils/sanitize";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -59,7 +60,7 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
         eventId,
         senderPersonId: myPerson.id,
         senderName: myPerson.full_name,
-        messageText: trimmed,
+        messageText: sanitizeText(trimmed),
       });
       setText("");
       queryClient.invalidateQueries({ queryKey: ["chat_messages", threadId] });
