@@ -11,11 +11,6 @@ export function canManageEvent(user, eventId) {
   return false;
 }
 
-export function getEventFilter(user) {
-  if (isAdmin(user)) return {};
-  return {};
-}
-
 export function filterEventsByAccess(events, user) {
   if (isAdmin(user)) return events;
   const managedIds = user?.managed_event_ids || [];
