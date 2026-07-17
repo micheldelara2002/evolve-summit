@@ -53,10 +53,10 @@ export default function AdminHome() {
   const { data: participantRoles } = useQuery({
     queryKey: ["home-role-check", user?.person_id, user?.email],
     queryFn: async () => {
-      const all = await base44.entities.Participant.filter({ is_deleted: false });
-      const mine = all.filter(
-        (p) => p.person_id === user?.person_id || p.email === user?.email
-      );
+      const mine = await base44.entities.Participant.filter({
+        email: user?.email,
+        is_deleted: false,
+      });
       return {
         isSpeaker: mine.some((p) => p.role_in_event === "speaker"),
         isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep"),

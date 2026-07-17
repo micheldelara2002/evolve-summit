@@ -15,14 +15,25 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
   const { data: allRequests = [], isLoading } = useQuery({
     queryKey: ["rede_all_requests", eventId, myPerson.id],
     queryFn: async () => {
-      const all = await base44.entities.ConnectionRequest.filter({ event_id: eventId, is_deleted: false });
-      return all.filter((r) => r.requester_person_id === myPerson.id || r.receiver_person_id === myPerson.id);
+      const [sent, received] = await Promise.all([
+        base44.entities.ConnectionRequest.filter({ event_id: eventId, requester_person_id: myPerson.id, is_deleted: false }),
+        base44.entities.ConnectionRequest.filter({ event_id: eventId, receiver_person_id: myPerson.id, is_deleted: false }),
+      ]);
+      return [...sent, ...received];
     },
   });
 
+  // Load only Persons who appear in requests
+  const requestPersonIds = [...new Set(
+    allRequests.flatMap((r) => [r.requester_person_id, r.receiver_person_id]).filter(Boolean)
+  )];
   const { data: persons = [] } = useQuery({
-    queryKey: ["rede_persons"],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryKey: ["rede_persons_by_requests", eventId, requestPersonIds.join(",")],
+    queryFn: async () => {
+      if (!requestPersonIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: requestPersonIds }, is_active: true });
+    },
+    enabled: requestPersonIds.length > 0,
   });
   const personMap = new Map(persons.map((p) => [p.id, p]));
 
@@ -59,7 +70,7 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
   const handleRefuse = async (request) => {
     setActioning(request.id, true);
     try {
-      await refuseConnectionRequest({ requestId: request.id });
+      await refuseConnectionRequest({ requestId: request.id, myPersonId: myPerson.id });
       toast.info("Pedido recusado.");
       invalidate();
     } catch (e) {
@@ -72,7 +83,7 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
   const handleCancel = async (request) => {
     setActioning(request.id, true);
     try {
-      await cancelConnectionRequest({ requestId: request.id });
+      await cancelConnectionRequest({ requestId: request.id, myPersonId: myPerson.id });
       toast.info("Pedido cancelado.");
       invalidate();
     } catch (e) {

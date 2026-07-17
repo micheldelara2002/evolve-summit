@@ -77,7 +77,7 @@ export default function MeusEventos() {
   // 1. Buscar Person vinculada ao user (não-admin)
   const { data: persons = [] } = useQuery({
     queryKey: ["my_person", user?.id],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryFn: () => base44.entities.Person.filter({ contact_email: user?.email, is_active: true }),
     enabled: !!user && !admin,
   });
 

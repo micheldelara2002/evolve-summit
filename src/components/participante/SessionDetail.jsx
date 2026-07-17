@@ -579,6 +579,15 @@ export default function SessionDetail({ session, track, room, participant, isRea
           queryClient.invalidateQueries({ queryKey: ["session-attendance", session.id, participantId] });
           return;
         }
+        // Verificar capacidade da sessão (null/0 = sem limite, ex: eventos online)
+        if (session.capacity && session.capacity > 0) {
+          const allPresent = await base44.entities.SessionAttendance.filter({
+            session_id: session.id, is_present: true,
+          });
+          if (allPresent.length >= session.capacity) {
+            throw new Error("A sessão está lotada. Não é possível registrar presença.");
+          }
+        }
         await base44.entities.SessionAttendance.create({
           event_id: session.event_id,
           session_id: session.id,

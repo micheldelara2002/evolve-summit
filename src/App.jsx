@@ -17,28 +17,30 @@ import ResetPassword from "@/pages/ResetPassword";
 // Layout
 import AdminLayout from "@/components/layout/AdminLayout";
 
-// Pages
-import AdminHome from "@/pages/AdminHome";
-import BusinessDashboard from "@/pages/BusinessDashboard";
-import EventsList from "@/pages/EventsList";
-import EventCreate from "@/pages/EventCreate";
-import EventEdit from "@/pages/EventEdit";
-import EventDetail from "@/pages/EventDetail";
-import AuditLog from "@/pages/AuditLog";
-import AdminNotifications from "@/pages/AdminNotifications";
-import NotificationMetrics from "@/pages/NotificationMetrics";
-import AdminPeoplePlaceholder from "@/pages/AdminPeoplePlaceholder";
-import AdminPartners from "@/pages/AdminPartners";
-import UserProfile from "@/pages/UserProfile";
-import UserProfileEdit from "@/pages/UserProfileEdit";
-import MeusEventos from "@/pages/MeusEventos";
-import EventoParticipante from "@/pages/EventoParticipante";
-import PainelPalestrante from "@/pages/PainelPalestrante";
-import PainelParceiro from "@/pages/PainelParceiro";
-import ValidaCertificado from "@/pages/ValidaCertificado";
-import Rede from "@/pages/Rede";
-import QRScan from "@/pages/QRScan";
+import { lazy, Suspense } from "react";
 import { ThemeProvider } from "@/lib/ThemeContext";
+
+// Pages — lazy loaded for smaller initial bundle
+const AdminHome = lazy(() => import("@/pages/AdminHome"));
+const BusinessDashboard = lazy(() => import("@/pages/BusinessDashboard"));
+const EventsList = lazy(() => import("@/pages/EventsList"));
+const EventCreate = lazy(() => import("@/pages/EventCreate"));
+const EventEdit = lazy(() => import("@/pages/EventEdit"));
+const EventDetail = lazy(() => import("@/pages/EventDetail"));
+const AuditLog = lazy(() => import("@/pages/AuditLog"));
+const AdminNotifications = lazy(() => import("@/pages/AdminNotifications"));
+const NotificationMetrics = lazy(() => import("@/pages/NotificationMetrics"));
+const AdminPeoplePlaceholder = lazy(() => import("@/pages/AdminPeoplePlaceholder"));
+const AdminPartners = lazy(() => import("@/pages/AdminPartners"));
+const UserProfile = lazy(() => import("@/pages/UserProfile"));
+const UserProfileEdit = lazy(() => import("@/pages/UserProfileEdit"));
+const MeusEventos = lazy(() => import("@/pages/MeusEventos"));
+const EventoParticipante = lazy(() => import("@/pages/EventoParticipante"));
+const PainelPalestrante = lazy(() => import("@/pages/PainelPalestrante"));
+const PainelParceiro = lazy(() => import("@/pages/PainelParceiro"));
+const ValidaCertificado = lazy(() => import("@/pages/ValidaCertificado"));
+const Rede = lazy(() => import("@/pages/Rede"));
+const QRScan = lazy(() => import("@/pages/QRScan"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -74,6 +76,7 @@ const AuthenticatedApp = () => {
   }
 
   return (
+    <Suspense fallback={<div className="flex justify-center py-24"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -122,6 +125,7 @@ const AuthenticatedApp = () => {
       <Route path="/valida-certificado" element={<Navigate to="/validate-certificate" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </Suspense>
   );
 };
 

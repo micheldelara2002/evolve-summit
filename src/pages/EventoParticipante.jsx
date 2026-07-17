@@ -26,6 +26,10 @@ import SectionSwitcher from "@/components/ui/SectionSwitcher";
 import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
 
+function isValidHex(color) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
 const SECTIONS = [
   { id: "schedule", labelKey: "eventSections.schedule", icon: Calendar },
   { id: "store",    labelKey: "eventSections.store",    icon: ShoppingBag },
@@ -55,8 +59,8 @@ export default function EventoParticipante() {
   const { data: event, isLoading: loadingEvent, error: eventError } = useQuery({
     queryKey: ["event", eventId],
     queryFn: async () => {
-      const evs = await base44.entities.Event.filter({ is_deleted: false });
-      return evs.find((e) => e.id === eventId) || null;
+      const evs = await base44.entities.Event.filter({ id: eventId, is_deleted: false });
+      return evs[0] || null;
     },
   });
 
@@ -72,8 +76,8 @@ export default function EventoParticipante() {
   const { data: myPerson } = useQuery({
     queryKey: ["my_person_for_event", user?.email],
     queryFn: async () => {
-      const all = await base44.entities.Person.filter({ is_active: true });
-      return all.find((p) => p.contact_email === user?.email) || null;
+      const list = await base44.entities.Person.filter({ contact_email: user?.email, is_active: true });
+      return list[0] || null;
     },
     enabled: !!user,
   });
@@ -95,8 +99,7 @@ export default function EventoParticipante() {
   useEffect(() => {
     if (!event) return;
     const root = document.documentElement;
-    if (event.color_primary) {
-      // Convert hex to HSL for CSS variables (simple approximation via inline style on root)
+    if (isValidHex(event.color_primary)) {
       root.style.setProperty("--event-primary", event.color_primary);
     }
     return () => {
@@ -152,8 +155,8 @@ export default function EventoParticipante() {
     );
   }
 
-  const primaryColor = event.color_primary || "#4F46E5";
-  const secondaryColor = event.color_secondary || "#0D9488";
+  const primaryColor = isValidHex(event.color_primary) ? event.color_primary : "#4F46E5";
+  const secondaryColor = isValidHex(event.color_secondary) ? event.color_secondary : "#0D9488";
 
   return (
     <div className="min-h-screen bg-background">

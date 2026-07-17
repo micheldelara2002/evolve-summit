@@ -148,6 +148,12 @@ export default function EventDetail() {
 
   if (isLoading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (!event) return <p className="text-center py-12 text-muted-foreground">{t("events.noEvents")}</p>;
+  if (!hasAccess) return (
+    <div className="text-center py-24 space-y-3">
+      <p className="text-muted-foreground">Você não tem permissão para gerenciar este evento.</p>
+      <Button variant="outline" onClick={() => navigate("/events")}>Voltar</Button>
+    </div>
+  );
 
   const openForm = (type, item = null) => setFormDialog({ open: true, type, item });
 

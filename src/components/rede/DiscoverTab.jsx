@@ -18,9 +18,15 @@ export default function DiscoverTab({ eventId, myPerson, isReadOnly }) {
     queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  // Load only Persons who are participants in this event (privacy + performance)
+  const participantPersonIds = participants.map((p) => p.person_id).filter(Boolean);
   const { data: persons = [] } = useQuery({
-    queryKey: ["rede_persons"],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryKey: ["rede_persons_by_event", eventId, participantPersonIds.join(",")],
+    queryFn: async () => {
+      if (!participantPersonIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: participantPersonIds }, is_active: true });
+    },
+    enabled: participantPersonIds.length > 0,
   });
 
   const { data: mySentRequests = [] } = useQuery({
@@ -31,8 +37,11 @@ export default function DiscoverTab({ eventId, myPerson, isReadOnly }) {
   const { data: myConnections = [] } = useQuery({
     queryKey: ["rede_connections", eventId, myPerson.id],
     queryFn: async () => {
-      const all = await base44.entities.Connection.filter({ event_id: eventId, is_deleted: false });
-      return all.filter((c) => c.person_a_id === myPerson.id || c.person_b_id === myPerson.id);
+      const [asA, asB] = await Promise.all([
+        base44.entities.Connection.filter({ event_id: eventId, person_a_id: myPerson.id, is_deleted: false }),
+        base44.entities.Connection.filter({ event_id: eventId, person_b_id: myPerson.id, is_deleted: false }),
+      ]);
+      return [...asA, ...asB];
     },
   });
 

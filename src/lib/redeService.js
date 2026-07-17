@@ -137,12 +137,20 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
   return result;
 }
 
-export async function refuseConnectionRequest({ requestId }) {
+export async function refuseConnectionRequest({ requestId, myPersonId }) {
+  const reqs = await base44.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
+  const req = reqs[0];
+  if (!req) throw new Error("Pedido não encontrado.");
+  if (req.receiver_person_id !== myPersonId) throw new Error("Você não tem permissão para recusar este pedido.");
   await base44.entities.ConnectionRequest.update(requestId, { status: "refused" });
   return { ok: true };
 }
 
-export async function cancelConnectionRequest({ requestId }) {
+export async function cancelConnectionRequest({ requestId, myPersonId }) {
+  const reqs = await base44.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
+  const req = reqs[0];
+  if (!req) throw new Error("Pedido não encontrado.");
+  if (req.requester_person_id !== myPersonId) throw new Error("Você não tem permissão para cancelar este pedido.");
   await base44.entities.ConnectionRequest.update(requestId, { status: "canceled" });
   return { ok: true };
 }

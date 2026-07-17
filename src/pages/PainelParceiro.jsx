@@ -50,8 +50,8 @@ export default function PainelParceiro() {
         const list = await base44.entities.Person.filter({ id: user.person_id });
         if (list[0]) return list[0];
       }
-      const all = await base44.entities.Person.filter({ is_active: true });
-      return all.find((p) => p.contact_email === user?.email) || null;
+      const list = await base44.entities.Person.filter({ contact_email: user?.email, is_active: true });
+      return list[0] || null;
     },
     enabled: !!user,
   });
