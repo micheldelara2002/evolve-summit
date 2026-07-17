@@ -83,6 +83,24 @@
       "default": 0,
       "description": "Pontos totais acumulados no evento (n\u00e3o reduz com resgate)"
     },
+    "checkin_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "confirmed"
+      ],
+      "default": "pending",
+      "description": "Status do check-in geral do evento (credenciamento)"
+    },
+    "checkin_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora em que o check-in foi confirmado"
+    },
+    "checked_in_by_user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio (staff/gerente) que confirmou o check-in"
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

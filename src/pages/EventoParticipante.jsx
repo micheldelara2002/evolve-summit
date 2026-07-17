@@ -12,7 +12,7 @@ import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import {
   Calendar, ShoppingBag, Trophy, Briefcase,
-  ArrowLeft, Lock, Star, SmilePlus,
+  ArrowLeft, Lock, Star, SmilePlus, UserCheck, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProgramacaoView from "@/components/participante/ProgramacaoView";
@@ -93,7 +93,10 @@ export default function EventoParticipante() {
   const isAssociated = !!myParticipantRecord;
 
   const isFinished = event?.status === "finished";
-  const isReadOnly = isFinished;
+  const isCheckedIn = myParticipantRecord?.checkin_status === "confirmed";
+  // Bloqueia interações se evento encerrado OU participante sem check-in
+  const isReadOnly = isFinished || !isCheckedIn;
+  const isCheckinPending = !isFinished && !isCheckedIn;
 
   // Dynamic branding
   useEffect(() => {
@@ -170,9 +173,17 @@ export default function EventoParticipante() {
           <Button variant="ghost" size="sm" onClick={() => navigate("/meus-eventos")} className="gap-1.5 -ml-2">
             <ArrowLeft className="w-4 h-4" /> Meus Eventos
           </Button>
-          {isReadOnly && (
+          {isFinished ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20">
               <Lock className="w-3 h-3" /> Modo consulta
+            </span>
+          ) : isCheckinPending ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+              <UserCheck className="w-3 h-3" /> Check-in pendente
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <UserCheck className="w-3 h-3" /> Presente
             </span>
           )}
         </div>
@@ -215,7 +226,13 @@ export default function EventoParticipante() {
 
       {/* Tab content */}
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {isReadOnly && (
+        {isCheckinPending && (
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span><strong>Check-in pendente.</strong> Dirija-se ao balcão de credenciamento para liberar suas interações no evento.</span>
+          </div>
+        )}
+        {isFinished && (
           <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-warning/10 border border-warning/20 text-warning text-sm">
             <Lock className="w-4 h-4 shrink-0" />
             Este evento está encerrado. Visualização somente leitura.

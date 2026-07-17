@@ -20,7 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus, CheckCircle2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
@@ -144,6 +146,30 @@ export default function PessoasTab({
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
+    queryClient.invalidateQueries({ queryKey: ["my_participant_check", eventId] });
+  };
+
+  // ── Check-in toggle ──────────────────────────────────────────────────────────
+  const handleToggleCheckin = async (pessoa) => {
+    const isConfirmed = pessoa.checkin_status === "confirmed";
+    const updates = isConfirmed
+      ? { checkin_status: "pending", checkin_at: null, checked_in_by_user_id: null }
+      : { checkin_status: "confirmed", checkin_at: new Date().toISOString(), checked_in_by_user_id: user?.id };
+    try {
+      await base44.entities.Participant.update(pessoa.id, updates);
+      logAudit({
+        event_id: eventId,
+        action: "status_change",
+        entity_type: "Participant",
+        entity_id: pessoa.id,
+        user,
+        details: { field: "checkin_status", old_value: pessoa.checkin_status, new_value: updates.checkin_status },
+      });
+      invalidate();
+      toast.success(isConfirmed ? `Check-in removido para ${pessoa.full_name}` : `Check-in confirmado para ${pessoa.full_name}`);
+    } catch {
+      toast.error("Erro ao atualizar check-in.");
+    }
   };
 
   // ── Export CSV ──────────────────────────────────────────────────────────────
@@ -151,11 +177,12 @@ export default function PessoasTab({
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
-    const headers = ["nome", "cpf", "email", "telefone", "papeis", "parceiro", "status", "data_cadastro"];
+    const headers = ["nome", "cpf", "email", "telefone", "papeis", "parceiro", "status", "checkin", "data_cadastro"];
     const rowsCsv = filtered.map((p) => [
       p.full_name || "", p.cpf || "", p.email || "", p.phone || "",
       p.derivedRoles.join(";"), p.partnerName || "",
       p.registration_status || "",
+      p.checkin_status === "confirmed" ? `confirmado${p.checkin_at ? " " + new Date(p.checkin_at).toLocaleString("pt-BR") : ""}` : "pendente",
       p.created_date ? new Date(p.created_date).toLocaleDateString("pt-BR") : "",
     ]);
     const csv = [headers, ...rowsCsv]
@@ -245,6 +272,7 @@ export default function PessoasTab({
                 <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Telefone</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Papéis</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">Parceiro</th>
+                {hasAccess && <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-center">Check-in</th>}
                 {hasAccess && <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Ações</th>}
               </tr>
             </thead>
@@ -265,6 +293,27 @@ export default function PessoasTab({
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{pessoa.partnerName || "—"}</td>
+                  {hasAccess && (
+                    <td className="px-3 py-2.5 text-center">
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="inline-flex items-center justify-center">
+                              <Switch
+                                checked={pessoa.checkin_status === "confirmed"}
+                                onCheckedChange={() => handleToggleCheckin(pessoa)}
+                              />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {pessoa.checkin_status === "confirmed"
+                              ? `Confirmado em ${pessoa.checkin_at ? new Date(pessoa.checkin_at).toLocaleString("pt-BR") : ""} — clique para desfazer`
+                              : "Pendente — clique para confirmar check-in"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </td>
+                  )}
                   {hasAccess && (
                     <td className="px-3 py-2.5 text-right">
                       <DropdownMenu>
