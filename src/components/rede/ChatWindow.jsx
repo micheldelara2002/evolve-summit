@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PersonAvatar from "./PersonAvatar";
@@ -17,10 +17,23 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
   const queryClient = useQueryClient();
   const scrollRef = useRef(null);
 
+  // Verificar autorização: apenas participantes da thread podem ler mensagens
+  const { data: threadData } = useQuery({
+    queryKey: ["chat_thread_auth", threadId],
+    queryFn: () => base44.entities.ChatThread.filter({ id: threadId, is_deleted: false }),
+    enabled: !!threadId,
+  });
+
+  const thread = threadData?.[0];
+  const isAuthorized = thread && myPerson && (
+    thread.person_a_id === myPerson.id || thread.person_b_id === myPerson.id
+  );
+
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["chat_messages", threadId],
     queryFn: () => base44.entities.ChatMessage.filter({ thread_id: threadId }),
     refetchInterval: 5000,
+    enabled: isAuthorized,
   });
 
   // Real-time subscription
@@ -52,7 +65,7 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
   const handleSend = async (e) => {
     e?.preventDefault();
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || !isAuthorized) return;
     setSending(true);
     try {
       await sendMessage({
@@ -84,7 +97,14 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
-        {isLoading ? (
+        {!thread ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : !isAuthorized ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <AlertCircle className="w-8 h-8 text-destructive mb-2" />
+            <p className="text-sm text-muted-foreground">Você não tem acesso a esta conversa.</p>
+          </div>
+        ) : isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-8">Diga olá! 👋</p>
@@ -113,10 +133,10 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
           placeholder="Digite uma mensagem..."
           value={text}
           onChange={(e) => setText(e.target.value)}
-          disabled={isReadOnly || sending}
+          disabled={isReadOnly || sending || !isAuthorized}
           className="flex-1"
         />
-        <Button type="submit" size="icon" disabled={isReadOnly || sending || !text.trim()}>
+        <Button type="submit" size="icon" disabled={isReadOnly || sending || !isAuthorized || !text.trim()}>
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </form>

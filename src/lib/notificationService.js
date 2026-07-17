@@ -126,9 +126,11 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
       if (roleMap[seg]) await roleMap[seg]();
     }
   } else if (audienceType === "my_leads" && senderUser) {
-    // Apenas leads do representante logado
-    const leads = await base44.entities.Lead.filter({ event_id: scopeEventId });
-    leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
+    // Apenas leads do parceiro do representante logado — fail-safe se sem partner_id
+    if (senderPartnerId) {
+      const leads = await base44.entities.Lead.filter({ event_id: scopeEventId, partner_id: senderPartnerId });
+      leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
+    }
   } else if (audienceType === "partner_all_event" && scopeEventId) {
     // Todos os participantes do evento (contexto parceiro)
     const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
@@ -138,10 +140,39 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
     const leads = await base44.entities.Lead.filter({ event_id: scopeEventId, partner_id: senderPartnerId });
     leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
   } else if (audienceType === "my_attendees" && senderUser) {
-    // Participantes com presença nas sessões do palestrante
+    // Participantes com presença comprovada nas sessões do palestrante
     if (scopeEventId) {
-      const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
-      parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, p.role_in_event));
+      // 1. Encontrar a Person do palestrante pelo email
+      const persons = await base44.entities.Person.filter({ contact_email: senderUser.email, is_active: true });
+      const speakerPerson = persons?.[0];
+      if (speakerPerson) {
+        // 2. Encontrar o Participant do palestrante no evento
+        const speakerParts = await base44.entities.Participant.filter({ event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false });
+        const speakerPartIds = speakerParts.map((p) => p.id);
+        if (speakerPartIds.length > 0) {
+          // 3. Encontrar as sessões do palestrante
+          const allSessions = await base44.entities.Session.filter({ event_id: scopeEventId, is_deleted: false });
+          const speakerSessionIds = allSessions
+            .filter((s) => speakerPartIds.includes(s.speaker_id))
+            .map((s) => s.id);
+          if (speakerSessionIds.length > 0) {
+            // 4. Encontrar presenças nas sessões do palestrante
+            const attendance = await base44.entities.SessionAttendance.filter({ event_id: scopeEventId, is_present: true });
+            const attendedParticipantIds = new Set(
+              attendance
+                .filter((a) => speakerSessionIds.includes(a.session_id))
+                .map((a) => a.participant_id)
+            );
+            // 5. Resolver apenas participantes que compareceram
+            const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
+            parts.forEach((p) => {
+              if (attendedParticipantIds.has(p.id)) {
+                addRecipient(p.id, p.full_name, p.email, p.role_in_event || "attendee");
+              }
+            });
+          }
+        }
+      }
     }
   }
 
@@ -158,38 +189,67 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
  * Garante idempotência (não duplica recipients existentes).
  */
 export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
-  const recipients = await resolveRecipients({
-    scopeType: campaign.scope_type,
-    scopeEventId: campaign.scope_event_id,
-    audienceType: campaign.audience_type,
-    audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
-    senderUser,
-    senderPartnerId,
+  // Marcar como "processing" — indica que o envio começou (recuperável em caso de falha)
+  await base44.entities.NotificationCampaign.update(campaign.id, {
+    status: "processing",
   });
 
-  // Buscar recipients existentes para deduplicar
+  // 1. Resolver destinatários
+  let recipients = [];
+  try {
+    recipients = await resolveRecipients({
+      scopeType: campaign.scope_type,
+      scopeEventId: campaign.scope_event_id,
+      audienceType: campaign.audience_type,
+      audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
+      senderUser,
+      senderPartnerId,
+    });
+  } catch (e) {
+    await base44.entities.NotificationCampaign.update(campaign.id, {
+      status: "failed",
+    });
+    throw new Error("Falha ao resolver destinatários: " + e.message);
+  }
+
+  // 2. Deduplicar contra recipients já existentes (idempotência)
   const existing = await base44.entities.NotificationRecipient.filter({ campaign_id: campaign.id });
   const existingIds = new Set(existing.map((r) => r.recipient_user_id));
 
   const now = new Date().toISOString();
   const toCreate = recipients.filter((r) => !existingIds.has(r.user_id));
 
+  // 3. Criar recipients novos
+  let createdCount = 0;
   if (toCreate.length > 0) {
-    await base44.entities.NotificationRecipient.bulkCreate(
-      toCreate.map((r) => ({
-        campaign_id: campaign.id,
-        recipient_user_id: r.user_id,
-        recipient_name: r.name,
-        recipient_email: r.email,
-        recipient_role: r.role,
-        delivery_status: "sent",
-        delivered_at: now,
-      }))
-    );
+    try {
+      await base44.entities.NotificationRecipient.bulkCreate(
+        toCreate.map((r) => ({
+          campaign_id: campaign.id,
+          recipient_user_id: r.user_id,
+          recipient_name: r.name,
+          recipient_email: r.email,
+          recipient_role: r.role,
+          delivery_status: "sent",
+          delivered_at: now,
+        }))
+      );
+      createdCount = toCreate.length;
+    } catch (e) {
+      // Falha parcial — marcar como partially_sent com o que já existe
+      await base44.entities.NotificationCampaign.update(campaign.id, {
+        status: "partially_sent",
+        sent_at: now,
+        recipients_count: existing.length,
+        delivered_count: existing.length,
+      });
+      throw new Error("Falha parcial ao criar destinatários: " + e.message);
+    }
   }
 
-  const totalRecipients = existing.length + toCreate.length;
+  const totalRecipients = existing.length + createdCount;
 
+  // 4. Marcar como enviada
   await base44.entities.NotificationCampaign.update(campaign.id, {
     status: "sent",
     sent_at: now,
@@ -197,20 +257,24 @@ export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
     delivered_count: totalRecipients,
   });
 
-  // Auditoria de envio
-  await logAudit({
-    event_id: campaign.scope_event_id,
-    action: "status_change",
-    entity_type: "NotificationCampaign",
-    entity_id: campaign.id,
-    details: {
-      action_label: "notification_sent",
-      title: campaign.title,
-      audience_type: campaign.audience_type,
-      recipients_count: totalRecipients,
-      sent_at: now,
-      partner_id: senderPartnerId || null,
-    },
-    user: senderUser,
-  });
+  // 5. Auditoria (best-effort, não bloqueia o envio)
+  try {
+    await logAudit({
+      event_id: campaign.scope_event_id,
+      action: "status_change",
+      entity_type: "NotificationCampaign",
+      entity_id: campaign.id,
+      details: {
+        action_label: "notification_sent",
+        title: campaign.title,
+        audience_type: campaign.audience_type,
+        recipients_count: totalRecipients,
+        sent_at: now,
+        partner_id: senderPartnerId || null,
+      },
+      user: senderUser,
+    });
+  } catch (e) {
+    console.error("audit log failed:", e);
+  }
 }
