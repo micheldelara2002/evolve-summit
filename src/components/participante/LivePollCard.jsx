@@ -128,12 +128,12 @@ function PollView({ poll, personId }) {
 
   const submitMut = useMutation({
     mutationFn: async () => {
-      await base44.entities.SessionPollAnswer.create({
-        poll_id: poll.id,
-        person_id: personId,
-        selected_option_ids: JSON.stringify(selected),
-        answered_at: new Date().toISOString(),
+      const response = await base44.functions.invoke('submitPollAnswer', {
+        pollId: poll.id,
+        personId,
+        selectedOptionIds: selected,
       });
+      return response.data;
     },
     onSuccess: () => {
       setSubmitted(true);

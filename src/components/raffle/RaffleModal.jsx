@@ -114,11 +114,13 @@ export default function RaffleModal({
 
     setDrawing(true);
     try {
-      // Sorteio executado no backend com aleatoriedade criptograficamente segura
-      // — impede manipulação client-side do resultado
+      // Sorteio executado no backend — busca elegíveis do DB por eventId
+      // — impede manipulação client-side do pool de elegíveis
+      const confirmedIds = confirmed.map((w) => w.id);
       const response = await base44.functions.invoke('executeRaffle', {
-        eligiblePool: pool,
+        eventId,
         winnerCount: needCount,
+        excludeIds: confirmedIds,
       });
       const newWinners = response.data.winners;
       const allWinners = [
