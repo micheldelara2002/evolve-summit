@@ -16,9 +16,11 @@ import CertificatePreview from "./CertificateTemplates";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 
-function generateHash() {
-  return Math.random().toString(36).substring(2, 10).toUpperCase() +
-    "-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+function generateSecureHash() {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  return (hex.slice(0, 8) + "-" + hex.slice(8, 16)).toUpperCase();
 }
 
 const TEMPLATES = [
@@ -141,6 +143,13 @@ export default function CertificateIssuer({ eventId, event, user }) {
       if (tipo === "palestra" && session && session.speaker_id !== participant.id) {
         throw new Error("Este palestrante não está vinculado a esta sessão.");
       }
+      // Garantir hash único (até 5 tentativas) — evita colisão em validação pública
+      let finalHash = hashCode || generateSecureHash();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const collision = await base44.entities.Certificate.filter({ hash_code: finalHash, is_deleted: false });
+        if (!collision || collision.length === 0) break;
+        finalHash = generateSecureHash();
+      }
       return base44.entities.Certificate.create({
         event_id: eventId,
         person_id: participant.person_id || "",
@@ -149,7 +158,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
         tipo,
         template: activeCustomTemplate ? "classico" : template,
         custom_template_id: activeCustomTemplate?.id || undefined,
-        hash_code: hashCode || generateHash(),
+        hash_code: finalHash,
         issued_by_user_id: user?.id,
         issued_by_name: user?.full_name,
         email_sent: false,
@@ -165,7 +174,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
 
     const participant = participants.find((p) => p.id === selectedParticipantId);
     const session = sessions.find((s) => s.id === selectedSessionId);
-    const hashCode = generateHash();
+    const hashCode = generateSecureHash();
 
     const cert = await issueMut.mutateAsync({ participant, session, hashCode });
 
@@ -192,7 +201,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
       setBatchStatus({ total: pool.length, done: 0, errors: 0 });
       for (const participant of pool) {
         try {
-          await issueMut.mutateAsync({ participant, session, hashCode: generateHash() });
+          await issueMut.mutateAsync({ participant, session, hashCode: generateSecureHash() });
           setBatchStatus((prev) => prev ? { ...prev, done: prev.done + 1 } : null);
         } catch {
           setBatchStatus((prev) => prev ? { ...prev, errors: prev.errors + 1 } : null);
@@ -211,7 +220,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
     for (const participant of pool) {
       const session = tipo === "palestra" ? sessions.find((s) => s.id === selectedSessionId) : null;
       try {
-        await issueMut.mutateAsync({ participant, session, hashCode: generateHash() });
+        await issueMut.mutateAsync({ participant, session, hashCode: generateSecureHash() });
         setBatchStatus((prev) => prev ? { ...prev, done: prev.done + 1 } : null);
       } catch {
         setBatchStatus((prev) => prev ? { ...prev, errors: prev.errors + 1 } : null);

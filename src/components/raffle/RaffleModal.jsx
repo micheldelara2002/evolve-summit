@@ -86,6 +86,7 @@ export default function RaffleModal({
   const [rounds, setRounds] = useState([]);
   const [savedRaffleId, setSavedRaffleId] = useState(null);
   const [locked, setLocked] = useState(false);
+  const [drawing, setDrawing] = useState(false);
 
   // Filter eligible pool by session if selected
   const filteredPool = (() => {
@@ -93,7 +94,7 @@ export default function RaffleModal({
     return eligiblePool; // session-level filtering done in parent
   })();
 
-  const executeDraw = () => {
+  const executeDraw = async () => {
     const confirmed = winners.filter((w) => w.confirmed);
     const confirmedIds = new Set(confirmed.map((w) => w.id));
     const needCount = winnerCount - confirmed.length;
@@ -111,28 +112,34 @@ export default function RaffleModal({
       return;
     }
 
-    // Fisher-Yates shuffle
-    const shuffled = [...pool];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    setDrawing(true);
+    try {
+      // Sorteio executado no backend com aleatoriedade criptograficamente segura
+      // — impede manipulação client-side do resultado
+      const response = await base44.functions.invoke('executeRaffle', {
+        eligiblePool: pool,
+        winnerCount: needCount,
+      });
+      const newWinners = response.data.winners;
+      const allWinners = [
+        ...confirmed,
+        ...newWinners,
+      ];
+
+      const roundData = {
+        round: round + 1,
+        drawn_at: response.data.drawnAt,
+        new_winners: newWinners.map((p) => ({ id: p.id, full_name: p.full_name })),
+      };
+      setRounds((prev) => [...prev, roundData]);
+      setRound((r) => r + 1);
+      setWinners(allWinners);
+      setPhase("result");
+    } catch {
+      toast.error("Erro ao executar sorteio. Tente novamente.");
+    } finally {
+      setDrawing(false);
     }
-
-    const newWinners = shuffled.slice(0, Math.min(needCount, shuffled.length));
-    const allWinners = [
-      ...confirmed,
-      ...newWinners.map((p) => ({ ...p, confirmed: false })),
-    ];
-
-    const roundData = {
-      round: round + 1,
-      drawn_at: new Date().toISOString(),
-      new_winners: newWinners.map((p) => ({ id: p.id, full_name: p.full_name })),
-    };
-    setRounds((prev) => [...prev, roundData]);
-    setRound((r) => r + 1);
-    setWinners(allWinners);
-    setPhase("result");
   };
 
   const startDraw = () => {
@@ -268,7 +275,7 @@ export default function RaffleModal({
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
-              <Button onClick={startDraw} className="gap-1.5">
+              <Button onClick={startDraw} disabled={drawing} className="gap-1.5">
                 <Trophy className="w-4 h-4" /> Sortear
               </Button>
             </div>
@@ -298,7 +305,7 @@ export default function RaffleModal({
 
             {!locked ? (
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <Button variant="outline" className="flex-1 gap-1.5" onClick={redraw} disabled={saveMut.isPending}>
+                <Button variant="outline" className="flex-1 gap-1.5" onClick={redraw} disabled={saveMut.isPending || drawing}>
                   <RefreshCw className="w-4 h-4" /> Sortear de novo
                 </Button>
                 <Button className="flex-1 gap-1.5" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>

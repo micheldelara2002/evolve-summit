@@ -69,10 +69,15 @@ export default function QRScan() {
     }
   };
 
+  const isValidPartnerId = (id) => {
+    // IDs são strings alfanuméricas de pelo menos 8 caracteres (UUID-like ou ObjectId)
+    return typeof id === "string" && /^[a-zA-Z0-9_-]{8,}$/.test(id.trim());
+  };
+
   const handleScan = (raw) => {
     setScannerOpen(false);
     const partnerId = extractPartnerId(raw) || raw;
-    if (partnerId && partnerId.trim()) {
+    if (partnerId && isValidPartnerId(partnerId)) {
       setScanPartnerId(partnerId.trim());
     } else {
       toast.error("QR Code inválido. Tente novamente.");

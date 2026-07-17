@@ -129,13 +129,29 @@ async function acceptConnectionInternal(base44, { request, eventId, accepterPers
   });
   const requesterParticipantId = requesterParts?.[0]?.id;
 
-  // Disparar pontuação para ambos via função backend
+  // Disparar pontuação para ambos — best-effort com retry (idempotente, seguro retentar)
   if (accepterParticipantId && requesterParticipantId) {
-    await base44.functions.invoke('processScoringAction', {
-      eventId, participantId: accepterParticipantId, acao: "conexao_aceita", refId: requesterParticipantId,
-    });
-    await base44.functions.invoke('processScoringAction', {
-      eventId, participantId: requesterParticipantId, acao: "conexao_aceita", refId: accepterParticipantId,
-    });
+    const scoringCalls = [
+      () => base44.functions.invoke('processScoringAction', {
+        eventId, participantId: accepterParticipantId, acao: "conexao_aceita", refId: requesterParticipantId,
+      }),
+      () => base44.functions.invoke('processScoringAction', {
+        eventId, participantId: requesterParticipantId, acao: "conexao_aceita", refId: accepterParticipantId,
+      }),
+    ];
+
+    // Executa ambos em paralelo; falha de um não bloqueia o outro
+    const results = await Promise.allSettled(scoringCalls.map((fn) => fn()));
+
+    // Retry dos que falharam (idempotente — seguro retentar)
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'rejected') {
+        try {
+          await scoringCalls[i]();
+        } catch {
+          // Scoring falhou após retry — conexão já foi aceita; idempotência permite recuperação posterior
+        }
+      }
+    }
   }
 }

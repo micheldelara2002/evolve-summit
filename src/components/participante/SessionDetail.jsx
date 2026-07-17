@@ -570,6 +570,15 @@ export default function SessionDetail({ session, track, room, participant, isRea
         const att = attendances.find((a) => a.is_present !== false);
         if (att) await base44.entities.SessionAttendance.update(att.id, { is_present: false });
       } else {
+        // Re-check server-side antes de criar — previne duplicatas de presença
+        // (cache stale, duplo-clique rápido, ou múltiplas abas)
+        const fresh = await base44.entities.SessionAttendance.filter({
+          session_id: session.id, participant_id: participantId,
+        });
+        if (fresh.some((a) => a.is_present !== false)) {
+          queryClient.invalidateQueries({ queryKey: ["session-attendance", session.id, participantId] });
+          return;
+        }
         await base44.entities.SessionAttendance.create({
           event_id: session.event_id,
           session_id: session.id,
