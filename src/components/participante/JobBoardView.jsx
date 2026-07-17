@@ -17,10 +17,14 @@ export default function JobBoardView({ eventId, myPerson, myParticipant, user, i
     queryFn: () => base44.entities.JobPosting.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  const personIds = [...new Set(jobs.map((j) => j.person_id).filter(Boolean))];
   const { data: persons = [] } = useQuery({
-    queryKey: ["job_persons", eventId],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
-    enabled: jobs.length > 0,
+    queryKey: ["job_persons", eventId, personIds.join(",")],
+    queryFn: () => {
+      if (!personIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: personIds } });
+    },
+    enabled: jobs.length > 0 && personIds.length > 0,
   });
 
   const personMap = new Map(persons.map((p) => [p.id, p]));

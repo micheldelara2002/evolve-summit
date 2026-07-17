@@ -32,16 +32,25 @@ export default function PainelPalestrante() {
     enabled: !!user?.person_id,
   });
 
-  // Participações como speaker
+  // Participações como speaker — scoped por email e person_id
   const { data: speakerParticipants = [], isLoading } = useQuery({
     queryKey: ["speaker-participants", user?.person_id, user?.email],
     queryFn: async () => {
-      const all = await base44.entities.Participant.filter({ is_deleted: false });
-      return all.filter(
-        (p) =>
-          p.role_in_event === "speaker" &&
-          (p.person_id === user?.person_id || p.email === user?.email)
-      );
+      const queries = [
+        base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
+      ];
+      if (user?.person_id) {
+        queries.push(base44.entities.Participant.filter({ person_id: user.person_id, is_deleted: false }));
+      }
+      const [byEmail, byPersonId] = await Promise.all(queries);
+      const merged = [...byEmail, ...(byPersonId || [])];
+      const seen = new Set();
+      return merged.filter((p) => {
+        if (seen.has(p.id)) return false;
+        if (p.role_in_event !== "speaker") return false;
+        seen.add(p.id);
+        return true;
+      });
     },
     enabled: !!user,
   });
@@ -52,8 +61,7 @@ export default function PainelPalestrante() {
     queryKey: ["speaker-events", eventIds.join(",")],
     queryFn: async () => {
       if (!eventIds.length) return [];
-      const all = await base44.entities.Event.filter({ is_deleted: false });
-      return all.filter((e) => eventIds.includes(e.id));
+      return base44.entities.Event.filter({ id: { $in: eventIds }, is_deleted: false });
     },
     enabled: eventIds.length > 0,
   });

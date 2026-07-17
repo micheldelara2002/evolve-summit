@@ -196,75 +196,18 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
  * Garante idempotência (não duplica recipients existentes).
  */
 export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
-  // Marcar como "processing" — indica que o envio começou (recuperável em caso de falha)
-  await base44.entities.NotificationCampaign.update(campaign.id, {
-    status: "processing",
+  // Dispatch server-side — resolve recipients, deduplicate, create, and update status
+  const response = await base44.functions.invoke('dispatchNotificationCampaign', {
+    campaign,
+    senderPartnerId,
   });
+  const result = response.data;
 
-  // 1. Resolver destinatários
-  let recipients = [];
-  try {
-    recipients = await resolveRecipients({
-      scopeType: campaign.scope_type,
-      scopeEventId: campaign.scope_event_id,
-      audienceType: campaign.audience_type,
-      audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
-      senderUser,
-      senderPartnerId,
-    });
-  } catch (e) {
-    await base44.entities.NotificationCampaign.update(campaign.id, {
-      status: "failed",
-    });
-    throw new Error("Falha ao resolver destinatários: " + e.message);
+  if (!result?.ok) {
+    throw new Error(result?.error || 'Falha no envio da campanha.');
   }
 
-  // 2. Deduplicar contra recipients já existentes (idempotência)
-  const existing = await base44.entities.NotificationRecipient.filter({ campaign_id: campaign.id });
-  const existingIds = new Set(existing.map((r) => r.recipient_user_id));
-
-  const now = new Date().toISOString();
-  const toCreate = recipients.filter((r) => !existingIds.has(r.user_id));
-
-  // 3. Criar recipients novos
-  let createdCount = 0;
-  if (toCreate.length > 0) {
-    try {
-      await base44.entities.NotificationRecipient.bulkCreate(
-        toCreate.map((r) => ({
-          campaign_id: campaign.id,
-          recipient_user_id: r.user_id,
-          recipient_name: r.name,
-          recipient_email: r.email,
-          recipient_role: r.role,
-          delivery_status: "sent",
-          delivered_at: now,
-        }))
-      );
-      createdCount = toCreate.length;
-    } catch (e) {
-      // Falha parcial — marcar como partially_sent com o que já existe
-      await base44.entities.NotificationCampaign.update(campaign.id, {
-        status: "partially_sent",
-        sent_at: now,
-        recipients_count: existing.length,
-        delivered_count: existing.length,
-      });
-      throw new Error("Falha parcial ao criar destinatários: " + e.message);
-    }
-  }
-
-  const totalRecipients = existing.length + createdCount;
-
-  // 4. Marcar como enviada
-  await base44.entities.NotificationCampaign.update(campaign.id, {
-    status: "sent",
-    sent_at: now,
-    recipients_count: totalRecipients,
-    delivered_count: totalRecipients,
-  });
-
-  // 5. Auditoria (best-effort, não bloqueia o envio)
+  // Auditoria (best-effort, não bloqueia o envio)
   try {
     await logAudit({
       event_id: campaign.scope_event_id,
@@ -275,8 +218,8 @@ export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
         action_label: "notification_sent",
         title: campaign.title,
         audience_type: campaign.audience_type,
-        recipients_count: totalRecipients,
-        sent_at: now,
+        recipients_count: result.recipients_count,
+        sent_at: new Date().toISOString(),
         partner_id: senderPartnerId || null,
       },
       user: senderUser,

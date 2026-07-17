@@ -13,6 +13,10 @@ import StatusBadge from "@/components/admin/StatusBadge";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+function isValidHex(color) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
 function EventCard({ event, index, isFinished }) {
   const navigate = useNavigate();
   return (
@@ -34,7 +38,7 @@ function EventCard({ event, index, isFinished }) {
       ) : (
         <div
           className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-display font-bold text-xl shrink-0"
-          style={{ backgroundColor: isFinished ? "#9ca3af" : (event.color_primary || "#4F46E5") }}
+          style={{ backgroundColor: isFinished ? "#9ca3af" : (isValidHex(event.color_primary) ? event.color_primary : "#4F46E5") }}
         >
           {event.name?.[0]?.toUpperCase()}
         </div>
@@ -74,46 +78,52 @@ export default function MeusEventos() {
   const { user } = useAuth();
   const admin = isAdmin(user);
 
-  // 1. Buscar Person vinculada ao user (não-admin)
-  const { data: persons = [] } = useQuery({
+  // 1. Buscar Person vinculada ao user (não-admin) — scoped por email
+  const { data: persons = [], isLoading: loadingPersons } = useQuery({
     queryKey: ["my_person", user?.id],
     queryFn: () => base44.entities.Person.filter({ contact_email: user?.email, is_active: true }),
     enabled: !!user && !admin,
   });
 
-  // 2. Buscar participações deste usuário (via e-mail match ou person_id) — não-admin apenas
-  const { data: allParticipants = [] } = useQuery({
-    queryKey: ["my_participants", user?.email],
-    queryFn: () => base44.entities.Participant.filter({ is_deleted: false }),
+  // 2. Buscar participações por email — scoped (não-admin)
+  const { data: participantsByEmail = [], isLoading: loadingByEmail } = useQuery({
+    queryKey: ["my_participants_email", user?.email],
+    queryFn: () => base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
     enabled: !!user && !admin,
   });
 
-  // 3. Buscar todos os eventos ativos/finalizados
-  const { data: allEvents = [], isLoading } = useQuery({
-    queryKey: ["eventos_disponiveis"],
-    queryFn: () => base44.entities.Event.filter({ is_deleted: false }),
-    enabled: !!user,
+  // 3. Buscar participações vinculadas via person_id — scoped (não-admin)
+  const personIds = persons.map((p) => p.id);
+  const { data: participantsByPerson = [], isLoading: loadingByPerson } = useQuery({
+    queryKey: ["my_participants_person", personIds.join(",")],
+    queryFn: () => {
+      if (!personIds.length) return [];
+      return base44.entities.Participant.filter({ person_id: { $in: personIds }, is_deleted: false });
+    },
+    enabled: !!user && !admin && personIds.length > 0,
   });
 
-  // Admin vê todos os eventos active/finished; não-admin filtra por participação
-  const myPersonIds = new Set(persons.filter((p) => p.contact_email === user?.email).map((p) => p.id));
-  const myEventIds = admin
-    ? null // null = sem restrição
-    : new Set(
-        allParticipants
-          .filter((p) =>
-            p.email === user?.email ||
-            (p.person_id && myPersonIds.has(p.person_id))
-          )
-          .map((p) => p.event_id)
-      );
+  // 4. Resolver event IDs e buscar eventos — scoped
+  const allMyParticipants = [...participantsByEmail, ...participantsByPerson];
+  const myEventIds = admin ? null : new Set(allMyParticipants.map((p) => p.event_id));
+  const eventIdList = myEventIds ? [...myEventIds] : [];
 
-  const activeEvents = allEvents.filter(
-    (e) => e.status === "active" && (admin || myEventIds.has(e.id))
-  );
-  const finishedEvents = allEvents.filter(
-    (e) => e.status === "finished" && (admin || myEventIds.has(e.id))
-  );
+  const { data: scopedEvents = [], isLoading: loadingEvents } = useQuery({
+    queryKey: ["my_events_scoped", admin ? "all" : eventIdList.join(",")],
+    queryFn: async () => {
+      if (admin) {
+        return base44.entities.Event.filter({ is_deleted: false, status: { $in: ["active", "finished"] } });
+      }
+      if (!eventIdList.length) return [];
+      return base44.entities.Event.filter({ id: { $in: eventIdList }, is_deleted: false });
+    },
+    enabled: !!user && (admin || eventIdList.length > 0),
+  });
+
+  const isLoading = admin ? loadingEvents : (loadingPersons || loadingByEmail || loadingByPerson || loadingEvents);
+
+  const activeEvents = scopedEvents.filter((e) => e.status === "active");
+  const finishedEvents = scopedEvents.filter((e) => e.status === "finished");
 
   if (isLoading) {
     return <ListSkeleton count={4} />;

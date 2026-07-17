@@ -9,6 +9,10 @@ import { base44 } from "@/api/base44Client";
 import { isBadgeUnlocked } from "@/lib/badgeEngine";
 import { Trophy } from "lucide-react";
 
+function isValidHex(color) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
 const CAT_LABELS = {
   engajamento: "Engajamento",
   conteudo: "Conteúdo",
@@ -34,7 +38,7 @@ function BadgeCard({ badge, earned }) {
       <div
         className="w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-all"
         style={{
-          backgroundColor: earned ? (badge.icone_cor || "#6366f1") + "22" : "#e5e7eb",
+          backgroundColor: earned ? (isValidHex(badge.icone_cor) ? badge.icone_cor : "#6366f1") + "22" : "#e5e7eb",
           filter: earned ? "none" : "grayscale(1)",
           opacity: earned ? 1 : 0.5,
         }}

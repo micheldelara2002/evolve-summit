@@ -26,6 +26,10 @@ Deno.serve(async (req) => {
       return await handleSendRequest(base44, body, user);
     } else if (action === "accept") {
       return await handleAcceptRequest(base44, body, user);
+    } else if (action === "refuse") {
+      return await handleRefuseRequest(base44, body, user);
+    } else if (action === "cancel") {
+      return await handleCancelRequest(base44, body, user);
     }
     return Response.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
@@ -113,6 +117,44 @@ async function handleAcceptRequest(base44, { requestId, eventId, accepterPersonI
   return Response.json({ ok: true, reason: "accepted" });
 }
 
+async function handleRefuseRequest(base44, { requestId }, user) {
+  // Verify ownership: only the receiver can refuse — server-side guard
+  const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
+  const userPersonId = userPersons[0]?.id;
+
+  const requests = await base44.asServiceRole.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
+  if (!requests?.length) return Response.json({ ok: false, reason: "not_found" });
+  const request = requests[0];
+
+  if (request.receiver_person_id !== userPersonId && user.role !== 'admin') {
+    return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
+  }
+  if (request.status !== "pending") {
+    return Response.json({ ok: false, reason: "not_pending" });
+  }
+  await base44.asServiceRole.entities.ConnectionRequest.update(requestId, { status: "refused" });
+  return Response.json({ ok: true, reason: "refused" });
+}
+
+async function handleCancelRequest(base44, { requestId }, user) {
+  // Verify ownership: only the requester can cancel — server-side guard
+  const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
+  const userPersonId = userPersons[0]?.id;
+
+  const requests = await base44.asServiceRole.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
+  if (!requests?.length) return Response.json({ ok: false, reason: "not_found" });
+  const request = requests[0];
+
+  if (request.requester_person_id !== userPersonId && user.role !== 'admin') {
+    return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
+  }
+  if (request.status !== "pending") {
+    return Response.json({ ok: false, reason: "not_pending" });
+  }
+  await base44.asServiceRole.entities.ConnectionRequest.update(requestId, { status: "canceled" });
+  return Response.json({ ok: true, reason: "canceled" });
+}
+
 async function acceptConnectionInternal(base44, { request, eventId, accepterPersonId, accepterName, accepterParticipantId }) {
   const safeReqName = sanitizeText(request.requester_name);
   const safeAccepterName = sanitizeText(accepterName);
@@ -133,6 +175,21 @@ async function acceptConnectionInternal(base44, { request, eventId, accepterPers
       person_a_name: aId === request.requester_person_id ? safeReqName : safeAccepterName,
       person_b_name: bId === request.requester_person_id ? safeReqName : safeAccepterName,
     });
+
+    // Post-create dedup: se dois accepts concorrentes criaram conexões duplicadas,
+    // remove as extras mantendo apenas a primeira (mais antiga)
+    const afterCreate = await base44.asServiceRole.entities.Connection.filter({
+      event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
+    });
+    if (afterCreate?.length > 1) {
+      const sorted = [...afterCreate].sort((a, b) =>
+        new Date(a.created_date) - new Date(b.created_date)
+      );
+      const duplicates = sorted.slice(1);
+      await base44.asServiceRole.entities.Connection.bulkUpdate(
+        duplicates.map((c) => ({ id: c.id, is_deleted: true }))
+      );
+    }
   }
 
   // Buscar participant ID do requester

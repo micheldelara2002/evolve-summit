@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       if (existing && existing.length > 0) {
         return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
       }
-      await base44.asServiceRole.entities.PointTransaction.create({
+      const resgateTx = await base44.asServiceRole.entities.PointTransaction.create({
         event_id: eventId,
         participant_id: participantId,
         person_id: personId || undefined,
@@ -58,6 +58,23 @@ Deno.serve(async (req) => {
         ref_id: refId || undefined,
         descricao: `resgate_realizado — ${refId || ""}`.trim(),
       });
+
+      // Post-create dedup: se dois requests concorrentes criaram transações com a mesma chave,
+      // remove as duplicatas mantendo apenas a primeira
+      const afterResgate = await base44.asServiceRole.entities.PointTransaction.filter({ chave_idempotencia: chave });
+      if (afterResgate.length > 1) {
+        const sorted = [...afterResgate].sort((a, b) =>
+          new Date(a.created_date) - new Date(b.created_date)
+        );
+        const duplicates = sorted.slice(1);
+        const isMyTxDuplicate = duplicates.some((d) => d.id === resgateTx.id);
+        for (const dup of duplicates) {
+          await base44.asServiceRole.entities.PointTransaction.delete(dup.id);
+        }
+        if (isMyTxDuplicate) {
+          return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
+        }
+      }
       return Response.json({ credited: false, pontos: 0, reason: "resgate_no_points" });
     }
 
@@ -79,8 +96,8 @@ Deno.serve(async (req) => {
       return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
     }
 
-    // 4. Registrar transação
-    await base44.asServiceRole.entities.PointTransaction.create({
+    // 4. Registrar transação (incrementa apenas se sobreviver ao dedup abaixo)
+    const tx = await base44.asServiceRole.entities.PointTransaction.create({
       event_id: eventId,
       participant_id: participantId,
       person_id: personId || undefined,
@@ -92,7 +109,30 @@ Deno.serve(async (req) => {
       descricao: `${acao} — ${refId || ""}`.trim(),
     });
 
-    // 5. ATOMIC increment — elimina race condition de read-modify-write
+    // 5. Post-create idempotency check: se dois requests concorrentes criaram
+    // transações com a mesma chave, remove as duplicatas e reverte incrementos
+    const afterCreate = await base44.asServiceRole.entities.PointTransaction.filter({ chave_idempotencia: chave });
+    const limit = rule.limite_valor || 1;
+    const myTxStillExists = afterCreate.some((t) => t.id === tx.id);
+    if (!myTxStillExists) {
+      // Nossa transação foi deletada pelo dedup de outro request concorrente
+      return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
+    }
+    if (afterCreate.length > limit) {
+      const sorted = [...afterCreate].sort((a, b) =>
+        new Date(a.created_date) - new Date(b.created_date)
+      );
+      const duplicates = sorted.slice(limit);
+      const isMyTxDuplicate = duplicates.some((d) => d.id === tx.id);
+      for (const dup of duplicates) {
+        await base44.asServiceRole.entities.PointTransaction.delete(dup.id);
+      }
+      if (isMyTxDuplicate) {
+        return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
+      }
+    }
+
+    // 6. ATOMIC increment — only if survived dedup
     await base44.asServiceRole.entities.Participant.updateMany(
       { id: participantId },
       { $inc: { points_total: rule.pontos } }

@@ -138,20 +138,32 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
 }
 
 export async function refuseConnectionRequest({ requestId, myPersonId }) {
-  const reqs = await base44.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
-  const req = reqs[0];
-  if (!req) throw new Error("Pedido não encontrado.");
-  if (req.receiver_person_id !== myPersonId) throw new Error("Você não tem permissão para recusar este pedido.");
-  await base44.entities.ConnectionRequest.update(requestId, { status: "refused" });
+  const response = await base44.functions.invoke('manageConnection', {
+    action: "refuse",
+    requestId,
+  });
+  const result = response.data;
+  if (!result.ok) {
+    if (result.reason === "unauthorized") throw new Error("Você não tem permissão para recusar este pedido.");
+    if (result.reason === "not_found") throw new Error("Pedido não encontrado.");
+    if (result.reason === "not_pending") throw new Error("Este pedido não está mais pendente.");
+    throw new Error("Erro ao recusar pedido.");
+  }
   return { ok: true };
 }
 
 export async function cancelConnectionRequest({ requestId, myPersonId }) {
-  const reqs = await base44.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
-  const req = reqs[0];
-  if (!req) throw new Error("Pedido não encontrado.");
-  if (req.requester_person_id !== myPersonId) throw new Error("Você não tem permissão para cancelar este pedido.");
-  await base44.entities.ConnectionRequest.update(requestId, { status: "canceled" });
+  const response = await base44.functions.invoke('manageConnection', {
+    action: "cancel",
+    requestId,
+  });
+  const result = response.data;
+  if (!result.ok) {
+    if (result.reason === "unauthorized") throw new Error("Você não tem permissão para cancelar este pedido.");
+    if (result.reason === "not_found") throw new Error("Pedido não encontrado.");
+    if (result.reason === "not_pending") throw new Error("Este pedido não está mais pendente.");
+    throw new Error("Erro ao cancelar pedido.");
+  }
   return { ok: true };
 }
 
@@ -163,45 +175,14 @@ export async function getOrCreateThread({ eventId, myPersonId, myPersonName, oth
   return response.data;
 }
 
-/** Envia mensagem, atualiza preview da thread e notifica o destinatário (não o remetente). */
+/** Envia mensagem via backend — verifica posse da thread, sanitiza, atualiza preview e notifica. */
 export async function sendMessage({ threadId, eventId, senderPersonId, senderName, messageText }) {
-  const safeText = sanitizeText(messageText);
-  const safeSenderName = sanitizeText(senderName);
-  const msg = await base44.entities.ChatMessage.create({
-    thread_id: threadId,
-    event_id: eventId,
-    sender_person_id: senderPersonId,
-    sender_name: safeSenderName,
-    message_text: safeText,
+  const response = await base44.functions.invoke('sendChatMessage', {
+    threadId,
+    eventId,
+    senderPersonId,
+    senderName,
+    messageText,
   });
-  await base44.entities.ChatThread.update(threadId, {
-    last_message_at: new Date().toISOString(),
-    last_message_preview: safeText.substring(0, 100),
-  });
-
-  // Notificar o destinatário (o outro lado da thread), nunca o remetente
-  try {
-    const threads = await base44.entities.ChatThread.filter({ id: threadId, is_deleted: false });
-    const thread = threads?.[0];
-    if (thread) {
-      const otherPersonId = thread.person_a_id === senderPersonId ? thread.person_b_id : thread.person_a_id;
-      if (otherPersonId && otherPersonId !== senderPersonId) {
-        const otherPerson = await getPersonById(otherPersonId);
-        if (otherPerson) {
-          await sendDirectNotification({
-            eventId,
-            recipientPerson: otherPerson,
-            title: `Nova mensagem de ${safeSenderName}`,
-            message: safeText.substring(0, 100),
-            ctaLabel: "Ver conversa",
-            ctaTarget: `/evento/${eventId}`,
-          });
-        }
-      }
-    }
-  } catch (e) {
-    console.error("chat notification failed:", e);
-  }
-
-  return msg;
+  return response.data?.message;
 }
