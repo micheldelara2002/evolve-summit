@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Award, Download, Mail, Users, Mic, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { sendEmail } from "@/lib/apiClient";
 import CertificatePreview from "./CertificateTemplates";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -229,7 +230,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
     setSendingEmail(true);
     try {
       const body = `Olá, ${person?.full_name}!\n\nSeu certificado do evento ${event?.name} está disponível.\n\nCódigo de validação: ${previewData.hashCode}\nValidar em: ${window.location.origin}/validate-certificate\n\nAtenciosamente,\n${user?.full_name || "Equipe do Evento"}`;
-      await base44.integrations.Core.SendEmail({ to: email, subject: `Seu certificado — ${event?.name}`, body });
+      await sendEmail({ to: email, subject: `Seu certificado — ${event?.name}`, body });
       await base44.entities.Certificate.update(previewData.cert.id, { email_sent: true, email_sent_at: new Date().toISOString() });
       queryClient.invalidateQueries({ queryKey: ["certificates", eventId] });
       toast.success("E-mail enviado com sucesso!");

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
+import { uploadFile } from "@/lib/apiClient";
 
 // ────────────────────────────────────────────────────────────────
 // Enums fixos
@@ -77,7 +78,7 @@ function PartnerFormDialog({ partner, onClose, onSaved, allPartners = [] }) {
     if (file.size > 5 * 1024 * 1024) { toast.error("Máximo 5MB."); return; }
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadFile(file);
       set("logo_url", file_url);
       toast.success("Logo carregado.");
     } catch { toast.error("Erro ao enviar logo."); }

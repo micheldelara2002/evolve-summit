@@ -11,6 +11,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { sendEmail } from "@/lib/apiClient";
 import { processAction } from "@/lib/scoringEngine";
 import { Button } from "@/components/ui/button";
 import {
@@ -171,7 +172,7 @@ function MaterialSection({ session, participant }) {
     }
     setSending(true);
     try {
-      await base44.integrations.Core.SendEmail({
+      await sendEmail({
         to: contactEmail,
         subject: `Material da sessão: ${session.title}`,
         body: `Olá${participant?.full_name ? `, ${participant.full_name}` : ""}!\n\nAqui está o material da sessão "${session.title}":\n\n${session.material_url}\n\nBom aprendizado!`,

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/lib/ThemeContext";
 import { t } from "@/lib/i18n";
+import { uploadFile } from "@/lib/apiClient";
 import BadgesEventCard from "@/components/profile/BadgesEventCard";
 import RankingModal from "@/components/profile/RankingModal";
 import { toast } from "sonner";
@@ -135,7 +136,7 @@ export default function UserProfile() {
 
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadFile(file);
       if (person?.id) {
         await base44.entities.Person.update(person.id, { photo_url: file_url });
       }

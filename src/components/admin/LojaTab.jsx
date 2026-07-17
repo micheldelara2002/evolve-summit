@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, MoreVertical, Pencil, Trash2, ToggleLeft, ToggleRight, ImageIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
+import { uploadFile } from "@/lib/apiClient";
 
 const PAGE_SIZE = 10;
 
@@ -30,7 +31,7 @@ function ImageUpload({ value, onChange }) {
     if (!file) return;
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadFile(file);
       onChange(file_url);
     } catch (err) {
       toast.error("Erro ao fazer upload da imagem.");

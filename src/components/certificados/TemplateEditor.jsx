@@ -7,6 +7,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadFile } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,7 +98,7 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
     if (!file) return;
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadFile(file);
       setBackgroundUrl(file_url);
       toast.success("Imagem carregada!");
     } catch {

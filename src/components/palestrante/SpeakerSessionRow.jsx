@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { uploadFile } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Clock, ChevronDown, ChevronUp, Upload, MessageCircleQuestion,
@@ -324,7 +325,7 @@ function MaterialTab({ session }) {
     e.target.value = "";
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadFile(file);
       setUrl(file_url);
       await saveMut.mutateAsync(file_url);
     } catch {

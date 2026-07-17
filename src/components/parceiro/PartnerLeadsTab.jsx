@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Download, Mail, Users, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { sendEmail } from "@/lib/apiClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -69,7 +70,7 @@ export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, 
     try {
       const rows = leads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.participant_name || ""}</td><td>${l.participant_email || ""}</td><td>${SOURCE_LABELS[l.source] || l.source || ""}</td><td>${l.quality || ""}</td></tr>`).join("");
       const body = `<h2>Leads do seu parceiro</h2><p>Total: <strong>${leads.length}</strong> lead(s).</p><table border="1" cellpadding="6" style="border-collapse:collapse"><thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>Origem</th><th>Qualidade</th></tr></thead><tbody>${rows}</tbody></table>`;
-      await base44.integrations.Core.SendEmail({
+      await sendEmail({
         to: myPerson.contact_email,
         subject: `Leads do evento (${leads.length} leads)`,
         body,
