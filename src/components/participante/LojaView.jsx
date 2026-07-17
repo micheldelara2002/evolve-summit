@@ -152,54 +152,30 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
 
   const redeemMut = useMutation({
     mutationFn: async (item) => {
-      // Validações
-      if (pontosDisponiveis < item.pontos_necessarios) {
-        throw new Error("Saldo insuficiente para resgate.");
+      // All validation + atomic stock decrement happen server-side
+      try {
+        const response = await base44.functions.invoke('redeemStoreItem', {
+          eventId,
+          participantId,
+          itemId: item.id,
+          personId,
+        });
+        return response.data;
+      } catch (err) {
+        throw new Error(err?.response?.data?.error || err.message || "Erro ao realizar resgate.");
       }
-      const estoqueTotal = item.estoque_total ?? 0;
-      const estoqueDisp = Math.max(0, estoqueTotal - (item.quantidade_resgatada ?? 0));
-      if (estoqueDisp === 0) {
-        throw new Error("Item sem estoque disponível.");
-      }
-
-      // Verificar limite por usuário
-      if (item.limite_por_usuario) {
-        const myRedemptionsForItem = redemptions.filter(
-          (r) => r.store_item_id === item.id && r.status !== "cancelado"
-        );
-        if (myRedemptionsForItem.length >= item.limite_por_usuario) {
-          throw new Error(`Limite de ${item.limite_por_usuario} resgate(s) por participante atingido.`);
-        }
-      }
-
-      // Registrar resgate
-      const redemption = await base44.entities.StoreRedemption.create({
-        event_id: eventId,
-        participant_id: participantId,
-        person_id: personId || undefined,
-        store_item_id: item.id,
-        item_description: item.descricao_item,
-        pontos_debitados: item.pontos_necessarios,
-        status: "pendente",
-      });
-
-      // Decrementar estoque
-      await base44.entities.StoreItem.update(item.id, {
-        quantidade_resgatada: (item.quantidade_resgatada ?? 0) + 1,
-      });
-
+    },
+    onSuccess: (data) => {
       // Trigger resgate event for badges (0 points, no scoring)
       try {
-        await processAction({
+        processAction({
           eventId,
           participantId,
           personId,
           acao: "resgate_realizado",
-          refId: redemption.id,
+          refId: data?.redemption?.id,
         });
       } catch (e) { /* best-effort */ }
-    },
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["store-items", eventId] });
       queryClient.invalidateQueries({ queryKey: ["store-redemptions", eventId, participantId] });
       setRedeemItem(null);
