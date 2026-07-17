@@ -14,17 +14,8 @@ const TONE_CLASSES = {
   destructive: "bg-destructive/10 text-destructive",
 };
 
-const ADMIN_CARDS = [
-  { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
-  { key: "eventManagement", icon: Calendar, tone: "secondary", href: "/events" },
-  { key: "people", icon: Users, tone: "success", href: "/people" },
-  { key: "partners", icon: Building2, tone: "warning", href: "/partner" },
-  { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
-  { key: "business", icon: TrendingUp, tone: "primary", href: "/business" },
-  { key: "audit", icon: Shield, tone: "warning", href: "/audit" },
-];
-
-const USER_CARDS = [
+// ── Card definitions by section ──────────────────────────────────────────────
+const MY_AREA_CARDS = [
   { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
 ];
 
@@ -43,6 +34,18 @@ const PARTNER_CARD = {
   href: "/partner-dashboard",
   label: "Painel do Parceiro",
 };
+
+const OPERATIONS_CARDS = [
+  { key: "business", icon: TrendingUp, tone: "primary", href: "/business", label: "Indicadores" },
+  { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
+  { key: "audit", icon: Shield, tone: "warning", href: "/audit" },
+];
+
+const MANAGEMENT_CARDS = [
+  { key: "eventManagement", icon: Calendar, tone: "secondary", href: "/events", label: "Gestão de Eventos" },
+  { key: "people", icon: Users, tone: "success", href: "/people", label: "Gestão de Pessoas" },
+  { key: "partners", icon: Building2, tone: "warning", href: "/partner", label: "Gestão de Parceiros" },
+];
 
 const ROLE_LABELS = { admin: "Admin Global", member: "Membro", partner_manager: "Gestor Parceiro" };
 
@@ -65,14 +68,24 @@ export default function AdminHome() {
     enabled: !!user,
   });
 
-  const baseCards = admin ? ADMIN_CARDS : USER_CARDS;
-  let cards = [...baseCards];
+  // ── Build "Minha área" section (available to all users) ───────────────────
+  const myAreaCards = [...MY_AREA_CARDS];
   if (admin || participantRoles?.isSpeaker) {
-    if (!cards.find((c) => c.key === "painelPalestrante")) cards = [...cards, SPEAKER_CARD];
+    if (!myAreaCards.find((c) => c.key === "painelPalestrante")) myAreaCards.push(SPEAKER_CARD);
   }
   if (admin || participantRoles?.isPartnerRep || isPartnerManager(user)) {
-    if (!cards.find((c) => c.key === "painelParceiro")) cards = [...cards, PARTNER_CARD];
+    if (!myAreaCards.find((c) => c.key === "painelParceiro")) myAreaCards.push(PARTNER_CARD);
   }
+
+  // ── Admin-only sections ────────────────────────────────────────────────────
+  const operationsCards = admin ? OPERATIONS_CARDS : [];
+  const managementCards = admin ? MANAGEMENT_CARDS : [];
+
+  const sections = [
+    { title: "Minha área", cards: myAreaCards },
+    { title: "Operações", cards: operationsCards },
+    { title: "Gestão", cards: managementCards },
+  ].filter((s) => s.cards.length > 0);
 
   const title = admin ? t("home.title") : "Início";
   const greeting = admin ? "Bem-vindo de volta" : "Olá";
@@ -87,24 +100,29 @@ export default function AdminHome() {
         </p>
       </div>
 
-      {/* Quick actions grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {cards.map(({ key, icon: Icon, tone, href, label }) => (
-          <Link key={key} to={href} className="no-underline group">
-            <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-surface transition-all cursor-pointer h-full">
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${TONE_CLASSES[tone] || TONE_CLASSES.primary}`}>
-                <Icon className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-display font-semibold text-sm">
-                  {label || t(`home.${key}`) || key}
-                </p>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
-            </div>
-          </Link>
-        ))}
-      </div>
+      {/* Sectioned card grids */}
+      {sections.map((section) => (
+        <div key={section.title} className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{section.title}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {section.cards.map(({ key, icon: Icon, tone, href, label }) => (
+              <Link key={key} to={href} className="no-underline group">
+                <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-surface transition-all cursor-pointer h-full">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${TONE_CLASSES[tone] || TONE_CLASSES.primary}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-display font-semibold text-sm">
+                      {label || t(`home.${key}`) || key}
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
