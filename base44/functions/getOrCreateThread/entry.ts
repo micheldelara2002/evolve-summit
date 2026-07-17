@@ -1,0 +1,63 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+
+function sanitizeText(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/<[^>]*>/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .trim();
+}
+
+function sortPersonIds(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { eventId, myPersonId, myPersonName, otherPersonId, otherPersonName } = await req.json();
+    if (!eventId || !myPersonId || !otherPersonId) {
+      return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
+    }
+
+    const [aId, bId] = sortPersonIds(myPersonId, otherPersonId);
+    const safeMyName = sanitizeText(myPersonName);
+    const safeOtherName = sanitizeText(otherPersonName);
+
+    // 1. Thread já existe?
+    const existing = await base44.asServiceRole.entities.ChatThread.filter({
+      event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
+    });
+    if (existing?.length > 0) return Response.json(existing[0]);
+
+    // 2. Criar nova thread
+    const thread = await base44.asServiceRole.entities.ChatThread.create({
+      event_id: eventId,
+      person_a_id: aId,
+      person_b_id: bId,
+      person_a_name: aId === myPersonId ? safeMyName : safeOtherName,
+      person_b_name: bId === myPersonId ? safeMyName : safeOtherName,
+    });
+
+    // 3. Race protection — se request concorrente criou duplicata, manter a mais antiga
+    const threads = await base44.asServiceRole.entities.ChatThread.filter({
+      event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
+    });
+    if (threads.length > 1) {
+      threads.sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
+      const duplicates = threads.slice(1);
+      for (const d of duplicates) {
+        await base44.asServiceRole.entities.ChatThread.delete(d.id);
+      }
+      return Response.json(threads[0]);
+    }
+
+    return Response.json(thread);
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});

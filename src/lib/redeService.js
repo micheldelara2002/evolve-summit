@@ -3,7 +3,6 @@
  * Integra notificações (sininho) e motor de pontuação (conexao_aceita).
  */
 import { base44 } from "@/api/base44Client";
-import { processAction } from "@/lib/scoringEngine";
 import { sanitizeText } from "@/utils/sanitize";
 
 /** Ordena dois IDs para garantir unicidade do par. */
@@ -72,99 +71,70 @@ async function sendDirectNotification({ eventId, recipientPerson, title, message
  * @returns {{ ok: boolean, reason: string }}
  */
 export async function sendConnectionRequest({ eventId, requesterPerson, receiverPerson, requesterParticipantId }) {
-  // 1. Já conectados?
-  const [aId, bId] = sortPersonIds(requesterPerson.id, receiverPerson.id);
-  const existingConn = await base44.entities.Connection.filter({
-    event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
-  });
-  if (existingConn?.length > 0) return { ok: false, reason: "already_connected" };
-
-  // 2. Pedido existente em qualquer direção?
-  const allReqs = await base44.entities.ConnectionRequest.filter({ event_id: eventId, is_deleted: false });
-  const pending = allReqs.find(
-    (r) =>
-      r.status === "pending" &&
-      ((r.requester_person_id === requesterPerson.id && r.receiver_person_id === receiverPerson.id) ||
-        (r.requester_person_id === receiverPerson.id && r.receiver_person_id === requesterPerson.id))
-  );
-  if (pending) {
-    // Se o outro lado me enviou um pedido, auto-aceitar
-    if (pending.requester_person_id === receiverPerson.id) {
-      await acceptConnectionRequestInternal({ request: pending, eventId, accepterPerson: requesterPerson, accepterParticipantId: requesterParticipantId });
-      return { ok: true, reason: "auto_accepted" };
-    }
-    return { ok: false, reason: "already_pending" };
-  }
-
-  // 3. Criar pedido
-  const safeReqName = sanitizeText(requesterPerson.full_name);
-  const safeRcvName = sanitizeText(receiverPerson.full_name);
-  await base44.entities.ConnectionRequest.create({
-    event_id: eventId,
-    requester_person_id: requesterPerson.id,
-    requester_name: safeReqName,
-    receiver_person_id: receiverPerson.id,
-    receiver_name: safeRcvName,
-    status: "pending",
-  });
-
-  // 4. Notificar destinatário
-  await sendDirectNotification({
+  const response = await base44.functions.invoke('manageConnection', {
+    action: "send",
     eventId,
-    recipientPerson: receiverPerson,
-    title: "Novo pedido de conexão",
-    message: `${safeReqName} quer se conectar com você.`,
-    ctaLabel: "Ver pedidos",
-    ctaTarget: `/evento/${eventId}`,
+    requesterPersonId: requesterPerson.id,
+    requesterName: requesterPerson.full_name,
+    receiverPersonId: receiverPerson.id,
+    receiverName: receiverPerson.full_name,
+    requesterParticipantId,
   });
+  const result = response.data;
 
-  return { ok: true, reason: "request_sent" };
-}
-
-/** Lógica interna de aceite — usada por acceptConnectionRequest e auto-accept. */
-async function acceptConnectionRequestInternal({ request, eventId, accepterPerson, accepterParticipantId }) {
-  // Atualizar pedido
-  await base44.entities.ConnectionRequest.update(request.id, { status: "accepted" });
-
-  // Criar conexão (IDs ordenados)
-  const [aId, bId] = sortPersonIds(request.requester_person_id, accepterPerson.id);
-  const safeAccepterName = sanitizeText(accepterPerson.full_name);
-  const safeReqName = sanitizeText(request.requester_name);
-  await base44.entities.Connection.create({
-    event_id: eventId,
-    person_a_id: aId,
-    person_b_id: bId,
-    person_a_name: aId === request.requester_person_id ? safeReqName : safeAccepterName,
-    person_b_name: bId === request.requester_person_id ? safeReqName : safeAccepterName,
-  });
-
-  // Disparar pontuação para ambos (dedup por par+evento no scoringEngine)
-  const requesterParts = await base44.entities.Participant.filter({
-    event_id: eventId, person_id: request.requester_person_id, is_deleted: false,
-  });
-  const requesterParticipantId = requesterParts?.[0]?.id;
-  if (accepterParticipantId && requesterParticipantId) {
-    await processAction({ eventId, participantId: accepterParticipantId, acao: "conexao_aceita", refId: requesterParticipantId });
-    await processAction({ eventId, participantId: requesterParticipantId, acao: "conexao_aceita", refId: accepterParticipantId });
+  if (result.ok) {
+    const safeReqName = sanitizeText(requesterPerson.full_name);
+    if (result.reason === "request_sent") {
+      await sendDirectNotification({
+        eventId,
+        recipientPerson: receiverPerson,
+        title: "Novo pedido de conexão",
+        message: `${safeReqName} quer se conectar com você.`,
+        ctaLabel: "Ver pedidos",
+        ctaTarget: `/evento/${eventId}`,
+      });
+    } else if (result.reason === "auto_accepted") {
+      await sendDirectNotification({
+        eventId,
+        recipientPerson: receiverPerson,
+        title: "Conexão aceita!",
+        message: `${safeReqName} aceitou seu pedido de conexão.`,
+        ctaLabel: "Iniciar conversa",
+        ctaTarget: `/evento/${eventId}`,
+      });
+    }
   }
 
-  // Notificar quem enviou o pedido
-  const requesterPerson = await getPersonById(request.requester_person_id);
-  if (requesterPerson) {
-    await sendDirectNotification({
-      eventId,
-      recipientPerson: requesterPerson,
-      title: "Conexão aceita!",
-      message: `${safeAccepterName} aceitou seu pedido de conexão.`,
-      ctaLabel: "Iniciar conversa",
-      ctaTarget: `/evento/${eventId}`,
-    });
-  }
+  return result;
 }
 
 export async function acceptConnectionRequest({ request, eventId, accepterPerson, accepterParticipantId }) {
-  await acceptConnectionRequestInternal({ request, eventId, accepterPerson, accepterParticipantId });
-  return { ok: true };
+  const response = await base44.functions.invoke('manageConnection', {
+    action: "accept",
+    requestId: request.id,
+    eventId,
+    accepterPersonId: accepterPerson.id,
+    accepterName: accepterPerson.full_name,
+    accepterParticipantId,
+  });
+  const result = response.data;
+
+  if (result.ok && result.reason === "accepted") {
+    const safeAccepterName = sanitizeText(accepterPerson.full_name);
+    const requesterPerson = await getPersonById(request.requester_person_id);
+    if (requesterPerson) {
+      await sendDirectNotification({
+        eventId,
+        recipientPerson: requesterPerson,
+        title: "Conexão aceita!",
+        message: `${safeAccepterName} aceitou seu pedido de conexão.`,
+        ctaLabel: "Iniciar conversa",
+        ctaTarget: `/evento/${eventId}`,
+      });
+    }
+  }
+
+  return result;
 }
 
 export async function refuseConnectionRequest({ requestId }) {
@@ -179,20 +149,10 @@ export async function cancelConnectionRequest({ requestId }) {
 
 /** Busca ou cria thread de chat 1:1 para um par de pessoas no evento. */
 export async function getOrCreateThread({ eventId, myPersonId, myPersonName, otherPersonId, otherPersonName }) {
-  const [aId, bId] = sortPersonIds(myPersonId, otherPersonId);
-  const existing = await base44.entities.ChatThread.filter({
-    event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
+  const response = await base44.functions.invoke('getOrCreateThread', {
+    eventId, myPersonId, myPersonName, otherPersonId, otherPersonName,
   });
-  if (existing?.length > 0) return existing[0];
-  const safeMyName = sanitizeText(myPersonName);
-  const safeOtherName = sanitizeText(otherPersonName);
-  return await base44.entities.ChatThread.create({
-    event_id: eventId,
-    person_a_id: aId,
-    person_b_id: bId,
-    person_a_name: aId === myPersonId ? safeMyName : safeOtherName,
-    person_b_name: bId === myPersonId ? safeMyName : safeOtherName,
-  });
+  return response.data;
 }
 
 /** Envia mensagem, atualiza preview da thread e notifica o destinatário (não o remetente). */
