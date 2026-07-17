@@ -24,6 +24,10 @@ const SESSION_TYPE_LABELS = {
   painel: "Painel", simulacao: "Simulação", workshop: "Workshop",
 };
 
+function isValidHex(color) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
 function formatTime(dt) {
   if (!dt) return "";
   return new Date(dt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -57,7 +61,7 @@ function SessionListItem({ session, track, room, isFav, onToggleFav, onClick }) 
     <div
       onClick={onClick}
       className="bg-card rounded-xl border border-border p-4 hover:shadow-sm transition-shadow cursor-pointer"
-      style={track?.color ? { borderLeftColor: track.color, borderLeftWidth: 3 } : {}}
+      style={isValidHex(track?.color) ? { borderLeftColor: track.color, borderLeftWidth: 3 } : {}}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -85,7 +89,7 @@ function SessionListItem({ session, track, room, isFav, onToggleFav, onClick }) 
           )}
           {track && (
             <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
-              style={{ backgroundColor: track.color || "#6366f1" }}>
+              style={{ backgroundColor: isValidHex(track.color) ? track.color : "#6366f1" }}>
               {track.name}
             </span>
           )}
@@ -101,7 +105,7 @@ function SessionGridCard({ session, track, room, isFav, onToggleFav, onClick, co
     <div
       onClick={onClick}
       className={`bg-card rounded-xl border border-border flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden ${compact ? "p-2 text-[11px]" : "p-3"}`}
-      style={track?.color ? { borderTopColor: track.color, borderTopWidth: 3 } : {}}
+      style={isValidHex(track?.color) ? { borderTopColor: track.color, borderTopWidth: 3 } : {}}
     >
       <div className="flex items-start justify-between gap-1">
         <p className={`font-semibold leading-tight line-clamp-2 flex-1 ${compact ? "text-[11px]" : "text-sm"}`}>{session.title}</p>
@@ -118,7 +122,7 @@ function SessionGridCard({ session, track, room, isFav, onToggleFav, onClick, co
       )}
       {track && !compact && (
         <span className="inline-flex self-start px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white"
-          style={{ backgroundColor: track.color || "#6366f1" }}>
+          style={{ backgroundColor: isValidHex(track.color) ? track.color : "#6366f1" }}>
           {track.name}
         </span>
       )}

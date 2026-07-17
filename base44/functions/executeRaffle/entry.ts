@@ -5,6 +5,9 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin' && user.role !== 'manager') {
+      return Response.json({ error: 'Apenas administradores e gerentes podem realizar sorteios.' }, { status: 403 });
+    }
 
     const { eligiblePool, winnerCount, excludeIds = [] } = await req.json();
 

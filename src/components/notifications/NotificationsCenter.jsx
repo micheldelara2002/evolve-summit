@@ -70,6 +70,7 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
       }
       const filter = { is_deleted: false, scope_type: scopeType };
       if (scopeEventId) filter.scope_event_id = scopeEventId;
+      if (!isAdmin) filter.sender_user_id = user?.id;
       return base44.entities.NotificationCampaign.filter(filter);
     },
   });

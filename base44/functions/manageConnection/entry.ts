@@ -23,9 +23,9 @@ Deno.serve(async (req) => {
     const { action } = body;
 
     if (action === "send") {
-      return await handleSendRequest(base44, body);
+      return await handleSendRequest(base44, body, user);
     } else if (action === "accept") {
-      return await handleAcceptRequest(base44, body);
+      return await handleAcceptRequest(base44, body, user);
     }
     return Response.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
@@ -33,7 +33,13 @@ Deno.serve(async (req) => {
   }
 });
 
-async function handleSendRequest(base44, { eventId, requesterPersonId, requesterName, receiverPersonId, receiverName, requesterParticipantId }) {
+async function handleSendRequest(base44, { eventId, requesterPersonId, requesterName, receiverPersonId, receiverName, requesterParticipantId }, user) {
+  // Verify ownership: requesterPersonId must belong to calling user
+  const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
+  const userPersonId = userPersons[0]?.id;
+  if (requesterPersonId !== userPersonId && user.role !== 'admin') {
+    return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
+  }
   const [aId, bId] = sortPersonIds(requesterPersonId, receiverPersonId);
   const safeReqName = sanitizeText(requesterName);
   const safeRcvName = sanitizeText(receiverName);
@@ -82,7 +88,13 @@ async function handleSendRequest(base44, { eventId, requesterPersonId, requester
   return Response.json({ ok: true, reason: "request_sent" });
 }
 
-async function handleAcceptRequest(base44, { requestId, eventId, accepterPersonId, accepterName, accepterParticipantId }) {
+async function handleAcceptRequest(base44, { requestId, eventId, accepterPersonId, accepterName, accepterParticipantId }, user) {
+  // Verify ownership: accepterPersonId must belong to calling user
+  const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
+  const userPersonId = userPersons[0]?.id;
+  if (accepterPersonId !== userPersonId && user.role !== 'admin') {
+    return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
+  }
   const requests = await base44.asServiceRole.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
   if (!requests?.length) return Response.json({ ok: false, reason: "not_found" });
   const request = requests[0];

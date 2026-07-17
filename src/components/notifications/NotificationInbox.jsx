@@ -57,8 +57,7 @@ export default function NotificationInbox({ onClose }) {
     queryKey: ["notification_inbox_campaigns", campaignIds.join(",")],
     queryFn: async () => {
       if (!campaignIds.length) return [];
-      const all = await base44.entities.NotificationCampaign.list();
-      return all.filter((c) => campaignIds.includes(c.id));
+      return base44.entities.NotificationCampaign.filter({ id: { $in: campaignIds } });
     },
     enabled: campaignIds.length > 0,
   });

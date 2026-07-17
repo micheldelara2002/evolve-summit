@@ -25,6 +25,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
 
+    // Verify participant ownership — prevents crediting points to arbitrary participants
+    const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, is_deleted: false });
+    const targetPart = targetParts[0];
+    if (!targetPart) return Response.json({ error: 'Participante não encontrado.' }, { status: 404 });
+    const isOwner = targetPart.email === user.email;
+    const isAdminUser = user.role === 'admin';
+    if (!isOwner && !isAdminUser) {
+      // Allow if calling user is also a participant in the same event (system-triggered actions like connection scoring)
+      const callerParts = await base44.asServiceRole.entities.Participant.filter({
+        event_id: targetPart.event_id, email: user.email, is_deleted: false,
+      });
+      if (callerParts.length === 0) {
+        return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
+      }
+    }
+
     // Resgate: cria PointTransaction com 0 pontos, sem creditar
     if (acao === "resgate_realizado") {
       const chave = `${eventId}:${participantId}:${acao}:${refId}`;

@@ -62,9 +62,16 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
     recipients.push({ user_id: userId, name: name || "", email: email || "", role: role || "" });
   };
 
+  // Fetch system users once — reused across segments
+  let _allUsers = null;
+  const getAllUsers = async () => {
+    if (!_allUsers) _allUsers = await base44.entities.User.list();
+    return _allUsers;
+  };
+
   if (audienceType === "all" || (audienceType === "segment" && audienceSegments.includes("all"))) {
     // Buscar todos os usuários do sistema
-    const users = await base44.entities.User.list();
+    const users = await getAllUsers();
     users.forEach((u) => addRecipient(u.id, u.full_name, u.email, u.role));
 
     if (scopeEventId) {
@@ -82,11 +89,11 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
     // Resolver por perfil específico
     const roleMap = {
       admin: async () => {
-        const users = await base44.entities.User.list();
+        const users = await getAllUsers();
         users.filter((u) => u.role === "admin").forEach((u) => addRecipient(u.id, u.full_name, u.email, "admin"));
       },
       gerente: async () => {
-        const users = await base44.entities.User.list();
+        const users = await getAllUsers();
         users.filter((u) => u.role === "gerente" || u.role === "manager").forEach((u) => addRecipient(u.id, u.full_name, u.email, u.role));
         if (scopeEventId) {
           const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "manager", is_deleted: false });
@@ -116,7 +123,7 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
           const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "attendee", is_deleted: false });
           parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "attendee"));
         } else {
-          const users = await base44.entities.User.list();
+          const users = await getAllUsers();
           users.filter((u) => u.role === "user").forEach((u) => addRecipient(u.id, u.full_name, u.email, "user"));
         }
       },

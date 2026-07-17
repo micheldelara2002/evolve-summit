@@ -46,6 +46,11 @@ Deno.serve(async (req) => {
 
     const participant = participants[0];
 
+    // Verify ownership: participant must belong to calling user
+    if (participant.email !== user.email && user.role !== 'admin') {
+      return Response.json({ error: 'Sem permissão para resgatar itens para este participante.' }, { status: 403 });
+    }
+
     // 3. Fetch all non-cancelled redemptions for this participant (fresh data)
     const allRedemptions = await base44.asServiceRole.entities.StoreRedemption.filter({
       event_id: eventId,

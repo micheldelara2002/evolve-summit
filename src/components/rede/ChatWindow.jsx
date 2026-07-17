@@ -31,7 +31,7 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["chat_messages", threadId],
-    queryFn: () => base44.entities.ChatMessage.filter({ thread_id: threadId }),
+    queryFn: () => base44.entities.ChatMessage.filter({ thread_id: threadId }, "-created_date", 100),
     refetchInterval: 5000,
     enabled: isAuthorized,
   });
@@ -53,14 +53,15 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
     }
   }, [messages]);
 
-  // Mark messages from other person as read
+  // Mark messages from other person as read (batch — single API call)
   useEffect(() => {
-    messages.forEach((m) => {
-      if (m.sender_person_id !== myPerson.id && !m.read_at) {
-        base44.entities.ChatMessage.update(m.id, { read_at: new Date().toISOString() });
-      }
-    });
-  }, [messages, myPerson.id]);
+    const unread = messages.filter((m) => m.sender_person_id !== myPerson.id && !m.read_at);
+    if (unread.length === 0) return;
+    const now = new Date().toISOString();
+    base44.entities.ChatMessage.bulkUpdate(unread.map((m) => ({ id: m.id, read_at: now })))
+      .then(() => queryClient.invalidateQueries({ queryKey: ["chat_messages", threadId] }))
+      .catch(() => {});
+  }, [messages, myPerson.id, threadId, queryClient]);
 
   const handleSend = async (e) => {
     e?.preventDefault();

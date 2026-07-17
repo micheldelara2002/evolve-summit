@@ -24,6 +24,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
 
+    // Verify ownership: myPersonId must belong to calling user
+    const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
+    const userPersonId = userPersons[0]?.id;
+    if (myPersonId !== userPersonId && user.role !== 'admin') {
+      return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+    }
+
     const [aId, bId] = sortPersonIds(myPersonId, otherPersonId);
     const safeMyName = sanitizeText(myPersonName);
     const safeOtherName = sanitizeText(otherPersonName);
@@ -51,7 +58,7 @@ Deno.serve(async (req) => {
       threads.sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
       const duplicates = threads.slice(1);
       for (const d of duplicates) {
-        await base44.asServiceRole.entities.ChatThread.delete(d.id);
+        await base44.asServiceRole.entities.ChatThread.update(d.id, { is_deleted: true });
       }
       return Response.json(threads[0]);
     }

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { base44 } from "@/api/base44Client";
 import { uploadFile } from "@/lib/apiClient";
 import { sanitizeText } from "@/utils/sanitize";
+import { toast } from "sonner";
 import { Upload, X } from "lucide-react";
 
 const STATUSES = ["draft", "active", "finished", "cancelled"];
@@ -58,6 +59,14 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     const data = { ...form };
+    // Validate hex colors
+    const hexFields = ["color_primary", "color_secondary", "color_accent"];
+    for (const f of hexFields) {
+      if (data[f] && !/^#[0-9a-fA-F]{6}$/.test(data[f])) {
+        toast.error("Cor inválida. Use o formato #RRGGBB (ex: #4F46E5).");
+        return;
+      }
+    }
     if (data.max_participants) data.max_participants = Number(data.max_participants);
     else delete data.max_participants;
     // Sanitize free-text fields
