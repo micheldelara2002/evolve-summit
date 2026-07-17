@@ -20,6 +20,7 @@ import {
   DEFAULT_FIELD_CONFIG,
   buildFieldValues,
 } from "./CustomCertificatePreview";
+import { sanitizeText } from "@/utils/sanitize";
 
 const FONT_FAMILIES = [
   { value: "Arial, sans-serif", label: "Arial" },
@@ -120,11 +121,19 @@ export default function TemplateEditor({ open, onClose, onSave, eventId, event, 
     if (!backgroundUrl) { toast.error("Carregue uma imagem de fundo."); return; }
     setSaving(true);
     try {
+      const sanitizedConfigs = Object.fromEntries(
+        Object.entries(fieldConfigs).map(([key, cfg]) => [
+          key,
+          cfg.custom_text != null
+            ? { ...cfg, custom_text: sanitizeText(cfg.custom_text) }
+            : cfg,
+        ])
+      );
       await onSave({
         name: name.trim(),
         tipo,
         background_url: backgroundUrl,
-        field_configs: JSON.stringify(fieldConfigs),
+        field_configs: JSON.stringify(sanitizedConfigs),
       });
       onClose();
     } catch {

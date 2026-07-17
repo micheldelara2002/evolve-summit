@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { t } from "@/lib/i18n";
+import { sanitizeText } from "@/utils/sanitize";
 
 const MAX_DESC = 250;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,9 +37,9 @@ export default function JobPostingForm({ open, onClose, eventId, participantId, 
       if (!EMAIL_RE.test(contactEmail)) throw new Error(t("jobBoard.invalidEmail"));
 
       const payload = {
-        job_title: jobTitle.trim(),
+        job_title: sanitizeText(jobTitle.trim()),
         contact_email: contactEmail.trim(),
-        description: description.trim().slice(0, MAX_DESC),
+        description: sanitizeText(description.trim().slice(0, MAX_DESC)),
       };
 
       if (isEditing) {

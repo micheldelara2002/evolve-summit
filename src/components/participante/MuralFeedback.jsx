@@ -9,6 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, ThumbsDown, Send, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeText } from "@/utils/sanitize";
 
 const MAX_CHARS = 500;
 
@@ -30,7 +31,7 @@ export default function MuralFeedback({ eventId, participantId, personId, userId
         person_id: personId || undefined,
         user_id: userId || undefined,
         tipo,
-        mensagem: mensagem.trim(),
+        mensagem: sanitizeText(mensagem.trim()),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feedbacks", eventId] });
