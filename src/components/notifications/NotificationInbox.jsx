@@ -25,7 +25,6 @@ export function useUnreadCount() {
     enabled: !!user,
     // Refresh a cada 30s para refletir novos envios
     refetchInterval: 30000,
-    refetchIntervalInBackground: true,
   });
 
   return recipients.filter((r) => !r.read_at).length;
@@ -48,7 +47,6 @@ export default function NotificationInbox({ onClose }) {
         : [],
     enabled: !!user,
     refetchInterval: 30000,
-    refetchIntervalInBackground: true,
   });
 
   const campaignIds = [...new Set(recipients.map((r) => r.campaign_id))];

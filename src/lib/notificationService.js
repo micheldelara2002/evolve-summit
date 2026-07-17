@@ -114,8 +114,8 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
       },
       representante: async () => {
         if (scopeEventId) {
-          const reps = await base44.entities.PartnerRepresentative.filter({ event_id: scopeEventId, is_deleted: false });
-          reps.forEach((r) => addRecipient(r.id, r.full_name, r.email, "representante"));
+          const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "partner_rep", is_deleted: false });
+          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "representante"));
         }
       },
       attendee: async () => {

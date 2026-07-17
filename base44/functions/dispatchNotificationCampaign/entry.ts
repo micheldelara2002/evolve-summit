@@ -137,8 +137,10 @@ async function resolveRecipientsServerSide(base44, { scopeType, scopeEventId, au
       },
       representante: async () => {
         if (scopeEventId) {
-          const reps = await base44.asServiceRole.entities.PartnerRepresentative.filter({ event_id: scopeEventId, is_deleted: false });
-          reps.forEach((r) => addRecipient(r.id, r.full_name, r.email, "representante"));
+          // PartnerRepresentative has no event_id — use Participant with role_in_event="partner_rep"
+          // to get event-scoped representatives with correct name/email fields
+          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "partner_rep", is_deleted: false });
+          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "representante"));
         }
       },
       attendee: async () => {
