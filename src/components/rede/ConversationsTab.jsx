@@ -19,16 +19,30 @@ export default function ConversationsTab({ eventId, myPerson, isReadOnly, active
   const { data: threads = [], isLoading } = useQuery({
     queryKey: ["rede_threads", eventId, myPerson.id],
     queryFn: async () => {
-      const all = await base44.entities.ChatThread.filter({ event_id: eventId, is_deleted: false });
-      return all
-        .filter((t) => t.person_a_id === myPerson.id || t.person_b_id === myPerson.id)
-        .sort((a, b) => new Date(b.last_message_at || b.created_date) - new Date(a.last_message_at || a.created_date));
+      const [asA, asB] = await Promise.all([
+        base44.entities.ChatThread.filter({ event_id: eventId, person_a_id: myPerson.id, is_deleted: false }),
+        base44.entities.ChatThread.filter({ event_id: eventId, person_b_id: myPerson.id, is_deleted: false }),
+      ]);
+      const seen = new Set();
+      const merged = [...asA, ...asB].filter((t) => {
+        if (seen.has(t.id)) return false;
+        seen.add(t.id);
+        return true;
+      });
+      return merged.sort((a, b) => new Date(b.last_message_at || b.created_date) - new Date(a.last_message_at || a.created_date));
     },
   });
 
+  const threadPersonIds = [...new Set(
+    threads.flatMap((t) => [t.person_a_id, t.person_b_id]).filter((id) => id !== myPerson.id)
+  )];
   const { data: persons = [] } = useQuery({
-    queryKey: ["rede_persons"],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryKey: ["rede_persons_by_threads", eventId, threadPersonIds.join(",")],
+    queryFn: async () => {
+      if (!threadPersonIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: threadPersonIds }, is_active: true });
+    },
+    enabled: threadPersonIds.length > 0,
   });
   const personMap = new Map(persons.map((p) => [p.id, p]));
 

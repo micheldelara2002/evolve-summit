@@ -17,19 +17,23 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
   const [pendingIds, setPendingIds] = useState(new Set());
   const queryClient = useQueryClient();
 
-  const { data: allParticipants = [], isLoading } = useQuery({
+  const { data: participants = [], isLoading } = useQuery({
     queryKey: ["rede_global_participants", eventIds.join(",")],
-    queryFn: () => base44.entities.Participant.filter({ is_deleted: false }),
+    queryFn: async () => {
+      if (!eventIds.length) return [];
+      return base44.entities.Participant.filter({ event_id: { $in: eventIds }, is_deleted: false });
+    },
+    enabled: eventIds.length > 0,
   });
 
-  const participants = useMemo(
-    () => allParticipants.filter((p) => eventIds.includes(p.event_id)),
-    [allParticipants, eventIds]
-  );
-
+  const participantPersonIds = [...new Set(participants.map((p) => p.person_id).filter(Boolean))];
   const { data: persons = [] } = useQuery({
-    queryKey: ["rede_persons"],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryKey: ["rede_persons_by_participants", participantPersonIds.join(",")],
+    queryFn: async () => {
+      if (!participantPersonIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: participantPersonIds }, is_active: true });
+    },
+    enabled: participantPersonIds.length > 0,
   });
 
   const { data: mySentRequests = [] } = useQuery({
@@ -43,8 +47,17 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
   const { data: myConnections = [] } = useQuery({
     queryKey: ["rede_global_connections", myPerson.id, eventIds.join(",")],
     queryFn: async () => {
-      const all = await base44.entities.Connection.filter({ is_deleted: false });
-      return all.filter((c) => eventIds.includes(c.event_id) && (c.person_a_id === myPerson.id || c.person_b_id === myPerson.id));
+      const [asA, asB] = await Promise.all([
+        base44.entities.Connection.filter({ person_a_id: myPerson.id, is_deleted: false }),
+        base44.entities.Connection.filter({ person_b_id: myPerson.id, is_deleted: false }),
+      ]);
+      const seen = new Set();
+      const merged = [...asA, ...asB].filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+      return merged.filter((c) => eventIds.includes(c.event_id));
     },
   });
 

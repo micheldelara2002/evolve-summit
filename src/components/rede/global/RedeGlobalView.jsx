@@ -41,26 +41,30 @@ export default function RedeGlobalView() {
         const list = await base44.entities.Person.filter({ id: user.person_id });
         if (list[0]) return list[0];
       }
-      const all = await base44.entities.Person.filter({ is_active: true });
-      return all.find((p) => p.contact_email === user?.email) || null;
+      const byEmail = await base44.entities.Person.filter({ contact_email: user.email, is_active: true });
+      return byEmail[0] || null;
     },
     enabled: !!user,
   });
 
-  const { data: allParticipants = [], isLoading: loadingParticipants } = useQuery({
-    queryKey: ["all_participants_rede_global", user?.email],
-    queryFn: () => base44.entities.Participant.filter({ is_deleted: false }),
-    enabled: !!user,
+  const { data: myParticipantRecords = [], isLoading: loadingParticipants } = useQuery({
+    queryKey: ["my_participants_rede_global", user?.email, myPerson?.id],
+    queryFn: async () => {
+      const [byEmail, byPerson] = await Promise.all([
+        base44.entities.Participant.filter({ email: user.email, is_deleted: false }),
+        myPerson?.id
+          ? base44.entities.Participant.filter({ person_id: myPerson.id, is_deleted: false })
+          : [],
+      ]);
+      const seen = new Set();
+      return [...byEmail, ...byPerson].filter((p) => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+    },
+    enabled: !!user && !!myPerson,
   });
-
-  // User's own participant records (across all events)
-  const myParticipantRecords = useMemo(
-    () =>
-      allParticipants.filter(
-        (p) => p.email === user?.email || (myPerson && p.person_id === myPerson?.id)
-      ),
-    [allParticipants, user?.email, myPerson]
-  );
 
   const myEventIds = useMemo(
     () => [...new Set(myParticipantRecords.map((p) => p.event_id))],
@@ -71,8 +75,7 @@ export default function RedeGlobalView() {
     queryKey: ["my_events_rede_global", myEventIds.join(",")],
     queryFn: async () => {
       if (!myEventIds.length) return [];
-      const all = await base44.entities.Event.filter({ is_deleted: false });
-      return all.filter((e) => myEventIds.includes(e.id));
+      return base44.entities.Event.filter({ id: { $in: myEventIds }, is_deleted: false });
     },
     enabled: myEventIds.length > 0,
   });

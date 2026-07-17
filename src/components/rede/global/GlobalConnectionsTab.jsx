@@ -17,16 +17,30 @@ export default function GlobalConnectionsTab({ eventIds, eventMap, myPerson, myP
   const { data: connections = [], isLoading } = useQuery({
     queryKey: ["rede_global_connections", myPerson.id, eventIds.join(",")],
     queryFn: async () => {
-      const all = await base44.entities.Connection.filter({ is_deleted: false });
-      return all.filter(
-        (c) => eventIds.includes(c.event_id) && (c.person_a_id === myPerson.id || c.person_b_id === myPerson.id)
-      );
+      const [asA, asB] = await Promise.all([
+        base44.entities.Connection.filter({ person_a_id: myPerson.id, is_deleted: false }),
+        base44.entities.Connection.filter({ person_b_id: myPerson.id, is_deleted: false }),
+      ]);
+      const seen = new Set();
+      const merged = [...asA, ...asB].filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+      return merged.filter((c) => eventIds.includes(c.event_id));
     },
   });
 
+  const connectionPersonIds = [...new Set(
+    connections.flatMap((c) => [c.person_a_id, c.person_b_id]).filter((id) => id !== myPerson.id)
+  )];
   const { data: persons = [] } = useQuery({
-    queryKey: ["rede_persons"],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
+    queryKey: ["rede_persons_by_global_connections", connectionPersonIds.join(",")],
+    queryFn: async () => {
+      if (!connectionPersonIds.length) return [];
+      return base44.entities.Person.filter({ id: { $in: connectionPersonIds }, is_active: true });
+    },
+    enabled: connectionPersonIds.length > 0,
   });
   const personMap = new Map(persons.map((p) => [p.id, p]));
 
