@@ -15,10 +15,10 @@ import LojaTab from "@/components/admin/LojaTab";
 import PontuacaoTab from "@/components/admin/PontuacaoTab";
 import ConquistasTab from "@/components/admin/ConquistasTab";
 import FeedbacksTab from "@/components/admin/FeedbacksTab";
-import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import EventModuleNav from "@/components/admin/EventModuleNav";
 import { useSectionParam } from "@/lib/useSectionParam";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Users, Route, Layout, Handshake, DoorOpen, Plus, MoreVertical, Trash2, Search, ShoppingBag, Star, Trophy, Bell, MessageSquare, Ticket, Award } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, MoreVertical, Trash2, Search } from "lucide-react";
 import SorteioTab from "@/components/admin/SorteioTab";
 import CertificadosTab from "@/components/admin/CertificadosTab";
 import SessionRankingSection from "@/components/admin/SessionRankingSection";
@@ -87,6 +87,11 @@ export default function EventDetail() {
   const { data: reps = [] } = useQuery({
     queryKey: ["reps", eventId],
     queryFn: () => base44.entities.PartnerRepresentative.filter({ event_id: eventId, is_deleted: false }),
+  });
+
+  const { data: certificates = [] } = useQuery({
+    queryKey: ["certificates-count", eventId],
+    queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
   });
 
   const hasAccess = canManageEvent(user, eventId);
@@ -231,26 +236,34 @@ export default function EventDetail() {
         )}
       </div>
 
-      {/* Section switcher */}
-      <SectionSwitcher
-        sections={[
-          { id: "people", label: t("adminSections.people"), icon: Users },
-          { id: "tracks", label: t("adminSections.tracks"), icon: Route },
-          { id: "rooms", label: t("adminSections.rooms"), icon: DoorOpen },
-          { id: "sessions", label: t("adminSections.sessions"), icon: Layout },
-          { id: "ranking", label: t("adminSections.ranking"), icon: Trophy },
-          { id: "partners", label: t("adminSections.partners"), icon: Handshake },
-          { id: "store", label: t("adminSections.store"), icon: ShoppingBag },
-          { id: "score", label: t("adminSections.score"), icon: Star },
-          { id: "badges", label: t("adminSections.badges"), icon: Trophy },
-          { id: "notifications", label: t("adminSections.notifications"), icon: Bell },
-          { id: "feedback", label: t("adminSections.feedback"), icon: MessageSquare },
-          { id: "raffle", label: t("adminSections.raffle"), icon: Ticket },
-          { id: "certificates", label: t("adminSections.certificates"), icon: Award },
-        ]}
-        activeSection={tab}
-        onSectionChange={setTab}
-      />
+      {/* Stat header */}
+      <div className="rounded-2xl bg-primary text-primary-foreground p-5 space-y-4">
+        <div>
+          <h2 className="text-lg font-display font-bold">{event.name}</h2>
+          {event.start_date && (
+            <p className="text-sm text-primary-foreground/70">
+              {new Date(event.start_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+              {event.end_date && " a " + new Date(event.end_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+            </p>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { value: participants.length, label: "Participantes", sub: `${participants.filter((p) => p.registration_status === "confirmed").length} confirmados` },
+            { value: participants.filter((p) => p.checkin_status === "confirmed").length, label: "Check-in", sub: "presentes" },
+            { value: certificates.length, label: "Certificados", sub: "emitidos" },
+          ].map((stat, i) => (
+            <div key={i} className="bg-card rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              <p className="text-[10px] text-muted-foreground/70">{stat.sub}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Module navigation */}
+      <EventModuleNav activeTab={tab} onTabChange={setTab} />
 
       <div>
         {tab === "people" && (
