@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { t } from "@/lib/i18n";
 import {
   Users, Route, DoorOpen, Layout, Trophy,
@@ -5,14 +6,14 @@ import {
   MessageSquare, Ticket, Award,
 } from "lucide-react";
 
-export default function EventModuleNav({ activeTab, onTabChange }) {
+export default function EventModuleNav({ eventId }) {
   const sections = [
     {
       title: "Operação",
       modules: [
         { id: "people", label: t("adminSections.people"), icon: Users },
         { id: "partners", label: t("adminSections.partners"), icon: Handshake },
-        { id: "notifications", label: t("adminSections.notifications"), icon: Bell },
+        { id: "certificates", label: t("adminSections.certificates"), icon: Award },
       ],
     },
     {
@@ -32,7 +33,7 @@ export default function EventModuleNav({ activeTab, onTabChange }) {
         { id: "badges", label: t("adminSections.badges"), icon: Award },
         { id: "raffle", label: t("adminSections.raffle"), icon: Ticket },
         { id: "feedback", label: t("adminSections.feedback"), icon: MessageSquare },
-        { id: "certificates", label: t("adminSections.certificates"), icon: Award },
+        { id: "notifications", label: t("adminSections.notifications"), icon: Bell },
       ],
     },
   ];
@@ -45,23 +46,16 @@ export default function EventModuleNav({ activeTab, onTabChange }) {
             {section.title}
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {section.modules.map(({ id, label, icon: Icon }) => {
-              const active = activeTab === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => onTabChange(id)}
-                  className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all text-left ${
-                    active
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card hover:border-primary/40 hover:bg-surface"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="text-sm font-medium truncate">{label}</span>
-                </button>
-              );
-            })}
+            {section.modules.map(({ id, label, icon: Icon }) => (
+              <Link
+                key={id}
+                to={`/events/${eventId}/${id}`}
+                className="flex items-center gap-2.5 p-3 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-surface transition-all"
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="text-sm font-medium truncate">{label}</span>
+              </Link>
+            ))}
           </div>
         </div>
       ))}

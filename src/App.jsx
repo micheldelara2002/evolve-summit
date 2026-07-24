@@ -27,6 +27,8 @@ const EventsList = lazy(() => import("@/pages/EventsList"));
 const EventCreate = lazy(() => import("@/pages/EventCreate"));
 const EventEdit = lazy(() => import("@/pages/EventEdit"));
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
+const EventModulesHome = lazy(() => import("@/pages/EventModulesHome"));
+const EventModulePage = lazy(() => import("@/pages/EventModulePage"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
 const AdminNotifications = lazy(() => import("@/pages/AdminNotifications"));
 const NotificationMetrics = lazy(() => import("@/pages/NotificationMetrics"));
@@ -100,7 +102,22 @@ const AuthenticatedApp = () => {
             <Route path="/business" element={<BusinessDashboard />} />
             <Route path="/events" element={<EventsList />} />
             <Route path="/events/new" element={<EventCreate />} />
-            <Route path="/events/:eventId" element={<EventDetail />} />
+            <Route path="/events/:eventId" element={<EventDetail />}>
+              <Route index element={<EventModulesHome />} />
+              <Route path="people" element={<EventModulePage module="people" />} />
+              <Route path="tracks" element={<EventModulePage module="tracks" />} />
+              <Route path="rooms" element={<EventModulePage module="rooms" />} />
+              <Route path="sessions" element={<EventModulePage module="sessions" />} />
+              <Route path="ranking" element={<EventModulePage module="ranking" />} />
+              <Route path="partners" element={<EventModulePage module="partners" />} />
+              <Route path="store" element={<EventModulePage module="store" />} />
+              <Route path="score" element={<EventModulePage module="score" />} />
+              <Route path="badges" element={<EventModulePage module="badges" />} />
+              <Route path="notifications" element={<EventModulePage module="notifications" />} />
+              <Route path="feedback" element={<EventModulePage module="feedback" />} />
+              <Route path="raffle" element={<EventModulePage module="raffle" />} />
+              <Route path="certificates" element={<EventModulePage module="certificates" />} />
+            </Route>
             <Route path="/events/:eventId/edit" element={<EventEdit />} />
             <Route path="/audit" element={<AuditLog />} />
             <Route path="/notifications" element={<AdminNotifications />} />

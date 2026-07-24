@@ -1,155 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, Outlet } from "react-router-dom";
 import { t } from "@/lib/i18n";
 import { canManageEvent } from "@/lib/access";
-import { logAudit } from "@/lib/audit";
 import StatusBadge from "@/components/admin/StatusBadge";
-import EntityTable from "@/components/admin/EntityTable";
-import EntityFormDialog from "@/components/admin/EntityFormDialog";
-import ColorPickerField from "@/components/admin/ColorPickerField";
-import PessoasTab from "@/components/admin/PessoasTab";
-import PartnersTab from "@/components/admin/PartnersTab";
-import LojaTab from "@/components/admin/LojaTab";
-import PontuacaoTab from "@/components/admin/PontuacaoTab";
-import ConquistasTab from "@/components/admin/ConquistasTab";
-import FeedbacksTab from "@/components/admin/FeedbacksTab";
-import EventModuleNav from "@/components/admin/EventModuleNav";
-import { useSectionParam } from "@/lib/useSectionParam";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pencil, Plus, MoreVertical, Trash2, Search } from "lucide-react";
-import SorteioTab from "@/components/admin/SorteioTab";
-import CertificadosTab from "@/components/admin/CertificadosTab";
-import SessionRankingSection from "@/components/admin/SessionRankingSection";
-import NotificationsCenter from "@/components/notifications/NotificationsCenter";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { toast } from "sonner";
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-
-const LEGACY_TAB_MAP = {
-  pessoas: "people",
-  loja: "store",
-  pontuacao: "score",
-  conquistas: "badges",
-  notificacoes: "notifications",
-  feedbacks: "feedback",
-  sorteio: "raffle",
-  certificados: "certificates",
-};
+import { ArrowLeft, Pencil } from "lucide-react";
 
 export default function EventDetail() {
   const { eventId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useSectionParam({ defaultSection: "people", legacyTabMap: LEGACY_TAB_MAP });
-  const [formDialog, setFormDialog] = useState({ open: false, type: null, item: null });
-  const [showImport, setShowImport] = useState(false);
-  const [trackColorEdit, setTrackColorEdit] = useState(null);
-  const [trackDeleteConfirm, setTrackDeleteConfirm] = useState(null);
-  const [trackBlockMsg, setTrackBlockMsg] = useState(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
     queryFn: async () => { const l = await base44.entities.Event.filter({ id: eventId }); return l[0]; },
   });
 
-  const { data: participants = [] } = useQuery({
-    queryKey: ["participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: tracks = [] } = useQuery({
-    queryKey: ["tracks", eventId],
-    queryFn: () => base44.entities.Track.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: rooms = [] } = useQuery({
-    queryKey: ["rooms", eventId],
-    queryFn: () => base44.entities.Room.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: sessions = [] } = useQuery({
-    queryKey: ["sessions", eventId],
-    queryFn: () => base44.entities.Session.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: partners = [] } = useQuery({
-    queryKey: ["event_partners", eventId],
-    queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: reps = [] } = useQuery({
-    queryKey: ["reps", eventId],
-    queryFn: () => base44.entities.PartnerRepresentative.filter({ event_id: eventId, is_deleted: false }),
-  });
-
-  const { data: certificates = [] } = useQuery({
-    queryKey: ["certificates-count", eventId],
-    queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
-  });
-
   const hasAccess = canManageEvent(user, eventId);
-
-  const ENTITY_MAP = { track: "Track", room: "Room", session: "Session" };
-
-  const saveMut = useMutation({
-    mutationFn: async ({ type, data, id }) => {
-      const eName = ENTITY_MAP[type];
-      // For sessions: resolve speaker_name from speaker_id
-      let finalData = { ...data };
-      if (type === "session" && data.speaker_id) {
-        const spk = participants.find((p) => p.id === data.speaker_id);
-        if (spk) finalData.speaker_name = spk.full_name;
-      }
-      if (id) {
-        await base44.entities[eName].update(id, finalData);
-        return { id, action: "update" };
-      } else {
-        const created = await base44.entities[eName].create({ ...finalData, event_id: eventId, is_deleted: false });
-        return { id: created.id, action: "create" };
-      }
-    },
-    onSuccess: (res, { type }) => {
-      if (res?.action) logAudit({ event_id: eventId, action: res.action, entity_type: ENTITY_MAP[type], entity_id: res.id, user });
-      queryClient.invalidateQueries({ queryKey: [type + "s", eventId] });
-      setFormDialog({ open: false, type: null, item: null });
-      setTrackColorEdit(null);
-      toast.success(t("events.saveSuccess"));
-    },
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: async ({ type, id }) => {
-      // Guard: last track/room
-      if (type === "track") {
-        if (tracks.length <= 1) throw new Error("Deve haver pelo menos uma trilha cadastrada.");
-        const linked = sessions.some((s) => s.track_id === id);
-        if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta trilha.");
-      }
-      if (type === "room") {
-        if (rooms.length <= 1) throw new Error("Deve haver pelo menos uma sala cadastrada.");
-        const linked = sessions.some((s) => s.room_id === id);
-        if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
-      }
-
-      await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
-      return { type, id };
-    },
-    onSuccess: ({ type, id }) => {
-      logAudit({ event_id: eventId, action: "soft_delete", entity_type: ENTITY_MAP[type], entity_id: id, user });
-      queryClient.invalidateQueries({ queryKey: [type + "s", eventId] });
-      toast.success(t("events.deleteSuccess"));
-    },
-    onError: (err) => {
-      toast.error(err.message || "Erro ao excluir.");
-    },
-  });
 
   if (isLoading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (!event) return <p className="text-center py-12 text-muted-foreground">{t("events.noEvents")}</p>;
@@ -160,41 +29,8 @@ export default function EventDetail() {
     </div>
   );
 
-  const openForm = (type, item = null) => setFormDialog({ open: true, type, item });
-
-  const SESSION_TYPES = [
-    { value: "aula", label: t("sessionTypes.aula") },
-    { value: "debate", label: t("sessionTypes.debate") },
-    { value: "demonstracao", label: t("sessionTypes.demonstracao") },
-    { value: "keynote", label: t("sessionTypes.keynote") },
-    { value: "mesa_redonda", label: t("sessionTypes.mesa_redonda") },
-    { value: "palestra", label: t("sessionTypes.palestra") },
-    { value: "painel", label: t("sessionTypes.painel") },
-    { value: "simulacao", label: t("sessionTypes.simulacao") },
-    { value: "workshop", label: t("sessionTypes.workshop") },
-  ];
-
-  const fieldDefs = {
-    room: [
-      { key: "name", label: "Nome", required: true },
-      { key: "capacity", label: "Capacidade", type: "number", required: false },
-      { key: "floor", label: "Andar" },
-      { key: "block", label: "Bloco" },
-    ],
-    session: [
-      { key: "title", label: "Título", required: true },
-      { key: "description", label: "Descrição", type: "textarea" },
-      { key: "speaker_id", label: "Palestrante", type: "select", options: [{ value: "", label: "— nenhum —" }, ...participants.filter((p) => p.role_in_event === "speaker").map((p) => ({ value: p.id, label: p.full_name }))] },
-      { key: "start_time", label: "Início", type: "datetime-local", required: true },
-      { key: "end_time", label: "Término", type: "datetime-local" },
-      { key: "track_id", label: "Trilha", type: "select", required: true, options: tracks.map((tr) => ({ value: tr.id, label: tr.name })) },
-      { key: "room_id", label: "Sala", type: "select", required: true, options: rooms.map((r) => ({ value: r.id, label: r.name })) },
-      { key: "session_type", label: "Tipo de Sessão", type: "select", options: SESSION_TYPES },
-    ],
-  };
-
-  const trackName = (id) => tracks.find((tr) => tr.id === id)?.name || "—";
-  const roomName = (id) => rooms.find((r) => r.id === id)?.name || "—";
+  const formatDate = (d) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "";
+  const dateRange = event.start_date ? `${formatDate(event.start_date)}${event.end_date ? " a " + formatDate(event.end_date) : ""}` : "";
 
   return (
     <div className="space-y-4">
@@ -214,9 +50,10 @@ export default function EventDetail() {
             )}
             <div>
               <h1 className="text-xl font-display font-bold">{event.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <StatusBadge status={event.status} />
-                <span className="text-xs text-muted-foreground">{event.manager_name}</span>
+                {dateRange && <span className="text-xs text-muted-foreground">· {dateRange}</span>}
+                {event.manager_name && <span className="text-xs text-muted-foreground">· {event.manager_name}</span>}
               </div>
             </div>
           </div>
@@ -236,300 +73,7 @@ export default function EventDetail() {
         )}
       </div>
 
-      {/* Stat header */}
-      <div className="rounded-2xl bg-primary text-primary-foreground p-5 space-y-4">
-        <div>
-          <h2 className="text-lg font-display font-bold">{event.name}</h2>
-          {event.start_date && (
-            <p className="text-sm text-primary-foreground/70">
-              {new Date(event.start_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-              {event.end_date && " a " + new Date(event.end_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-            </p>
-          )}
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { value: participants.length, label: "Participantes", sub: `${participants.filter((p) => p.registration_status === "confirmed").length} confirmados` },
-            { value: participants.filter((p) => p.checkin_status === "confirmed").length, label: "Check-in", sub: "presentes" },
-            { value: certificates.length, label: "Certificados", sub: "emitidos" },
-          ].map((stat, i) => (
-            <div key={i} className="bg-card rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-              <p className="text-[10px] text-muted-foreground/70">{stat.sub}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Module navigation */}
-      <EventModuleNav activeTab={tab} onTabChange={setTab} />
-
-      <div>
-        {tab === "people" && (
-          <PessoasTab
-            eventId={eventId}
-            participants={participants}
-            sessions={sessions}
-            hasAccess={hasAccess}
-            showImport={showImport}
-            onShowImport={() => setShowImport(true)}
-            onHideImport={() => setShowImport(false)}
-          />
-        )}
-        {tab === "tracks" && (
-          <TracksList
-            tracks={tracks}
-            sessions={sessions}
-            hasAccess={hasAccess}
-            onNew={() => setTrackColorEdit({ id: null, color: "#4F46E5", name: "", description: "" })}
-            onEdit={(track) => setTrackColorEdit({ id: track.id, color: track.color || "#4F46E5", name: track.name, description: track.description })}
-            onDelete={(track) => {
-              if (tracks.length <= 1) { setTrackBlockMsg("Deve haver pelo menos uma trilha cadastrada."); return; }
-              if (sessions.some((s) => s.track_id === track.id)) { setTrackBlockMsg("Não é possível excluir esta trilha, pois há sessão(ões) vinculada(s) a ela."); return; }
-              setTrackDeleteConfirm(track);
-            }}
-          />
-        )}
-        {tab === "rooms" && (
-          <EntityTable
-            items={rooms}
-            columns={[
-              { key: "name", label: "Nome" },
-              { key: "capacity", label: "Capacidade" },
-              { key: "floor", label: "Andar" },
-              { key: "block", label: "Bloco" },
-            ]}
-            searchField="name"
-            onAdd={hasAccess ? () => openForm("room") : undefined}
-            onEdit={hasAccess ? (item) => openForm("room", item) : undefined}
-            canDelete={(item) => {
-              if (rooms.length <= 1) return "Deve haver pelo menos uma sala cadastrada.";
-              if (sessions.some((s) => s.room_id === item.id)) return "Não é possível excluir: já existe sessão cadastrada nesta sala.";
-              return null;
-            }}
-            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "room", id: item.id }) : undefined}
-            addLabel="Nova"
-          />
-        )}
-        {tab === "sessions" && (
-          <EntityTable
-            items={sessions}
-            columns={[
-              { key: "title", label: "Título" },
-              { key: "track_id", label: "Trilha", render: (s) => trackName(s.track_id) },
-              { key: "room_id", label: "Sala", render: (s) => roomName(s.room_id) },
-              { key: "start_time", label: "Início", render: (s) => s.start_time ? new Date(s.start_time).toLocaleString("pt-BR") : "—" },
-            ]}
-            searchField="title"
-            onAdd={hasAccess ? () => openForm("session") : undefined}
-            onEdit={hasAccess ? (item) => openForm("session", item) : undefined}
-            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "session", id: item.id }) : undefined}
-            addLabel="Nova"
-          />
-        )}
-        {tab === "ranking" && (
-          <SessionRankingSection eventId={eventId} sessions={sessions} />
-        )}
-        {tab === "partners" && (
-          <PartnersTab eventId={eventId} hasAccess={hasAccess} />
-        )}
-        {tab === "store" && (
-          <LojaTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        )}
-        {tab === "score" && (
-          <PontuacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        )}
-        {tab === "badges" && (
-          <ConquistasTab eventId={eventId} hasAccess={hasAccess} user={user} />
-        )}
-        {tab === "notifications" && (
-          <NotificationsCenter
-            scopeType="event"
-            scopeEventId={eventId}
-            metricsPath={`/events/${eventId}/notifications/metrics`}
-          />
-        )}
-        {tab === "feedback" && (
-          <FeedbacksTab eventId={eventId} />
-        )}
-        {tab === "raffle" && (
-          <SorteioTab eventId={eventId} user={user} />
-        )}
-        {tab === "certificates" && (
-          <CertificadosTab eventId={eventId} user={user} />
-        )}
-      </div>
-
-      {/* Generic Form Dialog (rooms, sessions, partners) */}
-      {formDialog.open && (
-        <EntityFormDialog
-          open={formDialog.open}
-          onOpenChange={(open) => !open && setFormDialog({ open: false, type: null, item: null })}
-          title={formDialog.item ? t("common.edit") : "Novo"}
-          fields={fieldDefs[formDialog.type] || []}
-          item={formDialog.item}
-          onSubmit={(data) => saveMut.mutate({ type: formDialog.type, data, id: formDialog.item?.id })}
-          isSubmitting={saveMut.isPending}
-        />
-      )}
-
-      {/* Track block message */}
-      <AlertDialog open={!!trackBlockMsg} onOpenChange={() => setTrackBlockMsg(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <ADT>Não é possível excluir</ADT>
-            <AlertDialogDescription>{trackBlockMsg}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <ADF>
-            <AlertDialogAction onClick={() => setTrackBlockMsg(null)}>OK</AlertDialogAction>
-          </ADF>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Track delete confirm */}
-      {trackDeleteConfirm && (
-        <TrackDeleteDialog
-          track={trackDeleteConfirm}
-          onConfirm={() => { deleteMut.mutate({ type: "track", id: trackDeleteConfirm.id }); setTrackDeleteConfirm(null); }}
-          onClose={() => setTrackDeleteConfirm(null)}
-        />
-      )}
-
-      {/* Track edit dialog */}
-      {trackColorEdit !== null && (
-        <TrackEditDialog
-          item={trackColorEdit}
-          onSave={(data) => saveMut.mutate({ type: "track", data, id: trackColorEdit.id || undefined })}
-          onClose={() => setTrackColorEdit(null)}
-          isSubmitting={saveMut.isPending}
-        />
-      )}
+      <Outlet context={{ event, eventId, hasAccess, user }} />
     </div>
-  );
-}
-
-// ── Tracks list with search ──────────────────────────────────────────────────
-function TracksList({ tracks, sessions, hasAccess, onNew, onEdit, onDelete }) {
-  const [search, setSearch] = useState("");
-  const filtered = tracks.filter((tr) => tr.name.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar trilha..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
-        {hasAccess && (
-          <Button size="sm" className="gap-1 shrink-0" onClick={onNew}>
-            <Plus className="w-4 h-4" /> Nova
-          </Button>
-        )}
-      </div>
-      {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">{t("common.noData")}</p>}
-      {filtered.map((track) => (
-        <div key={track.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-          <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: track.color || "#94a3b8" }} />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{track.name}</p>
-            {track.description && <p className="text-xs text-muted-foreground truncate">{track.description}</p>}
-          </div>
-          {hasAccess && (
-            <TrackActionsMenu onEdit={() => onEdit(track)} onDelete={() => onDelete(track)} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Track actions kebab menu ─────────────────────────────────────────────────
-function TrackActionsMenu({ onEdit, onDelete }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-          <MoreVertical className="w-4 h-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onEdit}>
-          <Pencil className="w-4 h-4 mr-2" /> Editar
-        </DropdownMenuItem>
-        <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-          <Trash2 className="w-4 h-4 mr-2" /> Excluir
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// ── Track delete confirm dialog ──────────────────────────────────────────────
-function TrackDeleteDialog({ track, onConfirm, onClose }) {
-  return (
-    <AlertDialog open onOpenChange={(o) => !o && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <ADT>Confirmar exclusão</ADT>
-          <AlertDialogDescription>
-            Tem certeza que deseja excluir a trilha <strong>{track.name}</strong>?
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <ADF>
-          <AlertDialogCancel onClick={onClose}>Cancelar</AlertDialogCancel>
-          <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={onConfirm}>
-            Excluir
-          </AlertDialogAction>
-        </ADF>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-// ── Track edit dialog ────────────────────────────────────────────────────────
-function TrackEditDialog({ item, onSave, onClose, isSubmitting }) {
-  const [name, setName] = useState(item.name || "");
-  const [description, setDescription] = useState(item.description || "");
-  const [color, setColor] = useState(item.color || "#4F46E5");
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="font-display">{item.id ? t("common.edit") : "Nova Trilha"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); onSave({ name, description, color }); }} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Nome *</Label>
-            <input
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Descrição</Label>
-            <textarea
-              className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-            />
-          </div>
-          <ColorPickerField value={color} onChange={setColor} label="Cor da Trilha" />
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? t("common.loading") : t("common.save")}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
