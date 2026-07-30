@@ -53,7 +53,7 @@ export default function AdminHome() {
   const { user } = useAuth();
   const admin = isAdmin(user);
 
-  const { data: participantRoles } = useQuery({
+  const { data: participantRoles, isLoading: isLoadingRoles } = useQuery({
     queryKey: ["home-role-check", user?.person_id, user?.email],
     queryFn: async () => {
       const mine = await base44.entities.Participant.filter({
@@ -76,6 +76,9 @@ export default function AdminHome() {
   if (admin || participantRoles?.isPartnerRep || isPartnerManager(user)) {
     if (!myAreaCards.find((c) => c.key === "painelParceiro")) myAreaCards.push(PARTNER_CARD);
   }
+
+  // Enquanto resolve papéis (não-admin, não-partner_manager), mostra skeletons para evitar flash
+  const myAreaLoading = !admin && !isPartnerManager(user) && isLoadingRoles;
 
   // ── Admin-only sections ────────────────────────────────────────────────────
   const operationsCards = admin ? OPERATIONS_CARDS : [];
@@ -117,6 +120,16 @@ export default function AdminHome() {
                 </div>
               </Link>
             ))}
+            {section.title === "Minha área" && myAreaLoading && (
+              <>
+                {[0, 1].map((i) => (
+                  <div key={`skeleton-${i}`} className="flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border border-border bg-card animate-pulse">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-muted shrink-0" />
+                    <div className="h-3 w-14 bg-muted/60 rounded" />
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       ))}

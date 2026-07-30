@@ -141,7 +141,7 @@ export default function AuditLog() {
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["audit-logs"],
-    queryFn: () => base44.entities.AuditLog.list("-created_date", 200),
+    queryFn: () => base44.entities.AuditLog.list("-created_date", 100),
   });
 
   const { data: events = [] } = useQuery({
@@ -301,7 +301,7 @@ export default function AuditLog() {
                                 style={{ ...drag.draggableProps.style, display: "table-cell" }}
                               >
                                 <div className="flex items-center gap-1">
-                                  <span {...drag.dragHandleProps} className="cursor-grab opacity-40 hover:opacity-80">
+                                  <span {...drag.dragHandleProps} className="cursor-grab opacity-40 hover:opacity-80 hidden sm:inline-flex">
                                     <GripVertical className="w-3 h-3" />
                                   </span>
                                   {col.label}
@@ -334,30 +334,49 @@ export default function AuditLog() {
         </div>
       )}
 
-      {/* Paginação */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Anterior
-          </Button>
-          <div className="flex gap-1">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <Button
-                key={p}
-                variant={p === page ? "default" : "outline"}
-                size="sm"
-                className="w-8 h-8 p-0"
-                onClick={() => setPage(p)}
-              >
-                {p}
-              </Button>
-            ))}
+      {/* Paginação — janela de páginas para não estourar no mobile */}
+      {totalPages > 1 && (() => {
+        const maxVisible = 5;
+        let pages = [];
+        if (totalPages <= maxVisible + 2) {
+          pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+        } else {
+          const half = Math.floor(maxVisible / 2);
+          let start = Math.max(1, page - half);
+          let end = Math.min(totalPages, start + maxVisible - 1);
+          start = Math.max(1, end - maxVisible + 1);
+          if (start > 1) { pages.push(1); if (start > 2) pages.push("…"); }
+          for (let i = start; i <= end; i++) pages.push(i);
+          if (end < totalPages) { if (end < totalPages - 1) pages.push("…"); pages.push(totalPages); }
+        }
+        return (
+          <div className="flex items-center justify-center gap-1 sm:gap-2 pt-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)} className="shrink-0">
+              Anterior
+            </Button>
+            <div className="flex gap-1 overflow-x-auto">
+              {pages.map((p, i) =>
+                p === "…" ? (
+                  <span key={`ellipsis-${i}`} className="px-1.5 text-muted-foreground text-sm flex items-center">…</span>
+                ) : (
+                  <Button
+                    key={p}
+                    variant={p === page ? "default" : "outline"}
+                    size="sm"
+                    className="w-8 h-8 p-0 shrink-0"
+                    onClick={() => setPage(p)}
+                  >
+                    {p}
+                  </Button>
+                )
+              )}
+            </div>
+            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)} className="shrink-0">
+              Próxima
+            </Button>
           </div>
-          <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>
-            Próxima
-          </Button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
