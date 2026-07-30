@@ -38,16 +38,16 @@ export default function AdminLayout() {
       {/* Top bar */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between px-4 h-14">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 min-w-0">
             <img
               src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/93082474a_logoevolvesummittransparente.png"
               alt="Logo"
-              className="w-8 h-8 object-contain"
+              className="w-8 h-8 object-contain shrink-0"
             />
-            <span className="font-display font-bold text-lg hidden sm:block">{t("app.name")}</span>
+            <span className="font-display font-bold text-base sm:text-lg truncate">{t("app.name")}</span>
           </Link>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0 relative z-10">
             <UserChip user={user} />
             <InboxBell />
           </div>
@@ -98,12 +98,13 @@ function UserChip({ user }) {
       type="button"
       onClick={() => navigate("/profile")}
       aria-label="Ver meu perfil"
-      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-muted active:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+      style={{ minHeight: 44 }}
     >
       {user?.photo_url ? (
-        <img src={user.photo_url} alt={user.full_name} className="w-7 h-7 rounded-full object-cover ring-1 ring-border" />
+        <img src={user.photo_url} alt={user.full_name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border" />
       ) : (
-        <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-display font-bold flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-display font-bold flex items-center justify-center">
           {initials}
         </div>
       )}
@@ -122,8 +123,14 @@ function InboxBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
-          <Bell className="w-4 h-4" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative touch-manipulation active:bg-muted"
+          aria-label="Notificações"
+          style={{ minHeight: 44, minWidth: 44 }}
+        >
+          <Bell className="w-5 h-5" />
           {unread > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-destructive text-[10px] text-destructive-foreground flex items-center justify-center font-bold">
               {unread > 9 ? "9+" : unread}
