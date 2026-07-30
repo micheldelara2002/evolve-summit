@@ -212,7 +212,7 @@ export default function BusinessDashboard() {
       {/* Big Numbers */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <BusinessKPICard icon={Users} label="Usuários" value={metrics.users.count} delta={metrics.users.delta} loading={usersQ.isLoading} error={usersQ.isError} accent="primary" />
-        <BusinessKPICard icon={UserCheck} label="Persons" value={metrics.persons.count} delta={metrics.persons.delta} loading={personsQ.isLoading} error={personsQ.isError} accent="secondary" />
+        <BusinessKPICard icon={UserCheck} label="Pessoas" value={metrics.persons.count} delta={metrics.persons.delta} loading={personsQ.isLoading} error={personsQ.isError} accent="secondary" />
         <BusinessKPICard icon={CheckCircle2} label="Eventos ativos" value={metrics.eventsActive.count} delta={metrics.eventsActive.delta} loading={eventsQ.isLoading} error={eventsQ.isError} accent="success" />
         <BusinessKPICard icon={XCircle} label="Eventos encerrados" value={metrics.eventsFinished.count} delta={metrics.eventsFinished.delta} loading={eventsQ.isLoading} error={eventsQ.isError} accent="warning" />
         <BusinessKPICard icon={Building2} label="Parceiros" value={metrics.partners.count} delta={metrics.partners.delta} loading={partnersQ.isLoading} error={partnersQ.isError} accent="accent" />
