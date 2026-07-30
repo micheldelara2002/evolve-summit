@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, ArrowRight, Mic, Handshake } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -100,23 +100,20 @@ export default function AdminHome() {
         </p>
       </div>
 
-      {/* Sectioned card grids */}
+      {/* Sectioned icon grids */}
       {sections.map((section) => (
         <div key={section.title} className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{section.title}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {section.cards.map(({ key, icon: Icon, tone, href, label }) => (
-              <Link key={key} to={href} className="no-underline group">
-                <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-surface transition-all cursor-pointer h-full">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${TONE_CLASSES[tone] || TONE_CLASSES.primary}`}>
-                    <Icon className="w-5 h-5" />
+              <Link key={key} to={href} className="no-underline group touch-manipulation">
+                <div className="flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-md transition-all cursor-pointer h-full">
+                  <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 ${TONE_CLASSES[tone] || TONE_CLASSES.primary}`}>
+                    <Icon className="w-5 h-5" strokeWidth={1.75} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-display font-semibold text-sm">
-                      {label || t(`home.${key}`) || key}
-                    </p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  <span className="text-[11px] sm:text-xs font-medium text-center leading-tight line-clamp-2 min-h-[2em] flex items-center">
+                    {label || t(`home.${key}`) || key}
+                  </span>
                 </div>
               </Link>
             ))}

@@ -38,16 +38,16 @@ export default function AdminLayout() {
       {/* Top bar */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between px-4 h-14">
-          <Link to="/" className="flex items-center gap-2 min-w-0">
+          <Link to="/" className="flex items-center gap-2 min-w-0 rounded-lg px-1 touch-manipulation" style={{ minHeight: 44 }}>
             <img
               src="https://media.base44.com/images/public/6a2c618daec1758ff2122225/93082474a_logoevolvesummittransparente.png"
               alt="Logo"
               className="w-8 h-8 object-contain shrink-0"
             />
-            <span className="font-display font-bold text-base sm:text-lg truncate">{t("app.name")}</span>
+            <span className="font-display font-bold text-sm sm:text-lg truncate">{t("app.name")}</span>
           </Link>
 
-          <div className="flex items-center gap-1 shrink-0 relative z-10">
+          <div className="flex items-center shrink-0 relative z-10">
             <UserChip user={user} />
             <InboxBell />
           </div>
@@ -98,8 +98,8 @@ function UserChip({ user }) {
       type="button"
       onClick={() => navigate("/profile")}
       aria-label="Ver meu perfil"
-      className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-muted active:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-      style={{ minHeight: 44 }}
+      className="flex items-center justify-center rounded-lg hover:bg-muted active:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+      style={{ minWidth: 44, minHeight: 44 }}
     >
       {user?.photo_url ? (
         <img src={user.photo_url} alt={user.full_name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border" />
@@ -108,10 +108,6 @@ function UserChip({ user }) {
           {initials}
         </div>
       )}
-      <div className="text-right hidden sm:block">
-        <p className="text-sm font-medium leading-none">{user?.full_name}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">{roleLabel}</p>
-      </div>
     </button>
   );
 }
@@ -126,7 +122,7 @@ function InboxBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative touch-manipulation active:bg-muted"
+          className="relative touch-manipulation active:bg-muted rounded-lg"
           aria-label="Notificações"
           style={{ minHeight: 44, minWidth: 44 }}
         >

@@ -17,7 +17,7 @@ export default function BusinessKPICard({ icon: Icon, label, value, delta, loadi
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{label}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide leading-tight">{label}</p>
             {loading ? (
               <div className="h-9 w-24 bg-muted animate-pulse rounded mt-2" />
             ) : error ? (
