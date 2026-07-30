@@ -138,12 +138,15 @@ export default function PainelParceiro() {
   const selectedEvent = accessibleEvents.find((e) => e.id === selectedEventId);
   const isReadOnly = selectedEvent?.status === "finished";
 
-  // Loading enquanto resolve eventos acessíveis (evita flash de "Nenhum evento")
-  const isLoadingAccessibleEvents = isManager
-    ? loadingEventPartners || (eventIdsFromPartner.length > 0 && loadingEvents)
-    : loadingPartnerships;
+  // Loading enquanto resolve TODA a cadeia: person → reps → eventPartners → events (+ partnerships p/ representante)
+  // myPerson === undefined significa que ainda está carregando (null = carregou e não encontrou)
+  const isLoadingPerson = myPerson === undefined;
+  const isLoadingAccessibleEvents =
+    loadingEventPartners ||
+    (eventIdsFromPartner.length > 0 && loadingEvents) ||
+    loadingPartnerships;
 
-  if (loadingReps || (partnerId && isLoadingAccessibleEvents)) {
+  if (isLoadingPerson || loadingReps || (partnerId && isLoadingAccessibleEvents)) {
     return (
       <div className="flex justify-center py-24">
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
