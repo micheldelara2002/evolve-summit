@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
 import { uploadFile } from "@/lib/apiClient";
+import PageHeader from "@/components/layout/PageHeader";
 
 // ────────────────────────────────────────────────────────────────
 // Enums fixos
@@ -482,17 +483,17 @@ export default function AdminPartners() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-display font-bold">Parceiros</h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} empresa(s) encontrada(s)</p>
-        </div>
-        {isAdmin(user) && (
+      <PageHeader
+        icon={Building2}
+        title="Gestão de Parceiros"
+        subtitle={`${filtered.length} empresa(s) encontrada(s)`}
+        tone="warning"
+        actions={isAdmin(user) ? (
           <Button onClick={() => setEditingPartner({})} className="gap-2">
             <Plus className="w-4 h-4" /> Nova Empresa
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Filtros */}
       <Card>

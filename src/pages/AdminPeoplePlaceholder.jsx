@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PersonFormDialog from "@/components/admin/PersonFormDialog";
+import PageHeader from "@/components/layout/PageHeader";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -223,15 +224,17 @@ export default function AdminPeople() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-display font-bold">Gestão de Pessoas</h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} pessoa(s) encontrada(s)</p>
-        </div>
-        <Button onClick={() => setEditingPerson({})} className="gap-2">
-          <Plus className="w-4 h-4" /> Nova Pessoa
-        </Button>
-      </div>
+      <PageHeader
+        icon={Users}
+        title="Gestão de Pessoas"
+        subtitle={`${filtered.length} pessoa(s) encontrada(s)`}
+        tone="success"
+        actions={
+          <Button onClick={() => setEditingPerson({})} className="gap-2">
+            <Plus className="w-4 h-4" /> Nova Pessoa
+          </Button>
+        }
+      />
 
       {/* Filtros */}
       <Card>

@@ -2,19 +2,18 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, RefreshCw, TrendingUp, Users, UserCheck, CheckCircle2, XCircle, Building2, UserPlus, Target } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { RefreshCw, TrendingUp, Users, UserCheck, CheckCircle2, XCircle, Building2, UserPlus, Target } from "lucide-react";
 import BusinessFilters from "@/components/business/BusinessFilters";
 import BusinessKPICard from "@/components/business/BusinessKPICard";
 import BusinessCharts from "@/components/business/BusinessCharts";
 import BusinessTopEventsTable from "@/components/business/BusinessTopEventsTable";
 import BusinessEventsByMonth from "@/components/business/BusinessEventsByMonth";
+import PageHeader from "@/components/layout/PageHeader";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, formatDateTime, getBucketKey, formatBucketLabel, getBucketType } from "@/lib/businessUtils";
 
 const FETCH_LIMIT = 10000;
 
 export default function BusinessDashboard() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   // Filter state
@@ -173,41 +172,33 @@ export default function BusinessDashboard() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-display font-bold leading-tight">Painel Executivo</h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">Indicadores de negócio em tempo real</p>
-            </div>
+      <PageHeader
+        icon={TrendingUp}
+        title="Painel Executivo"
+        subtitle="Indicadores de negócio em tempo real"
+        tone="primary"
+        actions={
+          <div className="flex items-center gap-3">
+            {lastUpdate > 0 && (
+              <span className="text-xs text-muted-foreground hidden md:inline">
+                Atualizado: {formatDateTime(lastUpdate)}
+              </span>
+            )}
+            <BusinessFilters
+              period={period} setPeriod={setPeriod}
+              customStart={customStart} setCustomStart={setCustomStart}
+              customEnd={customEnd} setCustomEnd={setCustomEnd}
+              eventFilter={eventFilter} setEventFilter={setEventFilter}
+              events={dropdownEvents}
+              statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+              profileFilter={profileFilter} setProfileFilter={setProfileFilter}
+            />
+            <Button variant="outline" size="icon" onClick={handleRefresh} disabled={anyFetching}>
+              <RefreshCw className={`w-4 h-4 ${anyFetching ? "animate-spin" : ""}`} />
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {lastUpdate > 0 && (
-            <span className="text-xs text-muted-foreground hidden md:inline">
-              Atualizado: {formatDateTime(lastUpdate)}
-            </span>
-          )}
-          <BusinessFilters
-            period={period} setPeriod={setPeriod}
-            customStart={customStart} setCustomStart={setCustomStart}
-            customEnd={customEnd} setCustomEnd={setCustomEnd}
-            eventFilter={eventFilter} setEventFilter={setEventFilter}
-            events={dropdownEvents}
-            statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-            profileFilter={profileFilter} setProfileFilter={setProfileFilter}
-          />
-          <Button variant="outline" size="icon" onClick={handleRefresh} disabled={anyFetching}>
-            <RefreshCw className={`w-4 h-4 ${anyFetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Big Numbers */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

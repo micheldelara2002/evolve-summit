@@ -12,6 +12,7 @@ import { Calendar, Clock, Lock } from "lucide-react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/layout/PageHeader";
 
 function isValidHex(color) {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
@@ -131,12 +132,7 @@ export default function MeusEventos() {
 
   return (
     <div className="space-y-8 max-w-2xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-display font-bold">Meus Eventos</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Eventos em que você está cadastrado como participante.
-        </p>
-      </div>
+      <PageHeader icon={Calendar} title="Meus Eventos" subtitle="Eventos em que você está cadastrado como participante." tone="primary" />
 
       {/* Ativos */}
       <section className="space-y-3">

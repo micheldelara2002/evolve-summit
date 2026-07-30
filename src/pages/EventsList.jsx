@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StatusBadge from "@/components/admin/StatusBadge";
-import { Plus, Search, MoreVertical, Trash2, Pencil, Eye, ArrowLeft, Calendar } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Pencil, Eye, Calendar } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -19,7 +19,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import TopAppBar from "@/components/layout/TopAppBar";
+import PageHeader from "@/components/layout/PageHeader";
 import EmptyState from "@/components/ui/EmptyState";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 
@@ -52,9 +52,10 @@ export default function EventsList() {
 
   return (
     <div className="space-y-4">
-      <TopAppBar
+      <PageHeader
+        icon={Calendar}
         title={t("events.title")}
-        onBack={() => navigate(-1)}
+        tone="secondary"
         actions={isAdmin(user) ? (
           <Link to="/events/new">
             <Button size="sm" className="gap-1.5">
@@ -62,18 +63,17 @@ export default function EventsList() {
             </Button>
           </Link>
         ) : undefined}
-        search={
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder={t("events.search")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        }
       />
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder={t("events.search")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
 
       {isLoading && <ListSkeleton count={4} />}
 

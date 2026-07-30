@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { TypeIcon, PriorityBadge, getCardHighlightClasses } from "./NotificationIcons";
 import EmptyState from "@/components/ui/EmptyState";
 import ListSkeleton from "@/components/ui/ListSkeleton";
+import PageHeader from "@/components/layout/PageHeader";
 
 const STATUS_COLORS = {
   draft: "bg-muted text-muted-foreground",
@@ -141,33 +142,26 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Bell className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-xl font-display font-bold">
-              {isGlobalView ? "Notificações Globais" : "Notificações do Evento"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {isGlobalView ? "Campanhas para todos os usuários" : "Campanhas segmentadas por evento"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {metricsPath && (
-            <Button variant="outline" size="sm" onClick={() => navigate(metricsPath)}>
-              <BarChart2 className="w-4 h-4 mr-2" />
-              Métricas
+      <PageHeader
+        icon={Bell}
+        title={isGlobalView ? "Notificações Globais" : "Notificações do Evento"}
+        subtitle={isGlobalView ? "Campanhas para todos os usuários" : "Campanhas segmentadas por evento"}
+        tone="destructive"
+        actions={
+          <div className="flex items-center gap-2">
+            {metricsPath && (
+              <Button variant="outline" size="sm" onClick={() => navigate(metricsPath)}>
+                <BarChart2 className="w-4 h-4 mr-2" />
+                Métricas
+              </Button>
+            )}
+            <Button onClick={() => setShowForm(true)} size="sm" disabled={isReadOnly}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nova Campanha
             </Button>
-          )}
-          <Button onClick={() => setShowForm(true)} size="sm" disabled={isReadOnly}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nova Campanha
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-2 items-center">

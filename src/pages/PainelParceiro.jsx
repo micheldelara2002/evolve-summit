@@ -8,9 +8,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, Handshake, Lock, Calendar, Users, Trophy, QrCode, Award, Bell } from "lucide-react";
+import { Handshake, Lock, Calendar, Users, Trophy, QrCode, Award, Bell } from "lucide-react";
 import { isAdmin, isPartnerManager } from "@/lib/access";
 import PartnerDashboard from "@/components/parceiro/PartnerDashboard";
 import PartnerLeadsTab from "@/components/parceiro/PartnerLeadsTab";
@@ -18,7 +16,8 @@ import PartnerQRTab from "@/components/parceiro/PartnerQRTab";
 import PartnerSponsorshipTab from "@/components/parceiro/PartnerSponsorshipTab";
 import PartnerNotificationsTab from "@/components/parceiro/PartnerNotificationsTab";
 import PartnerRaffleSection from "@/components/parceiro/PartnerRaffleSection";
-import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import SectionIconGrid from "@/components/ui/SectionIconGrid";
+import PageHeader from "@/components/layout/PageHeader";
 import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
 
@@ -38,7 +37,6 @@ const LEGACY_TAB_MAP = {
 
 export default function PainelParceiro() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "leads", legacyTabMap: LEGACY_TAB_MAP });
 
@@ -89,7 +87,7 @@ export default function PainelParceiro() {
   });
 
   // EventPartner do partner
-  const { data: eventPartners = [] } = useQuery({
+  const { data: eventPartners = [], isLoading: loadingEventPartners } = useQuery({
     queryKey: ["event_partners_for_partner", partnerId],
     queryFn: () => base44.entities.EventPartner.filter({ partner_id: partnerId, is_active: true, is_deleted: false }),
     enabled: !!partnerId,
@@ -98,7 +96,7 @@ export default function PainelParceiro() {
   const eventIdsFromPartner = eventPartners.map((ep) => ep.event_id);
 
   // Eventos do partner
-  const { data: events = [] } = useQuery({
+  const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["partner_events", eventIdsFromPartner.join(",")],
     queryFn: async () => {
       if (!eventIdsFromPartner.length) return [];
@@ -109,7 +107,7 @@ export default function PainelParceiro() {
   });
 
   // Para representante: participações como partner_rep
-  const { data: myPartnerships = [] } = useQuery({
+  const { data: myPartnerships = [], isLoading: loadingPartnerships } = useQuery({
     queryKey: ["my_partner_participations", user?.person_id, user?.email],
     queryFn: async () => {
       const all = await base44.entities.Participant.filter({ is_deleted: false });
@@ -140,7 +138,12 @@ export default function PainelParceiro() {
   const selectedEvent = accessibleEvents.find((e) => e.id === selectedEventId);
   const isReadOnly = selectedEvent?.status === "finished";
 
-  if (loadingReps) {
+  // Loading enquanto resolve eventos acessíveis (evita flash de "Nenhum evento")
+  const isLoadingAccessibleEvents = isManager
+    ? loadingEventPartners || (eventIdsFromPartner.length > 0 && loadingEvents)
+    : loadingPartnerships;
+
+  if (loadingReps || (partnerId && isLoadingAccessibleEvents)) {
     return (
       <div className="flex justify-center py-24">
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -158,9 +161,6 @@ export default function PainelParceiro() {
         <p className="text-sm text-muted-foreground">
           Você não está vinculado a nenhum parceiro. Solicite acesso ao administrador.
         </p>
-        <Button variant="outline" onClick={() => navigate("/")}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
-        </Button>
       </div>
     );
   }
@@ -168,7 +168,7 @@ export default function PainelParceiro() {
   if (accessibleEvents.length === 0) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        <Header user={user} partner={partner} navigate={navigate} />
+        <PageHeader icon={Handshake} title="Painel do Parceiro" subtitle={partner?.trade_name || user?.full_name} tone="warning" />
         <div className="text-center py-20 space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
             <Calendar className="w-8 h-8 text-muted-foreground" />
@@ -186,7 +186,7 @@ export default function PainelParceiro() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <Header user={user} partner={partner} navigate={navigate} />
+      <PageHeader icon={Handshake} title="Painel do Parceiro" subtitle={partner?.trade_name || user?.full_name} tone="warning" />
 
       {/* Event selector */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -210,8 +210,8 @@ export default function PainelParceiro() {
       {/* Dashboard — apenas manager */}
       {isManager && <PartnerDashboard partnerId={partnerId} />}
 
-      <SectionSwitcher
-        sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
+      <SectionIconGrid
+        sections={SECTIONS.map((s) => ({ id: s.id, label: t(s.labelKey), icon: s.icon }))}
         activeSection={activeTab}
         onSectionChange={setActiveTab}
       />
@@ -233,31 +233,6 @@ export default function PainelParceiro() {
         {activeTab === "notifications" && (
           <PartnerNotificationsTab eventId={selectedEventId} partnerId={partnerId} user={user} isReadOnly={isReadOnly} />
         )}
-      </div>
-    </div>
-  );
-}
-
-function Header({ user, partner, navigate }) {
-  return (
-    <div className="flex items-center gap-3">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="-ml-2">
-        <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
-      </Button>
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0 overflow-hidden">
-          {partner?.logo_url ? (
-            <img src={partner.logo_url} alt={partner.trade_name} className="w-full h-full object-contain" />
-          ) : (
-            <Handshake className="w-5 h-5 text-warning" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-display font-bold flex items-center gap-2">
-            Painel do Parceiro
-          </h1>
-          <p className="text-sm text-muted-foreground truncate">{partner?.trade_name || user?.full_name}</p>
-        </div>
       </div>
     </div>
   );

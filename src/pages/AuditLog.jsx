@@ -7,11 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, ArrowLeft, Shield } from "lucide-react";
+import { Search, Filter, ChevronDown, ChevronUp, GripVertical, RotateCcw, Shield } from "lucide-react";
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import PageHeader from "@/components/layout/PageHeader";
 
 const ACTIONS = ["create", "update", "soft_delete", "status_change", "role_change", "import", "export"];
 
@@ -110,7 +110,6 @@ function renderCell(colId, log, eventName) {
 
 export default function AuditLog() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
@@ -190,25 +189,21 @@ export default function AuditLog() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-amber-600" />
-            <h1 className="text-xl font-display font-bold">{t("audit.title")}</h1>
+      <PageHeader
+        icon={Shield}
+        title={t("audit.title")}
+        tone="warning"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="gap-1" onClick={resetColOrder}>
+              <RotateCcw className="w-3.5 h-3.5" /> Padrão
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => setShowFilters(!showFilters)}>
+              <Filter className="w-4 h-4" /> {t("audit.filters")}
+            </Button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1" onClick={resetColOrder}>
-            <RotateCcw className="w-3.5 h-3.5" /> Padrão
-          </Button>
-          <Button variant="outline" size="sm" className="gap-1" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="w-4 h-4" /> {t("audit.filters")}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

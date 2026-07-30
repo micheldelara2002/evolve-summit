@@ -8,11 +8,11 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Mic } from "lucide-react";
+import { Mic } from "lucide-react";
 import SpeakerKPIs from "@/components/palestrante/SpeakerKPIs";
 import SpeakerEventCard from "@/components/palestrante/SpeakerEventCard";
 import SpeakerRankingView from "@/components/palestrante/SpeakerRankingView";
-import TopAppBar from "@/components/layout/TopAppBar";
+import PageHeader from "@/components/layout/PageHeader";
 import EmptyState from "@/components/ui/EmptyState";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 
@@ -83,11 +83,7 @@ export default function PainelPalestrante() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <TopAppBar
-        title="Painel do Palestrante"
-        subtitle={myPerson?.full_name || user?.full_name}
-        onBack={() => navigate("/")}
-      />
+      <PageHeader icon={Mic} title="Painel do Palestrante" subtitle={myPerson?.full_name || user?.full_name} tone="secondary" />
 
       {/* KPIs consolidados */}
       <SpeakerKPIs
