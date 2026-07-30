@@ -22,7 +22,7 @@ import MuralFeedback from "@/components/participante/MuralFeedback";
 import JobBoardView from "@/components/participante/JobBoardView";
 import SponsorsStrip from "@/components/participante/SponsorsStrip";
 import PartnerVisitModal from "@/components/participante/PartnerVisitModal";
-import SectionSwitcher from "@/components/ui/SectionSwitcher";
+import SectionIconGrid from "@/components/ui/SectionIconGrid";
 import { useSectionParam } from "@/lib/useSectionParam";
 import { t } from "@/lib/i18n";
 
@@ -214,9 +214,9 @@ export default function EventoParticipante() {
           <SponsorsStrip eventId={eventId} />
         </div>
 
-        {/* Section switcher */}
+        {/* Section grid */}
         <div className="max-w-4xl mx-auto pb-0">
-          <SectionSwitcher
+          <SectionIconGrid
             sections={SECTIONS.map((s) => ({ ...s, label: t(s.labelKey) }))}
             activeSection={activeTab}
             onSectionChange={setActiveTab}
