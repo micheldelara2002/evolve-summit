@@ -8,6 +8,7 @@ import BusinessFilters from "@/components/business/BusinessFilters";
 import BusinessKPICard from "@/components/business/BusinessKPICard";
 import BusinessCharts from "@/components/business/BusinessCharts";
 import BusinessTopEventsTable from "@/components/business/BusinessTopEventsTable";
+import BusinessEventsByMonth from "@/components/business/BusinessEventsByMonth";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, formatDateTime, getBucketKey, formatBucketLabel, getBucketType } from "@/lib/businessUtils";
 
 const FETCH_LIMIT = 10000;
@@ -170,7 +171,7 @@ export default function BusinessDashboard() {
   const dropdownEvents = events.filter((e) => e.status === "active" || e.status === "finished");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -178,52 +179,58 @@ export default function BusinessDashboard() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-sky-600" />
-            <h1 className="text-xl font-display font-bold">Painel Executivo</h1>
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-display font-bold leading-tight">Painel Executivo</h1>
+              <p className="text-xs text-muted-foreground hidden sm:block">Indicadores de negócio em tempo real</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdate > 0 && (
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              Última atualização: {formatDateTime(lastUpdate)}
+            <span className="text-xs text-muted-foreground hidden md:inline">
+              Atualizado: {formatDateTime(lastUpdate)}
             </span>
           )}
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={anyFetching} className="gap-1.5">
-            <RefreshCw className={`w-4 h-4 ${anyFetching ? "animate-spin" : ""}`} /> Atualizar
+          <BusinessFilters
+            period={period} setPeriod={setPeriod}
+            customStart={customStart} setCustomStart={setCustomStart}
+            customEnd={customEnd} setCustomEnd={setCustomEnd}
+            eventFilter={eventFilter} setEventFilter={setEventFilter}
+            events={dropdownEvents}
+            statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+            profileFilter={profileFilter} setProfileFilter={setProfileFilter}
+          />
+          <Button variant="outline" size="icon" onClick={handleRefresh} disabled={anyFetching}>
+            <RefreshCw className={`w-4 h-4 ${anyFetching ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
-      {/* Filters */}
-      <BusinessFilters
-        period={period} setPeriod={setPeriod}
-        customStart={customStart} setCustomStart={setCustomStart}
-        customEnd={customEnd} setCustomEnd={setCustomEnd}
-        eventFilter={eventFilter} setEventFilter={setEventFilter}
-        events={dropdownEvents}
-        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-        profileFilter={profileFilter} setProfileFilter={setProfileFilter}
-      />
-
-      {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <BusinessKPICard icon={Users} label="Usuários" value={metrics.users.count} delta={metrics.users.delta} loading={usersQ.isLoading} error={usersQ.isError} />
-        <BusinessKPICard icon={UserCheck} label="Persons (base única)" value={metrics.persons.count} delta={metrics.persons.delta} loading={personsQ.isLoading} error={personsQ.isError} />
-        <BusinessKPICard icon={CheckCircle2} label="Eventos ativos" value={metrics.eventsActive.count} delta={metrics.eventsActive.delta} loading={eventsQ.isLoading} error={eventsQ.isError} />
-        <BusinessKPICard icon={XCircle} label="Eventos encerrados" value={metrics.eventsFinished.count} delta={metrics.eventsFinished.delta} loading={eventsQ.isLoading} error={eventsQ.isError} />
-        <BusinessKPICard icon={Building2} label="Parceiros cadastrados" value={metrics.partners.count} delta={metrics.partners.delta} loading={partnersQ.isLoading} error={partnersQ.isError} />
-        <BusinessKPICard icon={UserPlus} label="Participantes únicos" value={metrics.uniqueParticipants.count} delta={metrics.uniqueParticipants.delta} loading={participantsQ.isLoading} error={participantsQ.isError} />
-        <BusinessKPICard icon={Target} label="Leads gerados" value={metrics.leads.count} delta={metrics.leads.delta} loading={leadsQ.isLoading} error={leadsQ.isError} />
+      {/* Big Numbers */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <BusinessKPICard icon={Users} label="Usuários" value={metrics.users.count} delta={metrics.users.delta} loading={usersQ.isLoading} error={usersQ.isError} accent="primary" />
+        <BusinessKPICard icon={UserCheck} label="Persons" value={metrics.persons.count} delta={metrics.persons.delta} loading={personsQ.isLoading} error={personsQ.isError} accent="secondary" />
+        <BusinessKPICard icon={CheckCircle2} label="Eventos ativos" value={metrics.eventsActive.count} delta={metrics.eventsActive.delta} loading={eventsQ.isLoading} error={eventsQ.isError} accent="success" />
+        <BusinessKPICard icon={XCircle} label="Eventos encerrados" value={metrics.eventsFinished.count} delta={metrics.eventsFinished.delta} loading={eventsQ.isLoading} error={eventsQ.isError} accent="warning" />
+        <BusinessKPICard icon={Building2} label="Parceiros" value={metrics.partners.count} delta={metrics.partners.delta} loading={partnersQ.isLoading} error={partnersQ.isError} accent="accent" />
+        <BusinessKPICard icon={UserPlus} label="Participantes únicos" value={metrics.uniqueParticipants.count} delta={metrics.uniqueParticipants.delta} loading={participantsQ.isLoading} error={participantsQ.isError} accent="destructive" />
+        <BusinessKPICard icon={Target} label="Leads gerados" value={metrics.leads.count} delta={metrics.leads.delta} loading={leadsQ.isLoading} error={leadsQ.isError} accent="primary" />
       </div>
 
       {/* Charts */}
-      <BusinessCharts
-        participantsEvolution={metrics.participantsEvolution}
-        leadsByPartner={metrics.leadsByPartner}
-        eventsStatus={metrics.eventsStatus}
-        loading={anyLoading}
-        error={eventsQ.isError || participantsQ.isError || leadsQ.isError}
-      />
+      <div className="space-y-4">
+        <BusinessEventsByMonth events={events} />
+        <BusinessCharts
+          participantsEvolution={metrics.participantsEvolution}
+          leadsByPartner={metrics.leadsByPartner}
+          eventsStatus={metrics.eventsStatus}
+          loading={anyLoading}
+          error={eventsQ.isError || participantsQ.isError || leadsQ.isError}
+        />
+      </div>
 
       {/* Top events table */}
       <BusinessTopEventsTable
