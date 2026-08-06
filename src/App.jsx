@@ -40,6 +40,7 @@ const MeusEventos = lazy(() => import("@/pages/MeusEventos"));
 const EventoParticipante = lazy(() => import("@/pages/EventoParticipante"));
 const PainelPalestrante = lazy(() => import("@/pages/PainelPalestrante"));
 const PainelParceiro = lazy(() => import("@/pages/PainelParceiro"));
+const PainelAvaliador = lazy(() => import("@/pages/PainelAvaliador"));
 const ValidaCertificado = lazy(() => import("@/pages/ValidaCertificado"));
 const Rede = lazy(() => import("@/pages/Rede"));
 const QRScan = lazy(() => import("@/pages/QRScan"));
@@ -98,6 +99,7 @@ const AuthenticatedApp = () => {
           <Route path="/event/:eventId" element={<EventoParticipante />} />
           <Route path="/speaker-dashboard" element={<PainelPalestrante />} />
           <Route path="/partner-dashboard" element={<PainelParceiro />} />
+          <Route path="/reviewer-dashboard" element={<PainelAvaliador />} />
           <Route path="/cfp" element={<CallForPapersList />} />
           <Route path="/cfp/:cfpId/submit" element={<CFPSubmit />} />
 

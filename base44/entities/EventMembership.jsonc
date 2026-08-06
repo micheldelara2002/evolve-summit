@@ -1,0 +1,83 @@
+{
+  "name": "EventMembership",
+  "type": "object",
+  "description": "V\u00ednculo de uma Pessoa a um Evento com um papel espec\u00edfico (speaker, reviewer, staff, etc.). Entidade mestra de permiss\u00f5es administrativas por evento \u2014 separada de Participant (presen\u00e7a/credenciamento). Uma mesma Person pode ter m\u00faltiplos EventMembership no mesmo evento (pap\u00e9is acumulados) e em eventos diferentes.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (chave de isolamento)"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person vinculada (fonte \u00fanica de identidade)"
+    },
+    "person_name": {
+      "type": "string",
+      "description": "Nome da pessoa (snapshot para exibi\u00e7\u00e3o)"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do User vinculado (\u00e2ncora de RLS \u2014 permite que o usu\u00e1rio leia suas pr\u00f3prias memberships)"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email do User (snapshot para busca/compatibilidade)"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "attendee",
+        "speaker",
+        "team",
+        "manager",
+        "partner_rep",
+        "reviewer"
+      ],
+      "default": "attendee",
+      "description": "Papel da pessoa no evento. 'reviewer' = avaliador da comiss\u00e3o de premia\u00e7\u00e3o."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se o v\u00ednculo est\u00e1 ativo"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "person_id",
+    "role"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

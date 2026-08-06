@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -36,6 +36,14 @@ const PARTNER_CARD = {
   label: "Painel do Parceiro",
 };
 
+const REVIEWER_CARD = {
+  key: "painelAvaliador",
+  icon: Award,
+  tone: "success",
+  href: "/reviewer-dashboard",
+  label: "Painel do Avaliador",
+};
+
 const OPERATIONS_CARDS = [
   { key: "business", icon: TrendingUp, tone: "primary", href: "/business", label: "Indicadores" },
   { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
@@ -55,18 +63,21 @@ export default function AdminHome() {
   const admin = isAdmin(user);
 
   const { data: participantRoles, isLoading: isLoadingRoles } = useQuery({
-    queryKey: ["home-role-check", user?.person_id, user?.email],
+    queryKey: ["home-role-check", user?.id, user?.person_id, user?.email],
     queryFn: async () => {
-      const mine = await base44.entities.Participant.filter({
-        email: user?.email,
-        is_deleted: false,
-      });
-      const mySubs = user?.person_id
-        ? await base44.entities.Submission.filter({ person_id: user.person_id, is_deleted: false })
-        : [];
+      const [mine, memberships, mySubs] = await Promise.all([
+        base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
+        user?.id
+          ? base44.entities.EventMembership.filter({ user_id: user.id, is_active: true, is_deleted: false })
+          : Promise.resolve([]),
+        user?.person_id
+          ? base44.entities.Submission.filter({ person_id: user.person_id, is_deleted: false })
+          : Promise.resolve([]),
+      ]);
       return {
-        isSpeaker: mine.some((p) => p.role_in_event === "speaker"),
-        isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep"),
+        isSpeaker: mine.some((p) => p.role_in_event === "speaker") || memberships.some((m) => m.role === "speaker"),
+        isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep") || memberships.some((m) => m.role === "partner_rep"),
+        isReviewer: memberships.some((m) => m.role === "reviewer"),
         hasSubmissions: mySubs.length > 0,
       };
     },
@@ -80,6 +91,9 @@ export default function AdminHome() {
   }
   if (admin || participantRoles?.isPartnerRep || isPartnerManager(user)) {
     if (!myAreaCards.find((c) => c.key === "painelParceiro")) myAreaCards.push(PARTNER_CARD);
+  }
+  if (admin || participantRoles?.isReviewer) {
+    if (!myAreaCards.find((c) => c.key === "painelAvaliador")) myAreaCards.push(REVIEWER_CARD);
   }
 
   // Enquanto resolve papéis (não-admin, não-partner_manager), mostra skeletons para evitar flash
