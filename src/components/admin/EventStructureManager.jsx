@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n";
 import EntityTable from "@/components/admin/EntityTable";
 import EntityFormDialog from "@/components/admin/EntityFormDialog";
 import ColorPickerField from "@/components/admin/ColorPickerField";
+import PendingCFPSessions from "@/components/admin/cfp/PendingCFPSessions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -165,20 +166,28 @@ export default function EventStructureManager({ eventId, hasAccess, user, module
         />
       )}
       {mod === "sessions" && (
-        <EntityTable
-          items={sessions}
-          columns={[
-            { key: "title", label: "Título" },
-            { key: "track_id", label: "Trilha", render: (s) => trackName(s.track_id) },
-            { key: "room_id", label: "Sala", render: (s) => roomName(s.room_id) },
-            { key: "start_time", label: "Início", render: (s) => s.start_time ? new Date(s.start_time).toLocaleString("pt-BR") : "—" },
-          ]}
-          searchField="title"
-          onAdd={hasAccess ? () => openForm("session") : undefined}
-          onEdit={hasAccess ? (item) => openForm("session", item) : undefined}
-          onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "session", id: item.id }) : undefined}
-          addLabel="Nova"
-        />
+        <div className="space-y-3">
+          <PendingCFPSessions
+            sessions={sessions}
+            tracks={tracks}
+            rooms={rooms}
+            onEdit={(s) => openForm("session", s)}
+          />
+          <EntityTable
+            items={sessions}
+            columns={[
+              { key: "title", label: "Título" },
+              { key: "track_id", label: "Trilha", render: (s) => trackName(s.track_id) },
+              { key: "room_id", label: "Sala", render: (s) => roomName(s.room_id) },
+              { key: "start_time", label: "Início", render: (s) => s.start_time ? new Date(s.start_time).toLocaleString("pt-BR") : "—" },
+            ]}
+            searchField="title"
+            onAdd={hasAccess ? () => openForm("session") : undefined}
+            onEdit={hasAccess ? (item) => openForm("session", item) : undefined}
+            onDelete={hasAccess ? (item) => deleteMut.mutate({ type: "session", id: item.id }) : undefined}
+            addLabel="Nova"
+          />
+        </div>
       )}
 
       {formDialog.open && (
