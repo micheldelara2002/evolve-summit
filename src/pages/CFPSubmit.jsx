@@ -18,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import { useToast } from "@/components/ui/use-toast";
 
 const SESSION_TYPES = [
   { value: "palestra", label: "Palestra" },
@@ -44,7 +43,6 @@ export default function CFPSubmit() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const { toast } = useToast();
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
@@ -146,22 +144,14 @@ export default function CFPSubmit() {
     onSuccess: () => {
       qc.invalidateQueries(["my-submissions"]);
       qc.invalidateQueries(["cfp-submissions"]);
-      toast({ title: editId ? "Submissão atualizada!" : "Submissão enviada!" });
       navigate("/speaker-dashboard");
     },
-    onError: (e) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const submit = () => {
-    if (!title.trim() || !summary.trim()) {
-      toast({ title: "Preencha título e resumo", variant: "destructive" });
-      return;
-    }
+    if (!title.trim() || !summary.trim()) return;
     const missing = fields.find((f) => f.required && (answers[f.label] === undefined || answers[f.label] === ""));
-    if (missing) {
-      toast({ title: `Campo obrigatório: ${missing.label}`, variant: "destructive" });
-      return;
-    }
+    if (missing) return;
     saveMutation.mutate();
   };
 

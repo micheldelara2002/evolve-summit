@@ -9,7 +9,6 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Calendar, X, Megaphone } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
 
 const FIELD_TYPES = [
   { value: "text", label: "Texto curto" },
@@ -34,7 +33,6 @@ function isClosed(cfp) {
 
 export default function CallForPapersManager({ eventId, hasAccess }) {
   const qc = useQueryClient();
-  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -55,9 +53,7 @@ export default function CallForPapersManager({ eventId, hasAccess }) {
       qc.invalidateQueries(["cfps-open"]);
       setOpen(false);
       setEditing(null);
-      toast({ title: editing ? "Chamada atualizada" : "Chamada criada" });
     },
-    onError: (e) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -65,7 +61,6 @@ export default function CallForPapersManager({ eventId, hasAccess }) {
     onSuccess: () => {
       qc.invalidateQueries(["cfps", eventId]);
       qc.invalidateQueries(["cfps-open"]);
-      toast({ title: "Chamada removida" });
     },
   });
 

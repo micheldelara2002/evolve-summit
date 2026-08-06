@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, Clock, Ban, FileText } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
 
 const STATUS_STYLE = {
   pending: "bg-warning/10 text-warning",
@@ -32,7 +31,6 @@ function parseJSON(str, fallback) {
 
 export default function SubmissionsReview({ eventId, hasAccess, user }) {
   const qc = useQueryClient();
-  const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState("pending");
   const [selected, setSelected] = useState(null);
   const [notes, setNotes] = useState("");
@@ -63,9 +61,7 @@ export default function SubmissionsReview({ eventId, hasAccess, user }) {
       setSelected(null);
       setNotes("");
       setAction(null);
-      toast({ title: "Submissão atualizada" });
     },
-    onError: (e) => toast({ title: "Erro", description: e.response?.data?.error || e.message, variant: "destructive" }),
   });
 
   const filtered = statusFilter === "all"
