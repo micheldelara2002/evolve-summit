@@ -1,0 +1,65 @@
+{
+  "name": "CallForPapers",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (chave de isolamento)"
+    },
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da chamada"
+    },
+    "description": {
+      "type": "string",
+      "description": "Instru\u00e7\u00f5es/descri\u00e7\u00e3o exibidas ao palestrante"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "In\u00edcio do per\u00edodo de submiss\u00e3o"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Fim do per\u00edodo de submiss\u00e3o"
+    },
+    "form_config": {
+      "type": "string",
+      "description": "JSON array de campos customizados: [{label, type, required, options}]"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se a chamada est\u00e1 aberta"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "title",
+    "start_date",
+    "end_date"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

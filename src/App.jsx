@@ -43,6 +43,8 @@ const PainelParceiro = lazy(() => import("@/pages/PainelParceiro"));
 const ValidaCertificado = lazy(() => import("@/pages/ValidaCertificado"));
 const Rede = lazy(() => import("@/pages/Rede"));
 const QRScan = lazy(() => import("@/pages/QRScan"));
+const CallForPapersList = lazy(() => import("@/pages/CallForPapersList"));
+const CFPSubmit = lazy(() => import("@/pages/CFPSubmit"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -96,6 +98,8 @@ const AuthenticatedApp = () => {
           <Route path="/event/:eventId" element={<EventoParticipante />} />
           <Route path="/speaker-dashboard" element={<PainelPalestrante />} />
           <Route path="/partner-dashboard" element={<PainelParceiro />} />
+          <Route path="/cfp" element={<CallForPapersList />} />
+          <Route path="/cfp/:cfpId/submit" element={<CFPSubmit />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
@@ -117,6 +121,7 @@ const AuthenticatedApp = () => {
               <Route path="feedback" element={<EventModulePage module="feedback" />} />
               <Route path="raffle" element={<EventModulePage module="raffle" />} />
               <Route path="certificates" element={<EventModulePage module="certificates" />} />
+              <Route path="cfp" element={<EventModulePage module="cfp" />} />
             </Route>
             <Route path="/events/:eventId/edit" element={<EventEdit />} />
             <Route path="/audit" element={<AuditLog />} />

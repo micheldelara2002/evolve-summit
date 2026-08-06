@@ -60,6 +60,10 @@
       "type": "string",
       "description": "URL do material da sess\u00e3o (arquivo/link)"
     },
+    "submission_id": {
+      "type": "string",
+      "description": "ID da Submission que originou esta sess\u00e3o (v\u00ednculo bilateral CFP)"
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false
@@ -67,9 +71,6 @@
   },
   "required": [
     "event_id",
-    "title",
-    "start_time",
-    "track_id",
-    "room_id"
+    "title"
   ]
 }

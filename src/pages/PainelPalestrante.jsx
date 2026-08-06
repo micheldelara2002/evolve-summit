@@ -12,6 +12,7 @@ import { Mic } from "lucide-react";
 import SpeakerKPIs from "@/components/palestrante/SpeakerKPIs";
 import SpeakerEventCard from "@/components/palestrante/SpeakerEventCard";
 import SpeakerRankingView from "@/components/palestrante/SpeakerRankingView";
+import SubmissionsSection from "@/components/palestrante/SubmissionsSection";
 import PageHeader from "@/components/layout/PageHeader";
 import EmptyState from "@/components/ui/EmptyState";
 import ListSkeleton from "@/components/ui/ListSkeleton";
@@ -66,17 +67,30 @@ export default function PainelPalestrante() {
     enabled: eventIds.length > 0,
   });
 
+  // Submissões da pessoa (em todos os eventos) — visível mesmo antes de virar palestrante
+  const { data: mySubmissions = [] } = useQuery({
+    queryKey: ["my-submissions", user?.person_id],
+    queryFn: async () => {
+      if (!user?.person_id) return [];
+      return base44.entities.Submission.filter({ person_id: user.person_id, is_deleted: false });
+    },
+    enabled: !!user?.person_id,
+  });
+
   if (isLoading) {
     return <ListSkeleton count={3} />;
   }
 
-  if (!speakerParticipants.length) {
+  const hasSubmissions = mySubmissions.length > 0;
+  const isSpeaker = speakerParticipants.length > 0;
+
+  if (!isSpeaker && !hasSubmissions) {
     return (
       <EmptyState
         icon={Mic}
         title="Nenhuma palestra encontrada"
-        description="Você ainda não está cadastrado como palestrante em nenhum evento."
-        action={<Button variant="outline" onClick={() => navigate("/")}>Voltar</Button>}
+        description="Você ainda não submeteu nem é palestrante em nenhum evento."
+        action={<Button variant="outline" onClick={() => navigate("/cfp")}>Ver chamadas abertas</Button>}
       />
     );
   }
@@ -85,34 +99,41 @@ export default function PainelPalestrante() {
     <div className="max-w-4xl mx-auto space-y-6">
       <PageHeader icon={Mic} title="Painel do Palestrante" subtitle={myPerson?.full_name || user?.full_name} tone="secondary" />
 
-      {/* KPIs consolidados */}
-      <SpeakerKPIs
-        speakerParticipants={speakerParticipants}
-        events={events}
-        personId={user?.person_id}
-        userEmail={user?.email}
-      />
+      {/* Minhas Submissões — visível desde a primeira submissão */}
+      <SubmissionsSection person={myPerson} />
 
-      {/* Ranking de avaliações */}
-      <SpeakerRankingView speakerParticipants={speakerParticipants} />
+      {isSpeaker && (
+        <>
+          {/* KPIs consolidados */}
+          <SpeakerKPIs
+            speakerParticipants={speakerParticipants}
+            events={events}
+            personId={user?.person_id}
+            userEmail={user?.email}
+          />
 
-      {/* Por evento */}
-      <div className="space-y-4">
-        <h2 className="text-base font-display font-semibold">Minhas Palestras por Evento</h2>
-        {events.map((event) => {
-          const myParticipantInEvent = speakerParticipants.find((p) => p.event_id === event.id);
-          return (
-            <SpeakerEventCard
-              key={event.id}
-              event={event}
-              myParticipant={myParticipantInEvent}
-              personId={user?.person_id}
-              userEmail={user?.email}
-              user={user}
-            />
-          );
-        })}
-      </div>
+          {/* Ranking de avaliações */}
+          <SpeakerRankingView speakerParticipants={speakerParticipants} />
+
+          {/* Por evento */}
+          <div className="space-y-4">
+            <h2 className="text-base font-display font-semibold">Minhas Palestras por Evento</h2>
+            {events.map((event) => {
+              const myParticipantInEvent = speakerParticipants.find((p) => p.event_id === event.id);
+              return (
+                <SpeakerEventCard
+                  key={event.id}
+                  event={event}
+                  myParticipant={myParticipantInEvent}
+                  personId={user?.person_id}
+                  userEmail={user?.email}
+                  user={user}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -17,6 +17,7 @@ const TONE_CLASSES = {
 // ── Card definitions by section ──────────────────────────────────────────────
 const MY_AREA_CARDS = [
   { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
+  { key: "callForPapers", icon: Megaphone, tone: "secondary", href: "/cfp", label: "Call for Papers" },
 ];
 
 const SPEAKER_CARD = {
@@ -60,9 +61,13 @@ export default function AdminHome() {
         email: user?.email,
         is_deleted: false,
       });
+      const mySubs = user?.person_id
+        ? await base44.entities.Submission.filter({ person_id: user.person_id, is_deleted: false })
+        : [];
       return {
         isSpeaker: mine.some((p) => p.role_in_event === "speaker"),
         isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep"),
+        hasSubmissions: mySubs.length > 0,
       };
     },
     enabled: !!user,
@@ -70,7 +75,7 @@ export default function AdminHome() {
 
   // ── Build "Minha área" section (available to all users) ───────────────────
   const myAreaCards = [...MY_AREA_CARDS];
-  if (admin || participantRoles?.isSpeaker) {
+  if (admin || participantRoles?.isSpeaker || participantRoles?.hasSubmissions) {
     if (!myAreaCards.find((c) => c.key === "painelPalestrante")) myAreaCards.push(SPEAKER_CARD);
   }
   if (admin || participantRoles?.isPartnerRep || isPartnerManager(user)) {

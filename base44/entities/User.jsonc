@@ -6,6 +6,7 @@
       "type": "string",
       "enum": [
         "admin",
+        "curator",
         "member",
         "partner_manager"
       ],

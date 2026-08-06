@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import {
   Users, Route, DoorOpen, Layout, Trophy,
   Handshake, ShoppingBag, Star, Bell,
-  MessageSquare, Ticket, Award,
+  MessageSquare, Ticket, Award, Megaphone,
 } from "lucide-react";
 
 export default function EventModuleNav({ eventId }) {
@@ -22,6 +22,7 @@ export default function EventModuleNav({ eventId }) {
         { id: "tracks", label: t("adminSections.tracks"), icon: Route },
         { id: "rooms", label: t("adminSections.rooms"), icon: DoorOpen },
         { id: "sessions", label: t("adminSections.sessions"), icon: Layout },
+        { id: "cfp", label: t("adminSections.cfp"), icon: Megaphone },
         { id: "ranking", label: t("adminSections.ranking"), icon: Trophy },
       ],
     },
