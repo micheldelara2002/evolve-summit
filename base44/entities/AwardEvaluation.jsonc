@@ -1,18 +1,18 @@
 {
   "name": "AwardEvaluation",
   "type": "object",
-  "description": "Avalia\u00e7\u00e3o de um indicado feita por um avaliador (reviewer). Uma por avaliador por indica\u00e7\u00e3o.",
+  "description": "Avalia\u00e7\u00e3o de um case (AwardSubmission) feita por um avaliador designado pelo gerente. Uma por avaliador por inscri\u00e7\u00e3o.",
   "properties": {
     "event_id": {
       "type": "string"
     },
-    "category_id": {
+    "award_id": {
       "type": "string",
-      "description": "ID da AwardCategory"
+      "description": "ID da AwardConfig"
     },
-    "nomination_id": {
+    "submission_id": {
       "type": "string",
-      "description": "ID da AwardNomination"
+      "description": "ID da AwardSubmission avaliada"
     },
     "reviewer_user_id": {
       "type": "string",
@@ -48,8 +48,8 @@
   },
   "required": [
     "event_id",
-    "category_id",
-    "nomination_id",
+    "award_id",
+    "submission_id",
     "reviewer_user_id"
   ],
   "rls": {

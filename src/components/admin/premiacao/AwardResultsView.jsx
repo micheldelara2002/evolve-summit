@@ -6,44 +6,44 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Medal } from "lucide-react";
 
 export default function AwardResultsView({ eventId }) {
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const { data: categories = [] } = useQuery({ queryKey: ["award-categories", eventId], queryFn: () => base44.entities.AwardCategory.filter({ event_id: eventId, is_deleted: false }) });
+  const [awardFilter, setAwardFilter] = useState("all");
+  const { data: configs = [] } = useQuery({ queryKey: ["award-configs", eventId], queryFn: () => base44.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false }) });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["award-results", eventId, categoryFilter],
+    queryKey: ["award-results", eventId, awardFilter],
     queryFn: async () => {
-      const res = await base44.functions.invoke("manageAward", { action: "listResults", event_id: eventId, category_id: categoryFilter === "all" ? undefined : categoryFilter });
-      return res.data;
+      const res = await base44.functions.invoke("manageAward", { action: "listResults", event_id: eventId, award_id: awardFilter === "all" ? undefined : awardFilter });
+      return res.data ?? res;
     },
     enabled: !!eventId,
   });
 
   const results = data?.results || [];
-  const catName = (id) => categories.find((c) => c.id === id)?.name;
+  const configName = (id) => configs.find((c) => c.id === id)?.title;
 
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Filtrar categoria" /></SelectTrigger>
+        <Select value={awardFilter} onValueChange={setAwardFilter}>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Filtrar premiação" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas as categorias</SelectItem>
-            {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            <SelectItem value="all">Todas as premiações</SelectItem>
+            {configs.map((c) => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando resultados...</p>
       ) : results.length === 0 ? (
-        <EmptyState icon={Medal} title="Sem avaliações ainda" description="Quando os avaliadores enviarem notas, o ranking aparecerá aqui." />
+        <EmptyState icon={Medal} title="Sem avaliações ainda" description="Quando o comitê enviar notas, o ranking aparecerá aqui." />
       ) : (
         <div className="space-y-2">
           {results.map((r, idx) => (
-            <div key={r.nomination.id} className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">{idx + 1}</div>
+            <div key={r.submission.id} className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold shrink-0 ${idx === 0 ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary"}`}>{idx + 1}</div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{r.nomination.nominee_name}</p>
-                <p className="text-xs text-muted-foreground truncate">{r.nomination.nominee_subtitle || catName(r.nomination.category_id)}</p>
+                <p className="font-medium truncate">{r.submission.title}</p>
+                <p className="text-xs text-muted-foreground truncate">por {r.submission.submitter_name} · {configName(r.submission.award_id)}</p>
               </div>
               <div className="text-right shrink-0">
                 <p className="font-display font-bold text-lg">{r.avg_score.toFixed(2)}</p>

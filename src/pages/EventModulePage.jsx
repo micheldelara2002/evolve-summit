@@ -101,7 +101,7 @@ export default function EventModulePage({ module }) {
       {module === "raffle" && <SorteioTab eventId={eventId} user={user} />}
       {module === "certificates" && <CertificadosTab eventId={eventId} user={user} />}
       {module === "cfp" && <CallForPapersTab eventId={eventId} hasAccess={hasAccess} user={user} />}
-      {module === "premiacao" && <PremiacaoTab eventId={eventId} />}
+      {module === "premiacao" && <PremiacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />}
     </div>
   );
 }

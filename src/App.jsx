@@ -46,6 +46,8 @@ const Rede = lazy(() => import("@/pages/Rede"));
 const QRScan = lazy(() => import("@/pages/QRScan"));
 const CallForPapersList = lazy(() => import("@/pages/CallForPapersList"));
 const CFPSubmit = lazy(() => import("@/pages/CFPSubmit"));
+const AwardsList = lazy(() => import("@/pages/AwardsList"));
+const AwardSubmit = lazy(() => import("@/pages/AwardSubmit"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -102,6 +104,8 @@ const AuthenticatedApp = () => {
           <Route path="/reviewer-dashboard" element={<PainelAvaliador />} />
           <Route path="/cfp" element={<CallForPapersList />} />
           <Route path="/cfp/:cfpId/submit" element={<CFPSubmit />} />
+          <Route path="/awards" element={<AwardsList />} />
+          <Route path="/awards/:awardId/submit" element={<AwardSubmit />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>

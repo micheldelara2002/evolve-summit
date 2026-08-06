@@ -1,18 +1,18 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import AwardCategoriesManager from "@/components/admin/premiacao/AwardCategoriesManager";
-import AwardNominationsManager from "@/components/admin/premiacao/AwardNominationsManager";
+import AwardConfigsManager from "@/components/admin/premiacao/AwardConfigsManager";
+import AwardSubmissionsManager from "@/components/admin/premiacao/AwardSubmissionsManager";
 import AwardResultsView from "@/components/admin/premiacao/AwardResultsView";
 
-export default function PremiacaoTab({ eventId }) {
+export default function PremiacaoTab({ eventId, hasAccess, user }) {
   return (
-    <Tabs defaultValue="categories">
+    <Tabs defaultValue="configs">
       <TabsList>
-        <TabsTrigger value="categories">Categorias</TabsTrigger>
-        <TabsTrigger value="nominations">Indicações</TabsTrigger>
+        <TabsTrigger value="configs">Configurações</TabsTrigger>
+        <TabsTrigger value="submissions">Inscrições</TabsTrigger>
         <TabsTrigger value="results">Resultados</TabsTrigger>
       </TabsList>
-      <TabsContent value="categories" className="mt-4"><AwardCategoriesManager eventId={eventId} /></TabsContent>
-      <TabsContent value="nominations" className="mt-4"><AwardNominationsManager eventId={eventId} /></TabsContent>
+      <TabsContent value="configs" className="mt-4"><AwardConfigsManager eventId={eventId} hasAccess={hasAccess} /></TabsContent>
+      <TabsContent value="submissions" className="mt-4"><AwardSubmissionsManager eventId={eventId} hasAccess={hasAccess} user={user} /></TabsContent>
       <TabsContent value="results" className="mt-4"><AwardResultsView eventId={eventId} /></TabsContent>
     </Tabs>
   );

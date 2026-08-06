@@ -7,18 +7,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { parseCriteria, parseScores, criteriaTotal } from "@/lib/awardUtils";
 
-export default function EvaluationForm({ open, onClose, onSaved, nomination, category, existing }) {
+export default function EvaluationForm({ open, onClose, onSaved, submission, config }) {
   const [scores, setScores] = useState({});
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const criteria = parseCriteria(category?.criteria_config);
+  const criteria = parseCriteria(config?.criteria_config);
 
   useEffect(() => {
-    if (open) {
-      setScores(existing ? parseScores(existing.scores) : {});
-      setNotes(existing?.notes || "");
+    if (open && submission?.existing) {
+      setScores(parseScores(submission.existing.scores));
+      setNotes(submission.existing.notes || "");
+    } else if (open) {
+      setScores({});
+      setNotes("");
     }
-  }, [open, existing]);
+  }, [open, submission]);
 
   const setScore = (id, val) => setScores((p) => ({ ...p, [id]: Number(val) }));
   const total = criteriaTotal(scores, criteria);
@@ -28,7 +31,7 @@ export default function EvaluationForm({ open, onClose, onSaved, nomination, cat
     try {
       await base44.functions.invoke("manageAward", {
         action: "saveEvaluation",
-        nomination_id: nomination.id,
+        submission_id: submission.id,
         scores,
         notes,
         status: "submitted",
@@ -43,11 +46,10 @@ export default function EvaluationForm({ open, onClose, onSaved, nomination, cat
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
       <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Avaliar: {nomination?.nominee_name}</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Avaliar: {submission?.title}</DialogTitle></DialogHeader>
         <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-          {nomination?.nominee_subtitle && <p className="text-sm text-muted-foreground">{nomination.nominee_subtitle}</p>}
+          {submission?.submitter_name && <p className="text-sm text-muted-foreground">por {submission.submitter_name}</p>}
+          {submission?.summary && <p className="text-sm text-muted-foreground line-clamp-3">{submission.summary}</p>}
           {criteria.map((c) => (
             <div key={c.id} className="space-y-1">
               <div className="flex justify-between">
@@ -57,9 +59,9 @@ export default function EvaluationForm({ open, onClose, onSaved, nomination, cat
               <Input type="number" min={0} max={c.max_score} value={scores[c.id] ?? ""} onChange={(e) => setScore(c.id, e.target.value)} />
             </div>
           ))}
+          {criteria.length === 0 && <p className="text-sm text-muted-foreground">Nenhum critério definido para esta premiação.</p>}
           <div className="flex justify-between items-center pt-2 border-t border-border">
-            <Label>Total</Label>
-            <span className="font-display font-bold text-lg">{total}</span>
+            <Label>Total</Label><span className="font-display font-bold text-lg">{total}</span>
           </div>
           <div className="space-y-1">
             <Label>Observações</Label>

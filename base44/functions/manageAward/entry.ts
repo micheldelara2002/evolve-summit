@@ -1,14 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 /**
- * manageAward — backend function do módulo de premiação.
+ * manageAward — backend function do módulo de premiação (fluxo CFP-like).
  *
  * Ações:
- *  - saveEvaluation: revisor envia/atualiza sua avaliação de uma indicação.
- *      Verifica EventMembership role=reviewer (ou admin) para o evento da indicação.
- *      Calcula total_score a partir dos critérios da categoria.
- *      Cria como user-scoped (created_by_id = revisor) ou atualiza avaliação existente.
- *  - listResults: admin only — agrega avaliações por indicação (média + contagem).
+ *  - submitCase: candidato inscreve um case. Valida janela de inscrição,
+ *      resolve/cria Person, garante EventMembership{role:entrante}, cria AwardSubmission.
+ *  - assignReviewer: admin designa avaliador(es) a uma inscrição.
+ *  - saveEvaluation: avaliador designado envia/atualiza sua nota (calcula total pelos critérios).
+ *  - listMyAssignments: avaliador vê inscrições designadas a ele + suas avaliações.
+ *  - listResults: admin agrega avaliações por inscrição (ranking).
+ *  - promoteWinner: admin define status (finalist/winner/rejected) e opcionalmente
+ *      promove o papel do candidato de 'entrant' para 'winner'/'attendee' (libera acesso ao evento).
  */
 export default async function(req: Request): Promise<Response> {
   try {
@@ -20,45 +23,117 @@ export default async function(req: Request): Promise<Response> {
     const { action } = body || {};
     const svc = base44.asServiceRole;
 
-    if (action === 'saveEvaluation') {
-      const { nomination_id, scores, notes, status } = body;
-      if (!nomination_id) return Response.json({ error: 'nomination_id obrigatório' }, { status: 400 });
+    // ── submitCase ──────────────────────────────────────────────────────────
+    if (action === 'submitCase') {
+      const { award_id, title, summary, custom_answers } = body;
+      if (!award_id || !title?.trim()) {
+        return Response.json({ error: 'award_id e title obrigatórios' }, { status: 400 });
+      }
+      const configs = await svc.entities.AwardConfig.filter({ id: award_id, is_deleted: false });
+      const config = configs[0];
+      if (!config) return Response.json({ error: 'Premiação não encontrada' }, { status: 404 });
+      if (!config.is_active) return Response.json({ error: 'Premiação inativa' }, { status: 400 });
+      const now = new Date();
+      if (config.start_date && new Date(config.start_date) > now) {
+        return Response.json({ error: 'Inscrições ainda não abertas' }, { status: 400 });
+      }
+      if (config.end_date && new Date(config.end_date) < now) {
+        return Response.json({ error: 'Inscrições encerradas' }, { status: 400 });
+      }
 
-      const noms = await svc.entities.AwardNomination.filter({ id: nomination_id, is_deleted: false });
-      const nomination = noms[0];
-      if (!nomination) return Response.json({ error: 'Indicação não encontrada' }, { status: 404 });
-
-      // Verifica papel de avaliador no evento (ou admin)
-      if (user.role !== 'admin') {
-        const memberships = await svc.entities.EventMembership.filter({
-          event_id: nomination.event_id,
-          user_id: user.id,
-          role: 'reviewer',
-          is_active: true,
-          is_deleted: false,
-        });
-        if (memberships.length === 0) {
-          return Response.json({ error: 'Forbidden — você não é avaliador deste evento' }, { status: 403 });
+      // resolve/cria Person
+      let personId = user.person_id;
+      let personName = user.full_name || user.email;
+      const personEmail = user.email;
+      if (!personId) {
+        const byEmail = user.email ? await svc.entities.Person.filter({ contact_email: user.email }) : [];
+        if (byEmail[0]) {
+          personId = byEmail[0].id;
+          personName = byEmail[0].full_name || personName;
+        } else {
+          const created = await base44.entities.Person.create({ full_name: personName, contact_email: personEmail });
+          personId = created.id;
+          await base44.auth.updateMe({ person_id: personId });
         }
       }
 
-      // Carrega critérios da categoria para calcular total
-      const cats = await svc.entities.AwardCategory.filter({ id: nomination.category_id, is_deleted: false });
-      const category = cats[0];
-      let criteria = [];
-      try { criteria = JSON.parse(category?.criteria_config || '[]'); } catch { criteria = []; }
+      // garante EventMembership{entrant} (idempotente) — service role bypassa RLS create
+      const existingM = await svc.entities.EventMembership.filter({
+        event_id: config.event_id, person_id: personId, role: 'entrant', is_deleted: false,
+      });
+      if (existingM.length === 0) {
+        await svc.entities.EventMembership.create({
+          event_id: config.event_id,
+          person_id: personId,
+          person_name: personName,
+          user_id: user.id,
+          user_email: personEmail,
+          role: 'entrant',
+          is_active: true,
+        });
+      }
 
+      const submission = await base44.entities.AwardSubmission.create({
+        award_id,
+        event_id: config.event_id,
+        person_id: personId,
+        submitter_name: personName,
+        submitter_email: personEmail,
+        title: title.trim(),
+        summary: (summary || '').trim(),
+        custom_answers: JSON.stringify(custom_answers || {}),
+        status: 'pending',
+        assigned_reviewer_ids: '[]',
+      });
+      return Response.json({ ok: true, submission });
+    }
+
+    // ── assignReviewer ──────────────────────────────────────────────────────
+    if (action === 'assignReviewer') {
+      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const { submission_id, reviewer_user_ids } = body;
+      if (!submission_id) return Response.json({ error: 'submission_id obrigatório' }, { status: 400 });
+      const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
+      const sub = subs[0];
+      if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
+      let current = [];
+      try { current = JSON.parse(sub.assigned_reviewer_ids || '[]'); } catch { current = []; }
+      const next = [...new Set([...current, ...(reviewer_user_ids || [])])];
+      await svc.entities.AwardSubmission.update(submission_id, {
+        assigned_reviewer_ids: JSON.stringify(next),
+        status: sub.status === 'pending' ? 'in_review' : sub.status,
+      });
+      return Response.json({ ok: true, assigned_reviewer_ids: next });
+    }
+
+    // ── saveEvaluation ───────────────────────────────────────────────────────
+    if (action === 'saveEvaluation') {
+      const { submission_id, scores, notes, status } = body;
+      if (!submission_id) return Response.json({ error: 'submission_id obrigatório' }, { status: 400 });
+      const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
+      const sub = subs[0];
+      if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
+
+      if (user.role !== 'admin') {
+        let assigned = [];
+        try { assigned = JSON.parse(sub.assigned_reviewer_ids || '[]'); } catch { assigned = []; }
+        if (!assigned.includes(user.id)) {
+          return Response.json({ error: 'Forbidden — você não foi designado para este case' }, { status: 403 });
+        }
+      }
+
+      const configs = await svc.entities.AwardConfig.filter({ id: sub.award_id, is_deleted: false });
+      let criteria = [];
+      try { criteria = JSON.parse(configs[0]?.criteria_config || '[]'); } catch { criteria = []; }
       const scoresObj = scores || {};
       let total = 0;
-      for (const c of criteria) {
-        total += Number(scoresObj[c.id] ?? 0) * (c.weight || 1);
-      }
+      for (const c of criteria) total += Number(scoresObj[c.id] ?? 0) * (c.weight || 1);
       total = Math.round(total * 100) / 100;
 
       const payload = {
-        event_id: nomination.event_id,
-        category_id: nomination.category_id,
-        nomination_id,
+        event_id: sub.event_id,
+        award_id: sub.award_id,
+        submission_id,
         reviewer_user_id: user.id,
         reviewer_name: user.full_name || user.email,
         scores: JSON.stringify(scoresObj),
@@ -67,46 +142,85 @@ export default async function(req: Request): Promise<Response> {
         status: status || 'submitted',
       };
 
-      const existing = await svc.entities.AwardEvaluation.filter({
-        nomination_id,
-        reviewer_user_id: user.id,
-        is_deleted: false,
-      });
-
+      const existing = await svc.entities.AwardEvaluation.filter({ submission_id, reviewer_user_id: user.id, is_deleted: false });
       let result;
       if (existing[0]) {
         await svc.entities.AwardEvaluation.update(existing[0].id, payload);
         result = { id: existing[0].id, ...payload };
       } else {
-        // user-scoped create -> created_by_id = revisor (RLS read owner-scoped)
         result = await base44.entities.AwardEvaluation.create(payload);
       }
       return Response.json({ ok: true, evaluation: result });
     }
 
+    // ── listMyAssignments ────────────────────────────────────────────────────
+    if (action === 'listMyAssignments') {
+      const memberships = await svc.entities.EventMembership.filter({ user_id: user.id, role: 'reviewer', is_active: true, is_deleted: false });
+      if (memberships.length === 0) {
+        return Response.json({ ok: true, submissions: [], configs: {}, evaluations: {} });
+      }
+      const allSubs = await svc.entities.AwardSubmission.filter({ is_deleted: false }, undefined, 1000);
+      const mine = allSubs.filter((s) => {
+        let arr = [];
+        try { arr = JSON.parse(s.assigned_reviewer_ids || '[]'); } catch { arr = []; }
+        return arr.includes(user.id);
+      });
+      const configIds = [...new Set(mine.map((s) => s.award_id))];
+      const configs = configIds.length ? await svc.entities.AwardConfig.filter({ id: { $in: configIds }, is_deleted: false }) : [];
+      const configMap = {};
+      for (const c of configs) configMap[c.id] = c;
+      const evals = await svc.entities.AwardEvaluation.filter({ reviewer_user_id: user.id, is_deleted: false }, undefined, 1000);
+      const evalMap = {};
+      for (const e of evals) evalMap[e.submission_id] = e;
+      return Response.json({ ok: true, submissions: mine, configs: configMap, evaluations: evalMap });
+    }
+
+    // ── listResults ──────────────────────────────────────────────────────────
     if (action === 'listResults') {
       if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
-      const { event_id, category_id } = body;
+      const { event_id, award_id } = body;
       if (!event_id) return Response.json({ error: 'event_id obrigatório' }, { status: 400 });
-
       const evalQuery = { event_id, is_deleted: false };
-      if (category_id) evalQuery.category_id = category_id;
+      if (award_id) evalQuery.award_id = award_id;
       const evaluations = await svc.entities.AwardEvaluation.filter(evalQuery, undefined, 1000);
-      const nominations = await svc.entities.AwardNomination.filter({ event_id, is_deleted: false }, undefined, 1000);
-
-      const byNom = {};
-      for (const e of evaluations) {
-        (byNom[e.nomination_id] = byNom[e.nomination_id] || []).push(e);
-      }
-      const results = nominations
-        .map((n) => {
-          const evals = byNom[n.id] || [];
-          const avg = evals.length ? evals.reduce((s, e) => s + (e.total_score || 0), 0) / evals.length : 0;
-          return { nomination: n, evaluations: evals, avg_score: Math.round(avg * 100) / 100, reviewers_count: evals.length };
-        })
-        .sort((a, b) => b.avg_score - a.avg_score);
-
+      const subs = await svc.entities.AwardSubmission.filter({ event_id, is_deleted: false }, undefined, 1000);
+      const bySub = {};
+      for (const e of evaluations) (bySub[e.submission_id] = bySub[e.submission_id] || []).push(e);
+      const results = subs.map((s) => {
+        const evs = bySub[s.id] || [];
+        const avg = evs.length ? evs.reduce((a, e) => a + (e.total_score || 0), 0) / evs.length : 0;
+        return { submission: s, evaluations: evs, avg_score: Math.round(avg * 100) / 100, reviewers_count: evs.length };
+      }).sort((a, b) => b.avg_score - a.avg_score);
       return Response.json({ ok: true, results });
+    }
+
+    // ── promoteWinner ────────────────────────────────────────────────────────
+    if (action === 'promoteWinner') {
+      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const { submission_id, status, new_role } = body;
+      if (!submission_id || !status) return Response.json({ error: 'submission_id e status obrigatórios' }, { status: 400 });
+      const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
+      const sub = subs[0];
+      if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
+      await svc.entities.AwardSubmission.update(submission_id, { status });
+
+      if (new_role && sub.person_id) {
+        const existing = await svc.entities.EventMembership.filter({ event_id: sub.event_id, person_id: sub.person_id, role: 'entrant', is_deleted: false });
+        if (existing[0]) {
+          await svc.entities.EventMembership.update(existing[0].id, { role: new_role });
+        } else {
+          await svc.entities.EventMembership.create({
+            event_id: sub.event_id,
+            person_id: sub.person_id,
+            person_name: sub.submitter_name,
+            user_id: '',
+            user_email: sub.submitter_email || '',
+            role: new_role,
+            is_active: true,
+          });
+        }
+      }
+      return Response.json({ ok: true });
     }
 
     return Response.json({ error: 'action inválido' }, { status: 400 });

@@ -90,6 +90,8 @@ export const EVENT_ROLES = [
   { value: "manager", label: "Gerente" },
   { value: "partner_rep", label: "Rep. Parceiro" },
   { value: "reviewer", label: "Avaliador" },
+  { value: "entrant", label: "Candidato" },
+  { value: "winner", label: "Premiado" },
 ];
 
 export function roleLabel(role) {

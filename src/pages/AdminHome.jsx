@@ -18,6 +18,7 @@ const TONE_CLASSES = {
 const MY_AREA_CARDS = [
   { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
   { key: "callForPapers", icon: Megaphone, tone: "secondary", href: "/cfp", label: "Call for Papers" },
+  { key: "premiacao", icon: Award, tone: "success", href: "/awards", label: "Premiação" },
 ];
 
 const SPEAKER_CARD = {
