@@ -2,12 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { UserPlus, FileText, Crown } from "lucide-react";
-import AssignReviewerDialog from "./AssignReviewerDialog";
+import { FileText, Crown } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 
 const STATUS_STYLE = {
@@ -31,7 +29,6 @@ function parseJSON(str, fallback) { if (!str) return fallback; try { return JSON
 export default function AwardSubmissionsManager({ eventId, hasAccess }) {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("pending");
-  const [assignFor, setAssignFor] = useState(null);
   const [promoteFor, setPromoteFor] = useState(null);
 
   const { data: configs = [] } = useQuery({ queryKey: ["award-configs", eventId], queryFn: () => base44.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false }) });
@@ -80,7 +77,6 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
             const cfg = configMap[s.award_id];
             const fields = parseJSON(cfg?.form_config, []);
             const answers = parseJSON(s.custom_answers, {});
-            const assigned = parseJSON(s.assigned_reviewer_ids, []);
             return (
               <div key={s.id} className="rounded-2xl border border-border bg-card p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
@@ -104,20 +100,8 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
                   </div>
                 )}
 
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs text-muted-foreground">Avaliadores:</span>
-                  {assigned.length === 0 ? (
-                    <span className="text-xs text-muted-foreground italic">nenhum</span>
-                  ) : assigned.map((id) => (
-                    <Badge key={id} variant="secondary" className="text-[11px]">{id.slice(-6)}</Badge>
-                  ))}
-                </div>
-
                 {hasAccess && (
                   <div className="flex flex-wrap gap-1.5 pt-1">
-                    <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => setAssignFor(s)}>
-                      <UserPlus className="w-3.5 h-3.5" /> Designar
-                    </Button>
                     {s.status !== "winner" && (
                       <Button size="sm" className="h-7 gap-1 bg-success text-success-foreground hover:bg-success/90" onClick={() => setPromoteFor(s)}>
                         <Crown className="w-3.5 h-3.5" /> Promover
@@ -135,16 +119,6 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
             );
           })}
         </div>
-      )}
-
-      {assignFor && (
-        <AssignReviewerDialog
-          open
-          onClose={() => setAssignFor(null)}
-          eventId={eventId}
-          submission={assignFor}
-          assignedIds={parseJSON(assignFor.assigned_reviewer_ids, [])}
-        />
       )}
 
       {promoteFor && (

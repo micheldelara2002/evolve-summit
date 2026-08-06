@@ -2,10 +2,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, Calendar, Medal } from "lucide-react";
+import { Plus, Pencil, Trash2, Calendar, Medal, Users } from "lucide-react";
 import { parseCriteria } from "@/lib/awardUtils";
 import AwardConfigFormDialog from "./AwardConfigFormDialog";
+import AssignBancaDialog from "./AssignBancaDialog";
 import EmptyState from "@/components/ui/EmptyState";
+
+function parseIds(str) { try { return JSON.parse(str || '[]'); } catch { return []; } }
 
 function parseFormConfig(str) {
   if (!str) return [];
@@ -23,6 +26,7 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [bancaFor, setBancaFor] = useState(null);
 
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ["award-configs", eventId],
@@ -82,6 +86,14 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Calendar className="w-3.5 h-3.5" /> {fmtDate(c.start_date)} – {fmtDate(c.end_date)}
                 </div>
+                <div className="flex items-center justify-between rounded-lg bg-muted/30 px-2.5 py-1.5">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" /> Banca: {parseIds(c.assigned_reviewer_ids).length} avaliador(es)
+                  </span>
+                  {hasAccess && (
+                    <Button variant="outline" size="sm" className="h-7" onClick={() => setBancaFor(c)}>Designar banca</Button>
+                  )}
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
                     {parseFormConfig(c.form_config).length} campo(s) · {parseCriteria(c.criteria_config).length} critério(s)
@@ -105,6 +117,16 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
           onClose={() => { setOpen(false); setEditing(null); }}
           onSubmit={(data) => saveMutation.mutate(data)}
           saving={saveMutation.isPending}
+        />
+      )}
+
+      {bancaFor && (
+        <AssignBancaDialog
+          open
+          onClose={() => setBancaFor(null)}
+          eventId={eventId}
+          award={bancaFor}
+          currentBanca={parseIds(bancaFor.assigned_reviewer_ids)}
         />
       )}
     </div>

@@ -88,22 +88,15 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, submission });
     }
 
-    // ── assignReviewer ──────────────────────────────────────────────────────
-    if (action === 'assignReviewer') {
+    // ── assignReviewers: admin define a banca avaliadora de uma premiação ────
+    if (action === 'assignReviewers') {
       if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
-      const { submission_id, reviewer_user_ids } = body;
-      if (!submission_id) return Response.json({ error: 'submission_id obrigatório' }, { status: 400 });
-      const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
-      const sub = subs[0];
-      if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
-      let current = [];
-      try { current = JSON.parse(sub.assigned_reviewer_ids || '[]'); } catch { current = []; }
-      const next = [...new Set([...current, ...(reviewer_user_ids || [])])];
-      await svc.entities.AwardSubmission.update(submission_id, {
-        assigned_reviewer_ids: JSON.stringify(next),
-        status: sub.status === 'pending' ? 'in_review' : sub.status,
-      });
-      return Response.json({ ok: true, assigned_reviewer_ids: next });
+      const { award_id, reviewer_user_ids } = body;
+      if (!award_id) return Response.json({ error: 'award_id obrigatório' }, { status: 400 });
+      const configs = await svc.entities.AwardConfig.filter({ id: award_id, is_deleted: false });
+      if (!configs[0]) return Response.json({ error: 'Premiação não encontrada' }, { status: 404 });
+      await svc.entities.AwardConfig.update(award_id, { assigned_reviewer_ids: JSON.stringify(reviewer_user_ids || []) });
+      return Response.json({ ok: true, assigned_reviewer_ids: reviewer_user_ids || [] });
     }
 
     // ── saveEvaluation ───────────────────────────────────────────────────────
@@ -114,17 +107,17 @@ export default async function(req: Request): Promise<Response> {
       const sub = subs[0];
       if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
 
+      const configs = await svc.entities.AwardConfig.filter({ id: sub.award_id, is_deleted: false });
+      const config = configs[0];
       if (user.role !== 'admin') {
-        let assigned = [];
-        try { assigned = JSON.parse(sub.assigned_reviewer_ids || '[]'); } catch { assigned = []; }
-        if (!assigned.includes(user.id)) {
-          return Response.json({ error: 'Forbidden — você não foi designado para este case' }, { status: 403 });
+        let banca = [];
+        try { banca = JSON.parse(config?.assigned_reviewer_ids || '[]'); } catch { banca = []; }
+        if (!banca.includes(user.id)) {
+          return Response.json({ error: 'Forbidden — você não faz parte da banca desta premiação' }, { status: 403 });
         }
       }
-
-      const configs = await svc.entities.AwardConfig.filter({ id: sub.award_id, is_deleted: false });
       let criteria = [];
-      try { criteria = JSON.parse(configs[0]?.criteria_config || '[]'); } catch { criteria = []; }
+      try { criteria = JSON.parse(config?.criteria_config || '[]'); } catch { criteria = []; }
       const scoresObj = scores || {};
       let total = 0;
       for (const c of criteria) total += Number(scoresObj[c.id] ?? 0) * (c.weight || 1);
@@ -153,22 +146,22 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, evaluation: result });
     }
 
-    // ── listMyAssignments ────────────────────────────────────────────────────
+    // ── listMyAssignments: inscrições das premiações cuja banca inclui o user ─
     if (action === 'listMyAssignments') {
-      const memberships = await svc.entities.EventMembership.filter({ user_id: user.id, role: 'reviewer', is_active: true, is_deleted: false });
-      if (memberships.length === 0) {
+      const allConfigs = await svc.entities.AwardConfig.filter({ is_active: true, is_deleted: false }, undefined, 1000);
+      const myConfigs = allConfigs.filter((c) => {
+        let banca = [];
+        try { banca = JSON.parse(c.assigned_reviewer_ids || '[]'); } catch { banca = []; }
+        return banca.includes(user.id);
+      });
+      if (myConfigs.length === 0) {
         return Response.json({ ok: true, submissions: [], configs: {}, evaluations: {} });
       }
+      const configIds = myConfigs.map((c) => c.id);
       const allSubs = await svc.entities.AwardSubmission.filter({ is_deleted: false }, undefined, 1000);
-      const mine = allSubs.filter((s) => {
-        let arr = [];
-        try { arr = JSON.parse(s.assigned_reviewer_ids || '[]'); } catch { arr = []; }
-        return arr.includes(user.id);
-      });
-      const configIds = [...new Set(mine.map((s) => s.award_id))];
-      const configs = configIds.length ? await svc.entities.AwardConfig.filter({ id: { $in: configIds }, is_deleted: false }) : [];
+      const mine = allSubs.filter((s) => configIds.includes(s.award_id));
       const configMap = {};
-      for (const c of configs) configMap[c.id] = c;
+      for (const c of myConfigs) configMap[c.id] = c;
       const evals = await svc.entities.AwardEvaluation.filter({ reviewer_user_id: user.id, is_deleted: false }, undefined, 1000);
       const evalMap = {};
       for (const e of evals) evalMap[e.submission_id] = e;
