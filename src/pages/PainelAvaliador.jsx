@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Award, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
@@ -7,26 +8,24 @@ import { isAdmin } from "@/lib/access";
 import PageHeader from "@/components/layout/PageHeader";
 import EmptyState from "@/components/ui/EmptyState";
 import ListSkeleton from "@/components/ui/ListSkeleton";
+import NominationList from "@/components/avaliador/NominationList";
 
-/**
- * Painel do Avaliador (comissão de premiação).
- * Acessível por usuários com EventMembership role='reviewer' (ou admin).
- * Placeholder — o módulo de premiação será construído na sequência.
- */
 export default function PainelAvaliador() {
   const { user } = useAuth();
   const admin = isAdmin(user);
+  const qc = useQueryClient();
+  const [activeEventId, setActiveEventId] = useState(null);
 
-  const { data: memberships, isLoading } = useQuery({
+  const membershipsQuery = useQuery({
     queryKey: ["my-memberships", user?.id],
     queryFn: () => getMyMemberships(user?.id),
     enabled: !!user?.id,
   });
 
-  const isReviewer = admin || hasRole(memberships, "reviewer");
-  const reviewerEventIds = getEventIdsForRole(memberships || [], "reviewer");
+  const isReviewer = admin || hasRole(membershipsQuery.data, "reviewer");
+  const reviewerEventIds = getEventIdsForRole(membershipsQuery.data || [], "reviewer");
 
-  const { data: events } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: ["reviewer-events", reviewerEventIds.join(",")],
     queryFn: async () => {
       if (!reviewerEventIds.length) return [];
@@ -36,7 +35,25 @@ export default function PainelAvaliador() {
     enabled: reviewerEventIds.length > 0,
   });
 
-  if (isLoading) {
+  const eventId = activeEventId || reviewerEventIds[0];
+
+  const categoriesQuery = useQuery({
+    queryKey: ["award-categories", eventId],
+    queryFn: () => base44.entities.AwardCategory.filter({ event_id: eventId, is_active: true, is_deleted: false }),
+    enabled: !!eventId,
+  });
+  const nominationsQuery = useQuery({
+    queryKey: ["award-nominations", eventId],
+    queryFn: () => base44.entities.AwardNomination.filter({ event_id: eventId, is_deleted: false }),
+    enabled: !!eventId,
+  });
+  const myEvalsQuery = useQuery({
+    queryKey: ["my-evaluations", eventId, user?.id],
+    queryFn: () => base44.entities.AwardEvaluation.filter({ event_id: eventId, is_deleted: false }),
+    enabled: !!eventId && !!user?.id,
+  });
+
+  if (membershipsQuery.isLoading) {
     return (
       <div className="space-y-6">
         <PageHeader icon={Award} title="Painel do Avaliador" tone="success" />
@@ -49,54 +66,43 @@ export default function PainelAvaliador() {
     return (
       <div className="space-y-6">
         <PageHeader icon={Award} title="Painel do Avaliador" tone="success" />
-        <EmptyState
-          icon={Trophy}
-          title="Você não faz parte de nenhuma comissão de avaliação"
-          description="Quando um gestor te atribuir o papel de avaliador em um evento, suas premiações aparecerão aqui."
-        />
+        <EmptyState icon={Trophy} title="Você não faz parte de nenhuma comissão" description="Quando um gestor te atribuir o papel de avaliador, suas premiações aparecerão aqui." />
       </div>
     );
   }
 
+  const events = eventsQuery.data || [];
+  const invalidateEvals = () => qc.invalidateQueries({ queryKey: ["my-evaluations", eventId, user?.id] });
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Award}
-        title="Painel do Avaliador"
-        subtitle="Comissão de premiação"
-        tone="success"
-      />
+      <PageHeader icon={Award} title="Painel do Avaliador" subtitle="Comissão de premiação" tone="success" />
 
-      {(!events || events.length === 0) && admin && (
-        <EmptyState
-          icon={Trophy}
-          title="Módulo de premiação em preparação"
-          description="Atribua o papel de avaliador às pessoas do seu evento para liberar o acesso às avaliações."
-        />
+      {events.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {events.map((e) => (
+            <button
+              key={e.id}
+              onClick={() => setActiveEventId(e.id)}
+              className={`px-3 py-1.5 rounded-full text-sm border transition ${eventId === e.id ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border"}`}
+            >
+              {e.name}
+            </button>
+          ))}
+        </div>
       )}
 
-      {events && events.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Eventos sob sua avaliação
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                className="rounded-xl border border-border bg-card p-4 space-y-1"
-              >
-                <p className="font-display font-semibold">{event.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {event.start_date ? new Date(event.start_date).toLocaleDateString("pt-BR") : "Data a definir"}
-                </p>
-                <p className="text-xs text-success font-medium pt-1">
-                  Módulo de premiação em breve
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+      {events.length === 0 ? (
+        <EmptyState icon={Trophy} title="Nenhum evento com premiação ativa" description="Aguarde o gestor configurar categorias e indicações no evento." />
+      ) : categoriesQuery.isLoading ? (
+        <ListSkeleton count={3} />
+      ) : (
+        <NominationList
+          categories={categoriesQuery.data || []}
+          nominations={nominationsQuery.data || []}
+          myEvaluations={myEvalsQuery.data || []}
+          onEvaluated={invalidateEvals}
+        />
       )}
     </div>
   );

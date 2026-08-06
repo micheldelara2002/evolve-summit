@@ -17,6 +17,7 @@ import SessionRankingSection from "@/components/admin/SessionRankingSection";
 import NotificationsCenter from "@/components/notifications/NotificationsCenter";
 import EventStructureManager from "@/components/admin/EventStructureManager";
 import CallForPapersTab from "@/components/admin/cfp/CallForPapersTab";
+import PremiacaoTab from "@/components/admin/PremiacaoTab";
 
 const MODULE_TITLES = {
   people: t("adminSections.people"),
@@ -33,7 +34,8 @@ const MODULE_TITLES = {
   raffle: t("adminSections.raffle"),
   certificates: t("adminSections.certificates"),
   cfp: t("adminSections.cfp"),
-};
+  premiacao: t("adminSections.premiacao"),
+  };
 
 function PeopleContent({ eventId, hasAccess }) {
   const [showImport, setShowImport] = useState(false);
@@ -99,6 +101,7 @@ export default function EventModulePage({ module }) {
       {module === "raffle" && <SorteioTab eventId={eventId} user={user} />}
       {module === "certificates" && <CertificadosTab eventId={eventId} user={user} />}
       {module === "cfp" && <CallForPapersTab eventId={eventId} hasAccess={hasAccess} user={user} />}
+      {module === "premiacao" && <PremiacaoTab eventId={eventId} />}
     </div>
   );
 }

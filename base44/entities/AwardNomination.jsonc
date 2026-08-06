@@ -1,0 +1,74 @@
+{
+  "name": "AwardNomination",
+  "type": "object",
+  "description": "Indica\u00e7\u00e3o (candidato) a uma categoria de premia\u00e7\u00e3o. Aponta para uma sess\u00e3o, participante ou pessoa.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "category_id": {
+      "type": "string",
+      "description": "ID da AwardCategory"
+    },
+    "nominee_type": {
+      "type": "string",
+      "enum": [
+        "session",
+        "participant",
+        "person"
+      ],
+      "description": "Tipo do indicado"
+    },
+    "nominee_id": {
+      "type": "string",
+      "description": "ID do registro indicado"
+    },
+    "nominee_name": {
+      "type": "string",
+      "description": "Nome do indicado (snapshot)"
+    },
+    "nominee_subtitle": {
+      "type": "string",
+      "description": "Info extra (ex: t\u00edtulo da sess\u00e3o)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "nominated",
+        "finalist",
+        "winner",
+        "rejected"
+      ],
+      "default": "nominated"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "category_id",
+    "nominee_type",
+    "nominee_name"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

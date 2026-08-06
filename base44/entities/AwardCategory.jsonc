@@ -1,0 +1,53 @@
+{
+  "name": "AwardCategory",
+  "type": "object",
+  "description": "Categoria de premia\u00e7\u00e3o de um evento. Cont\u00e9m crit\u00e9rios customizados (pesos e notas m\u00e1ximas) usados pelos avaliadores.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (chave de isolamento)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome da categoria (ex: Melhor Palestra)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o/instru\u00e7\u00f5es da categoria"
+    },
+    "criteria_config": {
+      "type": "string",
+      "description": "JSON array de crit\u00e9rios: [{id, label, weight, max_score}]"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "name"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

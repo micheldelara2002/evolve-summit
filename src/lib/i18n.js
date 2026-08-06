@@ -267,6 +267,7 @@ const ptBR = {
     raffle: "Sorteio",
     certificates: "Certificados",
     cfp: "Call for Papers",
+    premiacao: "Premiação",
   },
   cfp: {
     mySubmissions: "Minhas Submissões",
@@ -398,6 +399,7 @@ const en = {
     raffle: "Raffle",
     certificates: "Certificates",
     cfp: "Call for Papers",
+    premiacao: "Awards",
   },
   cfp: {
     mySubmissions: "My Submissions",
