@@ -52,15 +52,22 @@ export default function AssignBancaDialog({ open, onClose, eventId, award, curre
             <div className="space-y-1 max-h-64 overflow-y-auto">
               {reviewers.map((r) => {
                 const checked = selected.includes(r.user_id);
+                const noAccount = !r.user_id;
                 return (
-                  <button key={r.id} onClick={() => toggle(r.user_id)} className={`w-full flex items-center gap-2 p-2 rounded-lg border text-left transition ${checked ? "border-primary bg-primary/5" : "border-border"}`}>
+                  <button
+                    key={r.id}
+                    onClick={() => !noAccount && toggle(r.user_id)}
+                    disabled={noAccount}
+                    className={`w-full flex items-center gap-2 p-2 rounded-lg border text-left transition ${noAccount ? "border-border opacity-50 cursor-not-allowed" : checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}
+                  >
                     <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${checked ? "bg-primary text-primary-foreground" : "border border-input"}`}>
                       {checked && <Check className="w-3.5 h-3.5" />}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{r.person_name || r.user_email}</p>
                       {r.user_email && <p className="text-xs text-muted-foreground truncate">{r.user_email}</p>}
                     </div>
+                    {noAccount && <span className="text-[10px] text-warning shrink-0">sem conta</span>}
                   </button>
                 );
               })}

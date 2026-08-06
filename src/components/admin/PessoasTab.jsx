@@ -5,7 +5,7 @@
  * - Chips de papéis, coluna parceiro, menu de contexto — mantidos.
  * - partner_rep NÃO é atribuído manualmente aqui (vem da tela de Partner).
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,7 @@ const ROLE_COLORS = {
   team:        "bg-emerald-100 text-emerald-700",
   manager:     "bg-amber-100 text-amber-700",
   partner_rep: "bg-sky-100 text-sky-700",
+  reviewer:    "bg-cyan-100 text-cyan-700",
 };
 
 const ROLE_LABELS = {
@@ -43,6 +44,7 @@ const ROLE_LABELS = {
   team:        "Equipe",
   manager:     "Gerente",
   partner_rep: "Representante",
+  reviewer:    "Avaliador",
 };
 
 // ── Role rules ────────────────────────────────────────────────────────────────
@@ -107,6 +109,12 @@ export default function PessoasTab({
     queryKey: ["global_reps_all"],
     queryFn: () => base44.entities.PartnerRepresentative.filter({ is_deleted: false, is_active: true }),
   });
+  // Avaliadores do evento (EventMembership role=reviewer) — para exibir chip + filtro
+  const { data: reviewerMemberships = [] } = useQuery({
+    queryKey: ["event-reviewers", eventId],
+    queryFn: () => base44.entities.EventMembership.filter({ event_id: eventId, role: "reviewer", is_active: true, is_deleted: false }),
+  });
+  const reviewerPersonIds = useMemo(() => new Set(reviewerMemberships.map((m) => m.person_id).filter(Boolean)), [reviewerMemberships]);
 
   const partnerMap = Object.fromEntries(allPartners.map((p) => [p.id, p]));
   const eventPartnerSet = new Set(eventPartners.map((ep) => ep.partner_id));
@@ -124,11 +132,12 @@ export default function PessoasTab({
 
   const rows = useMemo(() => participants.map((p) => {
     const roles = [];
+    if (reviewerPersonIds.has(p.person_id)) roles.push("reviewer");
     if (p.role_in_event && p.role_in_event !== "attendee") roles.push(p.role_in_event);
     if (roles.length === 0) roles.push("attendee");
     return { ...p, derivedRoles: roles, partnerName: getPartnerName(p) };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [participants, globalReps, eventPartners, allPartners]);
+  }), [participants, globalReps, eventPartners, allPartners, reviewerPersonIds]);
 
   // Unique partners in this event (for filter dropdown)
   const partnerNamesInEvent = [...new Set(rows.map((r) => r.partnerName).filter(Boolean))];
@@ -231,6 +240,7 @@ export default function PessoasTab({
             <SelectItem value="speaker">Palestrante</SelectItem>
             <SelectItem value="team">Equipe</SelectItem>
             <SelectItem value="manager">Gerente</SelectItem>
+            <SelectItem value="reviewer">Avaliador</SelectItem>
             <SelectItem value="partner_rep">Representante</SelectItem>
           </SelectContent>
         </Select>
@@ -649,13 +659,36 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
     if (["speaker", "team", "manager"].includes(pessoa.role_in_event)) r.push(pessoa.role_in_event);
     return r;
   });
+  const [isReviewer, setIsReviewer] = useState(false);
+  const [reviewerMembership, setReviewerMembership] = useState(null);
+  const [reviewerUserId, setReviewerUserId] = useState("");
+  const [checkingReviewer, setCheckingReviewer] = useState(!isPartnerRep && !!pessoa.person_id);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(null);
+  const queryClient = useQueryClient();
 
   const disabledRoles = useMemo(() => getDisabledRoles(roles), [roles]);
 
+  // Resolve existing reviewer membership + linked user_id (by email)
+  useEffect(() => {
+    if (isPartnerRep || !pessoa.person_id) { setCheckingReviewer(false); return; }
+    (async () => {
+      try {
+        const m = await base44.entities.EventMembership.filter({
+          event_id: eventId, person_id: pessoa.person_id, role: "reviewer", is_deleted: false,
+        });
+        if (m[0]) { setReviewerMembership(m[0]); setIsReviewer(true); }
+        if (pessoa.email) {
+          const u = await base44.entities.User.filter({ email: pessoa.email });
+          if (u[0]) setReviewerUserId(u[0].id);
+        }
+      } finally { setCheckingReviewer(false); }
+    })();
+  }, [isPartnerRep, pessoa.person_id, pessoa.email, eventId]);
+
   const toggleRole = (role) => {
     setConflict(null);
+    if (role === "reviewer") { setIsReviewer((v) => !v); return; }
     if (roles.includes(role)) {
       setRoles((prev) => prev.filter((r) => r !== role));
     } else if (!disabledRoles.has(role)) {
@@ -674,26 +707,52 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
     }
 
     setSaving(true);
-    // Priority: manager > speaker > team > attendee
-    let newRole = "attendee";
-    if (roles.includes("manager")) newRole = "manager";
-    else if (roles.includes("speaker")) newRole = "speaker";
-    else if (roles.includes("team")) newRole = "team";
+    try {
+      // Papel no Participant (speaker/team/manager/attendee)
+      let newRole = "attendee";
+      if (roles.includes("manager")) newRole = "manager";
+      else if (roles.includes("speaker")) newRole = "speaker";
+      else if (roles.includes("team")) newRole = "team";
+      if (newRole !== pessoa.role_in_event) {
+        await base44.entities.Participant.update(pessoa.id, { role_in_event: newRole });
+        logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
+          details: { field: "role_in_event", old_value: pessoa.role_in_event, new_value: newRole } });
+      }
 
-    await base44.entities.Participant.update(pessoa.id, { role_in_event: newRole });
-    logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
-      details: { field: "role_in_event", old_value: pessoa.role_in_event, new_value: newRole } });
+      // Avaliador — gerenciado via EventMembership (independente do role_in_event)
+      if (!pessoa.person_id && isReviewer) {
+        setConflict("Esta pessoa não tem perfil global (Person) vinculado; não é possível designá-la como avaliadora.");
+        setSaving(false);
+        return;
+      }
+      if (isReviewer && !reviewerMembership) {
+        await base44.entities.EventMembership.create({
+          event_id: eventId,
+          person_id: pessoa.person_id,
+          person_name: pessoa.full_name,
+          user_id: reviewerUserId || "",
+          user_email: pessoa.email || "",
+          role: "reviewer",
+          is_active: true,
+        });
+      } else if (!isReviewer && reviewerMembership) {
+        await base44.entities.EventMembership.update(reviewerMembership.id, { is_deleted: true });
+      }
 
-    setSaving(false);
-    onSuccess();
-    onClose();
-    toast.success(t("events.saveSuccess"));
+      queryClient.invalidateQueries({ queryKey: ["event-reviewers", eventId] });
+      onSuccess();
+      onClose();
+      toast.success(t("events.saveSuccess"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const ROLE_OPTIONS = [
-    { value: "speaker", label: "Palestrante" },
-    { value: "team",    label: "Equipe" },
-    { value: "manager", label: "Gerente" },
+    { value: "speaker",  label: "Palestrante" },
+    { value: "team",     label: "Equipe" },
+    { value: "manager",  label: "Gerente" },
+    { value: "reviewer", label: "Avaliador" },
   ];
 
   return (
@@ -708,10 +767,10 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
           ) : (
             <>
               <p className="text-xs text-muted-foreground">Participante é implícito. Selecione papéis adicionais:</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {ROLE_OPTIONS.map(({ value, label }) => {
-                  const active = roles.includes(value);
-                  const disabled = disabledRoles.has(value);
+                  const active = value === "reviewer" ? isReviewer : roles.includes(value);
+                  const disabled = value === "reviewer" ? false : disabledRoles.has(value);
                   return (
                     <button
                       key={value}
@@ -727,6 +786,12 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
                   );
                 })}
               </div>
+              {checkingReviewer && <p className="text-xs text-muted-foreground">Verificando status de avaliador…</p>}
+              {isReviewer && !reviewerUserId && !checkingReviewer && (
+                <p className="text-xs text-warning bg-warning/10 rounded-lg px-3 py-2">
+                  Esta pessoa não tem conta de acesso (User) com este e-mail. Convide-a para que consiga acessar o painel de avaliação.
+                </p>
+              )}
             </>
           )}
           {conflict && <p className="text-sm text-destructive bg-red-50 rounded-lg px-3 py-2">{conflict}</p>}
