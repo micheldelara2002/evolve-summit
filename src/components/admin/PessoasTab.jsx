@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter as ADF, AlertDialogHeader, AlertDialogTitle as ADT } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus, CheckCircle2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +26,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
 import PersonFormDialog from "@/components/admin/PersonFormDialog";
+import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 
 // ── Role display ──────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -100,14 +100,28 @@ export default function PessoasTab({
     queryKey: ["event_partners", eventId],
     queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, is_deleted: false }),
   });
+  // partner_rep participants in THIS event — only these need partner-name resolution.
+  // Scoping avoids loading ALL reps/partners across every event in the platform.
+  const partnerRepPersonIds = useMemo(
+    () => participants.filter((p) => p.role_in_event === "partner_rep" && p.person_id).map((p) => p.person_id),
+    [participants]
+  );
+  const hasPartnerReps = partnerRepPersonIds.length > 0;
+
   const { data: allPartners = [] } = useQuery({
     queryKey: ["global_partners_for_assoc"],
     queryFn: () => base44.entities.Partner.list("-created_date", 500),
+    enabled: hasPartnerReps,
   });
-  // Global reps to resolve person_id → partner
+  // Reps scoped to this event's partner_rep person_ids (not the entire platform)
   const { data: globalReps = [] } = useQuery({
-    queryKey: ["global_reps_all"],
-    queryFn: () => base44.entities.PartnerRepresentative.filter({ is_deleted: false, is_active: true }),
+    queryKey: ["event_partner_reps", eventId, partnerRepPersonIds],
+    queryFn: () => base44.entities.PartnerRepresentative.filter({
+      person_id: { $in: partnerRepPersonIds },
+      is_deleted: false,
+      is_active: true,
+    }),
+    enabled: hasPartnerReps,
   });
   // Avaliadores do evento (EventMembership role=reviewer) — para exibir chip + filtro
   const { data: reviewerMemberships = [] } = useQuery({
@@ -391,22 +405,14 @@ export default function PessoasTab({
         />
       )}
 
-      <AlertDialog open={!!removeTarget} onOpenChange={() => setRemoveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <ADT>Remover do evento?</ADT>
-            <AlertDialogDescription>
-              {removeTarget?.full_name} será removido(a) deste evento. Os dados globais da pessoa não são apagados.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <ADF>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => handleRemove(removeTarget)}>
-              Remover
-            </AlertDialogAction>
-          </ADF>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!removeTarget}
+        onOpenChange={() => setRemoveTarget(null)}
+        title="Remover do evento?"
+        description={`${removeTarget?.full_name || ""} será removido(a) deste evento. Os dados globais da pessoa não são apagados.`}
+        confirmLabel="Remover"
+        onConfirm={() => handleRemove(removeTarget)}
+      />
     </div>
   );
 }

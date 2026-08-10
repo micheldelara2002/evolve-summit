@@ -8,9 +8,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogAction, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function EntityTable({
@@ -127,25 +128,13 @@ export default function EntityTable({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("events.confirmDelete")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.full_name || deleteTarget?.name || deleteTarget?.title}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
-              onClick={() => { onDelete(deleteTarget); setDeleteTarget(null); }}
-            >
-              {t("common.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={() => setDeleteTarget(null)}
+        title={t("events.confirmDelete")}
+        description={deleteTarget?.full_name || deleteTarget?.name || deleteTarget?.title}
+        onConfirm={() => { onDelete(deleteTarget); setDeleteTarget(null); }}
+      />
     </div>
   );
 }
