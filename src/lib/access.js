@@ -1,34 +1,39 @@
+import { base44 } from "@/api/base44Client";
+
+// ── Admin ───────────────────────────────────────────────────────
 export function isAdmin(user) {
   return user?.role === "admin";
 }
 
+// ── Event access ────────────────────────────────────────────────
+// Hoje o gerenciamento de evento é exclusivo do admin. O branch
+// "manager"/managed_event_ids era legado e nunca era atribuído (o
+// enum de User nem continha "manager"), então foi removido.
 export function canManageEvent(user, eventId) {
-  if (isAdmin(user)) return true;
-  if (user?.role === "manager") {
-    const managedIds = user?.managed_event_ids || [];
-    return managedIds.includes(eventId);
-  }
-  return false;
+  return isAdmin(user);
 }
 
 export function filterEventsByAccess(events, user) {
   if (isAdmin(user)) return events;
-  const managedIds = user?.managed_event_ids || [];
-  return events.filter(
-    (e) => managedIds.includes(e.id) || e.manager_id === user?.id
+  return events.filter((e) => e.manager_id === user?.id);
+}
+
+// ── Partner access helpers ──────────────────────────────────────
+// A permissão de parceiro vem de PartnerRepresentative (role_in_partner),
+// não mais de User.role. Os reps do usuário logado são anexados ao
+// objeto user em AuthContext (user.partner_reps) para checagem
+// síncrona em navs/guards.
+
+export function isPartnerManager(user) {
+  return (user?.partner_reps || []).some(
+    (r) => r.is_active && r.role_in_partner === "partner_manager"
   );
 }
 
-// ────────────────────────────────────────────────────────────────
-// Partner access helpers
-// ────────────────────────────────────────────────────────────────
-
-export function isPartnerManager(user) {
-  return user?.role === "partner_manager";
-}
-
 export function isRepresentative(user) {
-  return user?.role === "member";
+  return (user?.partner_reps || []).some(
+    (r) => r.is_active && r.role_in_partner === "representative"
+  );
 }
 
 export function canAccessPartnerAdmin(user) {
@@ -36,35 +41,67 @@ export function canAccessPartnerAdmin(user) {
 }
 
 /**
+ * Carrega os PartnerRepresentative ativos do usuário (por user_id e/ou
+ * person_id, resolvendo person por e-mail quando necessário). Usado pelo
+ * AuthContext para popular user.partner_reps no login.
+ */
+export async function loadPartnerReps(user) {
+  if (!user?.id) return [];
+  let personId = user.person_id;
+  if (!personId && user.email) {
+    try {
+      const persons = await base44.entities.Person.filter({
+        contact_email: user.email,
+        is_active: true,
+      });
+      personId = persons[0]?.id;
+    } catch {
+      personId = null;
+    }
+  }
+  const [byUser, byPerson] = await Promise.all([
+    base44.entities.PartnerRepresentative.filter({
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+    }),
+    personId
+      ? base44.entities.PartnerRepresentative.filter({
+          person_id: personId,
+          is_active: true,
+          is_deleted: false,
+        })
+      : Promise.resolve([]),
+  ]);
+  const seen = new Set();
+  return [...byUser, ...byPerson].filter(
+    (r) => !seen.has(r.id) && seen.add(r.id)
+  );
+}
+
+/**
  * Filtra a lista de partners pelo escopo do usuário.
- * admin → todos; partner_manager → apenas partners vinculados via reps.
- * @param {Array} partners
- * @param {object} user
- * @param {Array} reps  — PartnerRepresentative[] do usuário (já filtrados por user_id/person_id)
+ * admin → todos; partner_manager → apenas partners onde é gestor.
  */
 export function filterPartnersByAccess(partners, user, reps = []) {
   if (isAdmin(user)) return partners;
-  if (isPartnerManager(user)) {
-    const allowed = new Set(
-      reps
-        .filter((r) => r.is_active && !r.is_deleted && r.role_in_partner === "partner_manager")
-        .map((r) => r.partner_id)
-    );
-    return partners.filter((p) => allowed.has(p.id));
-  }
-  return [];
+  if (!isPartnerManager(user)) return [];
+  const list = reps.length ? reps : user?.partner_reps || [];
+  const allowed = new Set(
+    list
+      .filter((r) => r.is_active && r.role_in_partner === "partner_manager")
+      .map((r) => r.partner_id)
+  );
+  return partners.filter((p) => allowed.has(p.id));
 }
 
 export function canManagePartner(user, partnerId, reps = []) {
   if (isAdmin(user)) return true;
-  if (isPartnerManager(user)) {
-    return reps.some(
-      (r) =>
-        r.partner_id === partnerId &&
-        r.role_in_partner === "partner_manager" &&
-        r.is_active &&
-        !r.is_deleted
-    );
-  }
-  return false;
+  const list = reps.length ? reps : user?.partner_reps || [];
+  return list.some(
+    (r) =>
+      r.partner_id === partnerId &&
+      r.role_in_partner === "partner_manager" &&
+      r.is_active
+  );
 }

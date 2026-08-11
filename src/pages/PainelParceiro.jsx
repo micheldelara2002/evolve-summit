@@ -54,17 +54,8 @@ export default function PainelParceiro() {
     enabled: !!user,
   });
 
-  // Resolve PartnerRepresentative do usuário
-  const { data: myReps = [], isLoading: loadingReps } = useQuery({
-    queryKey: ["my_partner_reps_panel", user?.id, user?.person_id, myPerson?.id],
-    queryFn: async () => {
-      const all = await base44.entities.PartnerRepresentative.filter({ is_deleted: false, is_active: true });
-      return all.filter(
-        (r) => r.user_id === user?.id || r.person_id === myPerson?.id || r.person_id === user?.person_id
-      );
-    },
-    enabled: !!user && !!myPerson,
-  });
+  // PartnerRepresentative do usuário (carregados no login via AuthContext)
+  const myReps = user?.partner_reps || [];
 
   // Determinar partner_id
   const partnerId = useMemo(() => {
@@ -146,7 +137,7 @@ export default function PainelParceiro() {
     (eventIdsFromPartner.length > 0 && loadingEvents) ||
     loadingPartnerships;
 
-  if (isLoadingPerson || loadingReps || (partnerId && isLoadingAccessibleEvents)) {
+  if (isLoadingPerson || (partnerId && isLoadingAccessibleEvents)) {
     return (
       <div className="flex justify-center py-24">
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />

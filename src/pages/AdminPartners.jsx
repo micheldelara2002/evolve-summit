@@ -411,15 +411,8 @@ export default function AdminPartners() {
     queryFn: () => base44.entities.Partner.list("-created_date", 500),
   });
 
-  // Reps do usuário atual (para partner_manager scope) — busca por user_id OU person_id
-  const { data: myReps = [] } = useQuery({
-    queryKey: ["my_partner_reps", user?.id, user?.person_id],
-    queryFn: async () => {
-      const all = await base44.entities.PartnerRepresentative.filter({ is_deleted: false });
-      return all.filter((r) => r.is_active && (r.user_id === user?.id || r.person_id === user?.person_id));
-    },
-    enabled: !!user?.id && !isAdmin(user),
-  });
+  // Reps do usuário atual (carregados no login via AuthContext)
+  const myReps = user?.partner_reps || [];
 
   // Filtrar por permissão
   const scopedPartners = filterPartnersByAccess(

@@ -91,7 +91,7 @@ function UserChip({ user }) {
   const initials = user?.full_name
     ? user.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
-  const roleLabel = user?.role === "admin" ? "Admin" : user?.role === "partner_manager" ? "Gestor Parceiro" : "Membro";
+  const roleLabel = isAdmin(user) ? "Admin" : isPartnerManager(user) ? "Gestor Parceiro" : "Membro";
 
   return (
     <button

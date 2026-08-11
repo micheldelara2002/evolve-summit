@@ -57,7 +57,7 @@ const MANAGEMENT_CARDS = [
   { key: "partners", icon: Building2, tone: "warning", href: "/partner", label: "Gestão de Parceiros" },
 ];
 
-const ROLE_LABELS = { admin: "Admin Global", member: "Membro", partner_manager: "Gestor Parceiro" };
+const ROLE_LABELS = { admin: "Admin Global", member: "Membro" };
 
 export default function AdminHome() {
   const { user } = useAuth();
@@ -119,7 +119,7 @@ export default function AdminHome() {
       <div>
         <h1 className="text-2xl font-display font-bold">{title}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {greeting}, <span className="text-foreground font-medium">{user?.full_name}</span> · {ROLE_LABELS[user?.role] ?? "Participante"}
+          {greeting}, <span className="text-foreground font-medium">{user?.full_name}</span> · {admin ? "Admin Global" : isPartnerManager(user) ? "Gestor Parceiro" : "Membro"}
         </p>
       </div>
 

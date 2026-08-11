@@ -7,11 +7,10 @@
       "enum": [
         "admin",
         "curator",
-        "member",
-        "partner_manager"
+        "member"
       ],
       "default": "member",
-      "description": "Papel global do usu\u00e1rio no sistema"
+      "description": "Papel global do usu\u00e1rio no sistema. Apenas admin (acesso total) e member (demais). Fun\u00e7\u00f5es de neg\u00f3cio (gestor de parceiro, palestrante, avaliador, etc.) s\u00e3o definidas em PartnerRepresentative e EventMembership \u2014 n\u00e3o aqui. curator mantido temporariamente para compatibilidade de RLS da entidade Submission."
     },
     "photo_url": {
       "type": "string",
