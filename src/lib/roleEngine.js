@@ -90,9 +90,35 @@ export const EVENT_ROLES = [
   { value: "manager", label: "Gerente" },
   { value: "partner_rep", label: "Rep. Parceiro" },
   { value: "reviewer", label: "Avaliador" },
+  { value: "curator", label: "Curador" },
   { value: "entrant", label: "Candidato" },
   { value: "winner", label: "Premiado" },
 ];
+
+// ── Checagens async (consultam EventMembership diretamente) ────────────
+
+/**
+ * Verifica se o usuário é curador de um evento específico.
+ * O curador revisa submissões CFP do evento sem precisar ser participante.
+ * @param {object} user — usuário logado
+ * @param {string} eventId
+ * @returns {Promise<boolean>}
+ */
+export async function isCurator(user, eventId) {
+  if (!user?.id || !eventId) return false;
+  try {
+    const memberships = await base44.entities.EventMembership.filter({
+      user_id: user.id,
+      event_id: eventId,
+      role: "curator",
+      is_active: true,
+      is_deleted: false,
+    });
+    return memberships.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 export function roleLabel(role) {
   return EVENT_ROLES.find((r) => r.value === role)?.label ?? role;

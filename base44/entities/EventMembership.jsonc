@@ -1,7 +1,7 @@
 {
   "name": "EventMembership",
   "type": "object",
-  "description": "V\u00ednculo de uma Pessoa a um Evento com um papel espec\u00edfico (speaker, reviewer, entrant, winner, etc.). Entidade mestra de permiss\u00f5es por evento \u2014 separada de Participant (presen\u00e7a/credenciamento). Uma mesma Person pode ter m\u00faltiplos EventMembership no mesmo evento (pap\u00e9is acumulados) e em eventos diferentes.",
+  "description": "V\u00ednculo de uma Pessoa a um Evento com um papel espec\u00edfico (speaker, reviewer, curator, entrant, winner, etc.). Entidade mestra de permiss\u00f5es por evento \u2014 separada de Participant (presen\u00e7a/credenciamento). Uma mesma Person pode ter m\u00faltiplos EventMembership no mesmo evento (pap\u00e9is acumulados) e em eventos diferentes.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -32,11 +32,12 @@
         "manager",
         "partner_rep",
         "reviewer",
+        "curator",
         "entrant",
         "winner"
       ],
       "default": "attendee",
-      "description": "Papel da pessoa no evento. 'reviewer' = avaliador do comit\u00ea; 'entrant' = candidato que submeteu case (sem acesso ao evento); 'winner' = premiado com acesso liberado."
+      "description": "Papel da pessoa no evento. 'reviewer' = avaliador do comit\u00ea de premia\u00e7\u00e3o; 'curator' = curador de conte\u00fado (revis\u00e3o de submiss\u00f5es CFP), n\u00e3o precisa ser participante; 'entrant' = candidato que submeteu case (sem acesso ao evento); 'winner' = premiado com acesso liberado."
     },
     "is_active": {
       "type": "boolean",
