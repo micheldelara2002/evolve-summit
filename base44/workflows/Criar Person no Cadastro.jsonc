@@ -1,0 +1,40 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "create_person_on_signup",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "create_person": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "getOrCreatePerson",
+            "args": {
+              "email": "${ .trigger.email }",
+              "full_name": "${ .trigger.full_name }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Criar Person",
+            "description": "Garante o perfil de pessoa para o novo usu\u00e1rio"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "app_user_auth",
+      "events": [
+        "signup"
+      ]
+    }
+  },
+  "description": "Quando um novo usu\u00e1rio se cadastra no app, cria automaticamente um registro de Person vinculado pelo email para liberar acesso \u00e0 Rede e demais funcionalidades de perfil.",
+  "name": "Criar Person no Cadastro"
+}
