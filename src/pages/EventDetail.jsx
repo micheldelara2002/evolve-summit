@@ -1,9 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useParams, useNavigate, Link, Outlet } from "react-router-dom";
 import { t } from "@/lib/i18n";
-import { canManageEvent } from "@/lib/access";
+import { useEventAccess } from "@/hooks/useEventAccess";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil } from "lucide-react";
@@ -13,14 +11,9 @@ export default function EventDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const { data: event, isLoading } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: async () => { const l = await base44.entities.Event.filter({ id: eventId }); return l[0]; },
-  });
+  const { event, hasAccess, loading } = useEventAccess(eventId);
 
-  const hasAccess = canManageEvent(user, eventId);
-
-  if (isLoading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (!event) return <p className="text-center py-12 text-muted-foreground">{t("events.noEvents")}</p>;
   if (!hasAccess) return (
     <div className="text-center py-24 space-y-3">

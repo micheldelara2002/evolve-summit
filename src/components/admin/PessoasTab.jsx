@@ -89,6 +89,7 @@ export default function PessoasTab({
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("all");
   const [filterPartner, setFilterPartner] = useState("all");
+  const [page, setPage] = useState(1);
 
   const [addDialog, setAddDialog] = useState(false);
   const [editDataDialog, setEditDataDialog] = useState(null);
@@ -166,6 +167,12 @@ export default function PessoasTab({
     const matchPartner = filterPartner === "all" || p.partnerName === filterPartner;
     return matchSearch && matchRole && matchPartner;
   }), [rows, search, filterRole, filterPartner]);
+
+  useEffect(() => { setPage(1); }, [search, filterRole, filterPartner, rows]);
+
+  const PAGE_SIZE = 25;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["participants", eventId] });
@@ -301,7 +308,7 @@ export default function PessoasTab({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((pessoa, idx) => (
+              {paginated.map((pessoa, idx) => (
                 <tr key={pessoa.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"} hover:bg-muted/40 transition-colors`}>
                   <td className="px-3 py-2.5 text-sm font-medium">{pessoa.full_name}</td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground hidden sm:table-cell font-mono">{pessoa.cpf || "—"}</td>
@@ -371,7 +378,16 @@ export default function PessoasTab({
           <p className="text-center text-muted-foreground py-8 text-sm">{t("common.noData")}</p>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{filtered.length} pessoa(s)</p>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{filtered.length} pessoa(s)</span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
+            <span className="px-2">pág. {page}/{totalPages}</span>
+            <Button size="sm" variant="outline" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Próxima</Button>
+          </div>
+        )}
+      </div>
 
       {/* Dialogs */}
       {addDialog && (
@@ -448,14 +464,20 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
         p.full_name?.toLowerCase().includes(q) ||
         p.contact_email?.toLowerCase().includes(q)
     );
-    // Also try PersonDocument for doc number
-    const docs = await base44.entities.PersonDocument.filter({});
-    const docPersonIds = new Set(
-      docs
-        .filter((d) => d.document_number?.replace(/\D/g, "").includes(q.replace(/\D/g, "")))
-        .map((d) => d.person_id)
-    );
-    const extra = all.filter((p) => docPersonIds.has(p.id) && !results.find((r) => r.id === p.id));
+    // Document search: only if query has digits, scoped to persons already loaded
+    let extra = [];
+    const digits = q.replace(/\D/g, "");
+    if (digits.length >= 3) {
+      const docs = await base44.entities.PersonDocument.filter({
+        person_id: { $in: all.map((p) => p.id) },
+      });
+      const docPersonIds = new Set(
+        docs
+          .filter((d) => d.document_number?.replace(/\D/g, "").includes(digits))
+          .map((d) => d.person_id)
+      );
+      extra = all.filter((p) => docPersonIds.has(p.id) && !results.find((r) => r.id === p.id));
+    }
     setSearchResults([...results, ...extra]);
     setSearching(false);
   };

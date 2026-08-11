@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ export default function EntityTable({
   emptyLabel,
 }) {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [blockMsg, setBlockMsg] = useState(null);
 
@@ -33,6 +34,12 @@ export default function EntityTable({
     const val = item[searchField] || item.name || item.title || "";
     return val.toLowerCase().includes(search.toLowerCase());
   });
+
+  useEffect(() => { setPage(1); }, [search, items]);
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-3">
@@ -55,7 +62,7 @@ export default function EntityTable({
 
       <div className="space-y-2">
         <AnimatePresence>
-          {filtered.map((item) => (
+          {paginated.map((item) => (
             <motion.div
               key={item.id}
               initial={{ opacity: 0 }}
@@ -114,6 +121,16 @@ export default function EntityTable({
           <p className="text-sm text-muted-foreground text-center py-6">{emptyLabel || t("common.noData")}</p>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{filtered.length} registro(s) · pág. {page}/{totalPages}</span>
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
+            <Button size="sm" variant="outline" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Próxima</Button>
+          </div>
+        </div>
+      )}
 
       {/* Bloqueio de exclusão */}
       <AlertDialog open={!!blockMsg} onOpenChange={() => setBlockMsg(null)}>
