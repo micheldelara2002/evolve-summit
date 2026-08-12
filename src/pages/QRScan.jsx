@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -19,35 +19,55 @@ export default function QRScan() {
   const [scanPartnerId, setScanPartnerId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
 
-  const { data: myPerson } = useQuery({
+  // P0: Server-side filter by email — returns 0 or 1 record, not all Persons
+  const { data: myPerson, isLoading: personLoading } = useQuery({
     queryKey: ["my_person_qr", user?.email],
     queryFn: async () => {
-      const all = await base44.entities.Person.filter({ is_active: true });
-      return all.find((p) => p.contact_email === user?.email) || null;
+      const matches = await base44.entities.Person.filter({ contact_email: user?.email });
+      return matches[0] || null;
     },
     enabled: !!user,
   });
 
-  const { data: allParticipants = [], isLoading } = useQuery({
-    queryKey: ["my_participants_qr", user?.email],
-    queryFn: () => base44.entities.Participant.filter({ is_deleted: false }),
+  // P0: Server-side filter by email — returns only the user's participants, not all
+  const { data: participantsByEmail = [], isLoading: loadingByEmail } = useQuery({
+    queryKey: ["my_participants_email", user?.email],
+    queryFn: () => base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
     enabled: !!user,
   });
 
-  const myParticipants = allParticipants.filter(
-    (p) => p.email === user?.email || (myPerson && p.person_id === myPerson?.id)
-  );
-  const myEventIds = [...new Set(myParticipants.map((p) => p.event_id))];
+  // P0: Server-side filter by person_id — returns only the user's participants, not all
+  const { data: participantsByPerson = [], isLoading: loadingByPerson } = useQuery({
+    queryKey: ["my_participants_person", myPerson?.id],
+    queryFn: () => base44.entities.Participant.filter({ person_id: myPerson.id, is_deleted: false }),
+    enabled: !!myPerson?.id,
+  });
 
+  // Merge + deduplicate (email match OR person_id match — same selection logic as before)
+  const myParticipants = useMemo(() => {
+    const map = new Map();
+    [...participantsByEmail, ...participantsByPerson].forEach((p) => map.set(p.id, p));
+    return Array.from(map.values());
+  }, [participantsByEmail, participantsByPerson]);
+
+  const myEventIds = useMemo(
+    () => [...new Set(myParticipants.map((p) => p.event_id))],
+    [myParticipants]
+  );
+
+  // P0: Server-side filter by status active — bounded set, not all events
   const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["my_active_events_qr", myEventIds.join(",")],
     queryFn: async () => {
       if (!myEventIds.length) return [];
-      const all = await base44.entities.Event.filter({ is_deleted: false });
-      return all.filter((e) => myEventIds.includes(e.id) && e.status === "active");
+      const active = await base44.entities.Event.filter({ status: "active", is_deleted: false });
+      const idSet = new Set(myEventIds);
+      return active.filter((e) => idSet.has(e.id));
     },
     enabled: myEventIds.length > 0,
   });
+
+  const isLoading = personLoading || loadingByEmail || (!!myPerson && loadingByPerson);
 
   // Auto-open scanner when exactly one active event
   useEffect(() => {
