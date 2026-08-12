@@ -72,7 +72,8 @@ export default function ResgatesModal({ open, onClose, personId, userEmail }) {
     byEvent[r.event_id].push(r);
   });
 
-  const totalPontos = redemptions.reduce((s, r) => s + (r.pontos_debitados || 0), 0);
+  // P0: Total from atomic counter (redeemed_total) — no need to load all redemptions
+  const totalPontos = participants.reduce((s, p) => s + (p.redeemed_total || 0), 0);
 
   const isLoading = loadingParts || (loadingRes && redemptions.length === 0);
 

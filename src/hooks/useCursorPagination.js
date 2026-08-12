@@ -3,12 +3,15 @@ import { useState, useEffect, useCallback } from "react";
 const DEFAULT_PAGE_SIZE = 50;
 
 /**
- * Deterministic cursor-based pagination using (created_date, id) compound key.
- * Sort: -created_date (descending). Tiebreaker: -id (descending).
+ * Deterministic cursor-based pagination using `id` as the sole sort+cursor key.
  *
- * The cursor is the (created_date, id) of the last item on the current page.
- * The next page query excludes everything >= the cursor using $or:
- *   created_date < cursor.created_date  OR  (created_date == cursor.created_date AND id < cursor.id)
+ * Base44 SDK supports single-field sort only (no compound ordering such as
+ * (created_date, id)). Since `id` is unique, sorting by -id gives a total order
+ * with no ties — pages never duplicate or skip items. Display ordering (e.g. by
+ * created_date) is handled client-side by the consumer after items are loaded.
+ *
+ * The cursor is the id of the last item on the current page.
+ * The next page query merges `{ id: { $lt: cursor.id } }` into the base query.
  *
  * @param {Object} opts
  * @param {Function} opts.fetchPage - async (query, sort, limit) => Array of records
@@ -31,10 +34,7 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
       if (!cur) return baseQuery;
       return {
         ...baseQuery,
-        $or: [
-          { created_date: { $lt: cur.created_date } },
-          { created_date: cur.created_date, id: { $lt: cur.id } },
-        ],
+        id: { $lt: cur.id },
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,14 +50,14 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
     }
     setLoading(true);
     try {
-      const page = await fetchPage(buildQuery(null), "-created_date", pageSize);
+      const page = await fetchPage(buildQuery(null), "-id", pageSize);
       setItems(page);
       if (page.length < pageSize) {
         setHasMore(false);
         setCursor(null);
       } else {
         const last = page[page.length - 1];
-        setCursor({ created_date: last.created_date, id: last.id });
+        setCursor({ id: last.id });
         setHasMore(true);
       }
     } finally {
@@ -74,14 +74,14 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
     if (!hasMore || loading || !cursor) return;
     setLoading(true);
     try {
-      const page = await fetchPage(buildQuery(cursor), "-created_date", pageSize);
+      const page = await fetchPage(buildQuery(cursor), "-id", pageSize);
       setItems((prev) => [...prev, ...page]);
       if (page.length < pageSize) {
         setHasMore(false);
         setCursor(null);
       } else {
         const last = page[page.length - 1];
-        setCursor({ created_date: last.created_date, id: last.id });
+        setCursor({ id: last.id });
       }
     } finally {
       setLoading(false);

@@ -83,6 +83,11 @@
       "default": 0,
       "description": "Pontos totais acumulados no evento (n\u00e3o reduz com resgate)"
     },
+    "redeemed_total": {
+      "type": "number",
+      "default": 0,
+      "description": "P0.2 \u2014 Total de pontos debitados via resgates n\u00e3o-cancelados (counter at\u00f4mico, mantido por redeemStoreItem)"
+    },
     "checkin_status": {
       "type": "string",
       "enum": [

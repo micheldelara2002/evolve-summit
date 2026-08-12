@@ -240,6 +240,14 @@ Deno.serve(async (req) => {
     });
     const finalDebited = finalRedemptions.reduce((acc, r) => acc + (r.pontos_debitados || 0), 0);
 
+    // P0.2 — Increment redeemed_total counter (atomic). Enables total display in
+    // ResgatesModal without loading the redemption ledger. Only the surviving
+    // (non-cancelled) redemption reaches this point, so the counter stays accurate.
+    await base44.asServiceRole.entities.Participant.updateMany(
+      { id: participantId },
+      { $inc: { redeemed_total: item.pontos_necessarios } }
+    );
+
     return Response.json({
       success: true,
       redemption,
