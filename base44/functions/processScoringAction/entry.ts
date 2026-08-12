@@ -25,12 +25,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
 
-    // P0.2: Action-specific authorization — prevents arbitrary cross-participant scoring.
-    // Only the owner or admin can score a participant, EXCEPT for conexao_aceita
-    // which is triggered server-side by manageConnection (cross-participant is legitimate).
-    const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, is_deleted: false });
+    // P0.2 + P0 residual: Action-specific authorization — prevents arbitrary cross-participant scoring.
+    // P0 residual: event_id in the query guarantees the participant belongs to eventId —
+    // cross-event scoring is impossible at the query level, not just via a post-check.
+    const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId, is_deleted: false });
     const targetPart = targetParts[0];
-    if (!targetPart) return Response.json({ error: 'Participante não encontrado.' }, { status: 404 });
+    if (!targetPart) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
     const isOwner = targetPart.email === user.email;
     const isAdminUser = user.role === 'admin';
     if (!isOwner && !isAdminUser) {

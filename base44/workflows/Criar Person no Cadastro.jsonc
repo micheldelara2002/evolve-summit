@@ -13,8 +13,7 @@
           "with": {
             "function_name": "getOrCreatePerson",
             "args": {
-              "email": "${ .trigger.email }",
-              "full_name": "${ .trigger.full_name }"
+              "user_id": "${ .trigger.user_id }"
             }
           },
           "then": "end",
@@ -35,6 +34,6 @@
       ]
     }
   },
-  "description": "Quando um novo usu\u00e1rio se cadastra no app, cria automaticamente um registro de Person vinculado pelo email para liberar acesso \u00e0 Rede e demais funcionalidades de perfil.",
+  "description": "Quando um novo usu\u00e1rio se cadastra no app, cria automaticamente um registro de Person vinculado pelo user_id (resolvido via User entity) para liberar acesso \u00e0 Rede e demais funcionalidades de perfil.",
   "name": "Criar Person no Cadastro"
 }

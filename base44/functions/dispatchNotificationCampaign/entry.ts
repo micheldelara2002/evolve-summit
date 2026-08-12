@@ -25,10 +25,48 @@ Deno.serve(async (req) => {
           return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
         }
       } else {
-        // Partner/speaker-scoped campaigns: verify ownership + any event membership
-        if (campaign.sender_user_id && campaign.sender_user_id !== user.id) {
+        // Partner/speaker-scoped campaigns.
+        // P0 residual: sender_user_id is REQUIRED — no anonymous partner/speaker sends.
+        // This closes the gap where a campaign without sender_user_id could be sent by
+        // anyone with any event membership.
+        if (!campaign.sender_user_id) {
+          return Response.json({ error: 'Campanhas partner/speaker requerem sender_user_id.' }, { status: 403 });
+        }
+        if (campaign.sender_user_id !== user.id) {
           return Response.json({ error: 'Sem permissão para enviar esta campanha.' }, { status: 403 });
         }
+
+        // P0 residual: validate senderPartnerId against the authenticated user + event.
+        // Partner audiences (my_leads, partner_leads, partner_all_event) use
+        // senderPartnerId to filter leads — a malicious user could otherwise pass
+        // another partner's ID and send to their leads.
+        const partnerAudiences = ['my_leads', 'partner_leads', 'partner_all_event'];
+        if (partnerAudiences.includes(campaign.audience_type) && senderPartnerId) {
+          // Validate: the authenticated user is a representative of this partner
+          let repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
+            partner_id: senderPartnerId, user_id: user.id, is_active: true, is_deleted: false,
+          });
+          // Fallback: resolve via Person if user_id not set on the rep record
+          if (repRecords.length === 0) {
+            const persons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email, is_active: true });
+            if (persons.length > 0) {
+              repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
+                partner_id: senderPartnerId, person_id: persons[0].id, is_active: true, is_deleted: false,
+              });
+            }
+          }
+          if (repRecords.length === 0) {
+            return Response.json({ error: 'senderPartnerId não pertence ao usuário autenticado.' }, { status: 403 });
+          }
+          // Validate: the partner is associated with the event
+          const eventPartners = await base44.asServiceRole.entities.EventPartner.filter({
+            event_id: campaign.scope_event_id, partner_id: senderPartnerId, is_active: true, is_deleted: false,
+          });
+          if (eventPartners.length === 0) {
+            return Response.json({ error: 'Partner não está associado a este evento.' }, { status: 403 });
+          }
+        }
+
         const hasAnyMembership = await verifyAnyEventMembership(base44, user, campaign.scope_event_id);
         if (!hasAnyMembership.authorized) {
           return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
