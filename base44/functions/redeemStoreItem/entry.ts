@@ -27,6 +27,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 //
 // Conditional stock rollback ($gt: 0) ensures stock never goes negative even
 // if a rollback races with another decrement.
+//
+// P0.3 residual refinements:
+//   1. Stock reservation success is determined by updateMany's returned `updated`
+//      count (updated > 0 = THIS request's $inc was applied), NOT by comparing
+//      pre/post values — a concurrent request's increment could be misattributed.
+//   2. idempotency_key is bound to operation context (event + participant + item).
+//      A key reused for a different operation returns 409 conflict, never
+//      returns another operation's redemption.
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -43,14 +51,25 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'idempotency_key é obrigatória.' }, { status: 400 });
     }
 
-    // Replay-safe — if a non-cancelled redemption with this key exists, return it.
+    // Replay-safe — bind idempotency_key to operation context (event + participant + item).
+    // A key is only valid for the SAME (event, participant, item) that originally created it.
+    // If the same key is presented for a different operation, return 409 conflict — never
+    // return another operation's redemption.
     const existingByKey = await base44.asServiceRole.entities.StoreRedemption.filter({
       chave_idempotencia: idempotency_key,
       is_deleted: false,
       status: { $ne: 'cancelado' },
     });
     if (existingByKey.length > 0) {
-      return Response.json({ success: true, redemption: existingByKey[0], idempotent_replay: true });
+      const existing = existingByKey[0];
+      const contextMatches =
+        existing.event_id === eventId &&
+        existing.participant_id === participantId &&
+        existing.store_item_id === itemId;
+      if (!contextMatches) {
+        return Response.json({ error: 'Conflito de idempotência: chave já utilizada em outra operação.' }, { status: 409 });
+      }
+      return Response.json({ success: true, redemption: existing, idempotent_replay: true });
     }
 
     // 1. Fetch the item FRESH from DB
@@ -110,17 +129,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. ATOMIC stock decrement — conditional $inc (quantidade_resgatada < estoque_total)
-    const prevQtde = qtdeResgatada;
-    await base44.asServiceRole.entities.StoreItem.updateMany(
+    // 6. ATOMIC stock reservation — conditional $inc (quantidade_resgatada < estoque_total).
+    //    updateMany returns { updated: N }. updated > 0 means THIS request's own
+    //    $inc was applied by the database. We do NOT infer success by comparing
+    //    pre/post values (a concurrent request's increment could be misattributed).
+    //    updated === 0 means the condition (quantidade_resgatada < estoque_total)
+    //    was not met — stock was full, this request did NOT get a reservation.
+    const incResult = await base44.asServiceRole.entities.StoreItem.updateMany(
       { id: itemId, quantidade_resgatada: { $lt: estoqueTotal } },
       { $inc: { quantidade_resgatada: 1 } }
     );
-
-    // 7. Verify increment took effect
-    const updatedItems = await base44.asServiceRole.entities.StoreItem.filter({ id: itemId });
-    const updatedItem = updatedItems[0];
-    if (!updatedItem || (updatedItem.quantidade_resgatada ?? 0) <= prevQtde) {
+    if (!incResult || (incResult.updated ?? 0) === 0) {
       return Response.json({ error: 'Item esgotado. Tente outro item.' }, { status: 409 });
     }
 
@@ -153,6 +172,8 @@ Deno.serve(async (req) => {
     //    ITS OWN stock increment. The survivor is never touched by another request.
     const sameKeyRedemptions = await base44.asServiceRole.entities.StoreRedemption.filter({
       chave_idempotencia: idempotency_key,
+      event_id: eventId,
+      participant_id: participantId,
       is_deleted: false,
       status: { $ne: 'cancelado' },
     });
