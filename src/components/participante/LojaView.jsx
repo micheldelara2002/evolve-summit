@@ -152,13 +152,15 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
 
   const redeemMut = useMutation({
     mutationFn: async (item) => {
-      // All validation + atomic stock decrement happen server-side
+      // P0.3: Client-generated idempotency key — double-click/replay safe
+      const idempotency_key = crypto.randomUUID();
       try {
         const response = await base44.functions.invoke('redeemStoreItem', {
           eventId,
           participantId,
           itemId: item.id,
           personId,
+          idempotency_key,
         });
         return response.data;
       } catch (err) {

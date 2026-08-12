@@ -26,6 +26,10 @@
       "type": "number",
       "description": "Pontos debitados do saldo de resgate"
     },
+    "chave_idempotencia": {
+      "type": "string",
+      "description": "P0.3 \u2014 Chave de idempot\u00eancia (UUID gerado pelo cliente) para prevenir double-submit e garantir replay seguro"
+    },
     "status": {
       "type": "string",
       "enum": [

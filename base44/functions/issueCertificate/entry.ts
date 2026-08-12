@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 Deno.serve(async (req) => {
   try {
@@ -12,9 +13,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
 
-    // Authorization: admin or manager of the event
-    if (user.role !== 'admin' && user.role !== 'manager') {
-      return Response.json({ error: 'Sem permissão para emitir certificados.' }, { status: 403 });
+    // P0.2: Event-scoped authorization — admin or event manager/team
+    const certAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+    if (!certAuth.authorized) {
+      return Response.json({ error: 'Sem permissão para emitir certificados neste evento.' }, { status: 403 });
     }
 
     // Fetch participant fresh from DB

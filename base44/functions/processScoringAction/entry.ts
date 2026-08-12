@@ -25,14 +25,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
 
-    // Verify participant ownership — prevents crediting points to arbitrary participants
+    // P0.2: Action-specific authorization — prevents arbitrary cross-participant scoring.
+    // Only the owner or admin can score a participant, EXCEPT for conexao_aceita
+    // which is triggered server-side by manageConnection (cross-participant is legitimate).
     const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, is_deleted: false });
     const targetPart = targetParts[0];
     if (!targetPart) return Response.json({ error: 'Participante não encontrado.' }, { status: 404 });
     const isOwner = targetPart.email === user.email;
     const isAdminUser = user.role === 'admin';
     if (!isOwner && !isAdminUser) {
-      // Allow if calling user is also a participant in the same event (system-triggered actions like connection scoring)
+      if (acao !== 'conexao_aceita') {
+        return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
+      }
+      // conexao_aceita only: verify caller is a participant in the same event
       const callerParts = await base44.asServiceRole.entities.Participant.filter({
         event_id: targetPart.event_id, email: user.email, is_deleted: false,
       });

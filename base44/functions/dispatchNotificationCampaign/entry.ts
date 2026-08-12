@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 Deno.serve(async (req) => {
   try {
@@ -6,8 +7,39 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { campaign, senderPartnerId } = await req.json();
-    if (!campaign?.id) return Response.json({ error: 'Campaign obrigatória.' }, { status: 400 });
+    const { campaign: campaignInput, senderPartnerId } = await req.json();
+    if (!campaignInput?.id) return Response.json({ error: 'Campaign obrigatória.' }, { status: 400 });
+
+    // P0.2: Fetch campaign from DB — don't trust client-provided scope/audience
+    const campaignRecords = await base44.asServiceRole.entities.NotificationCampaign.filter({ id: campaignInput.id });
+    const campaign = campaignRecords[0];
+    if (!campaign) return Response.json({ error: 'Campanha não encontrada.' }, { status: 404 });
+
+    // P0.2: Event-scoped authorization
+    if (campaign.scope_event_id) {
+      const broadcastAudiences = ['all', 'segment', 'manual'];
+      if (broadcastAudiences.includes(campaign.audience_type)) {
+        // Broadcast campaigns require manager/team role for the event
+        const canDispatch = await verifyEventMembership(base44, user, campaign.scope_event_id, EVENT_MANAGER_ROLES);
+        if (!canDispatch.authorized) {
+          return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
+        }
+      } else {
+        // Partner/speaker-scoped campaigns: verify ownership + any event membership
+        if (campaign.sender_user_id && campaign.sender_user_id !== user.id) {
+          return Response.json({ error: 'Sem permissão para enviar esta campanha.' }, { status: 403 });
+        }
+        const hasAnyMembership = await verifyAnyEventMembership(base44, user, campaign.scope_event_id);
+        if (!hasAnyMembership.authorized) {
+          return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
+        }
+      }
+    } else {
+      // Global campaign (no event scope) — admin only
+      if (user.role !== 'admin') {
+        return Response.json({ error: 'Apenas administradores podem enviar campanhas globais.' }, { status: 403 });
+      }
+    }
 
     // Mark as processing
     await base44.asServiceRole.entities.NotificationCampaign.update(campaign.id, {

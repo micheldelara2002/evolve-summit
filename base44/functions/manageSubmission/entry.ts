@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { verifyEventMembership, EVENT_CURATOR_ROLES } from "../../shared/eventAuth.ts";
 
 /**
  * Gerencia o ciclo de vida de uma Submission (Call for Papers).
@@ -9,15 +10,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *  - Participant é reutilizado (busca por email ou person_id no evento) — sem duplicidade.
  *  - A Session carrega submission_id; ao cancelar/reprovar, a Session é soft-deletada.
  *  - Idempotente: aprovar uma submission já aprovada apenas retorna a session existente.
+ *
+ * P0.2: Autorização event-scoped — admin global OU EventMembership{role:curator} no evento da CFP.
  */
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin' && user.role !== 'curator') {
-      return Response.json({ error: 'Forbidden — apenas admin ou curador' }, { status: 403 });
-    }
 
     const body = await req.json();
     const { submission_id, action, review_notes } = body || {};
@@ -37,6 +37,12 @@ export default async function(req: Request): Promise<Response> {
     const cfp = cfpList[0];
     if (!cfp) return Response.json({ error: 'CallForPapers não encontrada' }, { status: 404 });
     const eventId = cfp.event_id;
+
+    // P0.2: Event-scoped authorization — admin or event-scoped curator
+    const subAuth = await verifyEventMembership(base44, user, eventId, EVENT_CURATOR_ROLES);
+    if (!subAuth.authorized) {
+      return Response.json({ error: 'Forbidden — sem permissão de curadoria neste evento' }, { status: 403 });
+    }
 
     const reviewer = {
       reviewer_id: user.id,

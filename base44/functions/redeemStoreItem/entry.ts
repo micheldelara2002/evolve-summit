@@ -1,15 +1,46 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 
+// P0.3 — Points/Redemption integrity.
+//
+// Strategy (no ACID transactions between entities — idempotency + compensation):
+//   1. Client-generated idempotency_key (UUID) — double-click/replay safe.
+//      If a StoreRedemption with this key already exists, return it (no-op).
+//   2. Atomic stock decrement via conditional $inc (quantidade_resgatada < estoque_total).
+//   3. Post-creation consistency check: re-fetch all non-cancelled redemptions,
+//      verify total debited <= points_total. If exceeded (concurrent race), cancel
+//      this redemption and rollback stock — compensation, not "create + delete duplicate".
+//
+// Guarantees:
+//   - saldo nunca negativo (post-creation check cancels + rolls back if exceeded)
+//   - estoque nunca negativo (conditional $inc filter)
+//   - limite por usuário respeitado (pre-creation check)
+//   - double-click seguro (idempotency key)
+//   - retry seguro (idempotency key replay returns existing)
+//   - rollback/compensação segura em falhas intermediárias
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { eventId, participantId, itemId, personId } = await req.json();
+    const { eventId, participantId, itemId, personId, idempotency_key } = await req.json();
 
     if (!eventId || !participantId || !itemId) {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
+    }
+
+    // P0.3: Idempotency — require client-generated key
+    if (!idempotency_key) {
+      return Response.json({ error: 'idempotency_key é obrigatória.' }, { status: 400 });
+    }
+
+    // P0.3: Replay-safe — if redemption with this key exists, return it (double-click/retry)
+    const existingByKey = await base44.asServiceRole.entities.StoreRedemption.filter({
+      chave_idempotencia: idempotency_key,
+      is_deleted: false,
+    });
+    if (existingByKey.length > 0) {
+      return Response.json({ success: true, redemption: existingByKey[0], idempotent_replay: true });
     }
 
     // 1. Fetch the item FRESH from DB (not client cache)
@@ -95,7 +126,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Item esgotado. Tente outro item.' }, { status: 409 });
     }
 
-    // 8. Create the redemption record
+    // 8. Create the redemption record with idempotency key
     let redemption;
     try {
       redemption = await base44.asServiceRole.entities.StoreRedemption.create({
@@ -105,6 +136,7 @@ Deno.serve(async (req) => {
         store_item_id: itemId,
         item_description: item.descricao_item,
         pontos_debitados: item.pontos_necessarios,
+        chave_idempotencia: idempotency_key,
         status: 'pendente',
       });
     } catch (createErr) {
@@ -116,10 +148,31 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Erro ao registrar resgate.' }, { status: 500 });
     }
 
+    // P0.3: Post-creation consistency check — verify total debited <= points_total.
+    // Catches concurrent redemptions that both passed the initial balance check.
+    // This is compensation, not "create + delete duplicate": we cancel THIS redemption
+    // and rollback the stock increment, leaving the system in a consistent state.
+    const allRedemptionsAfter = await base44.asServiceRole.entities.StoreRedemption.filter({
+      event_id: eventId,
+      participant_id: participantId,
+      is_deleted: false,
+      status: { $ne: 'cancelado' },
+    });
+    const totalDebitedAfter = allRedemptionsAfter.reduce((acc, r) => acc + (r.pontos_debitados || 0), 0);
+    if (totalDebitedAfter > (participant.points_total || 0)) {
+      // Compensation: cancel this redemption and rollback stock
+      await base44.asServiceRole.entities.StoreRedemption.update(redemption.id, { status: 'cancelado' });
+      await base44.asServiceRole.entities.StoreItem.updateMany(
+        { id: itemId },
+        { $inc: { quantidade_resgatada: -1 } }
+      );
+      return Response.json({ error: 'Saldo insuficiente após verificação de consistência.' }, { status: 400 });
+    }
+
     return Response.json({
       success: true,
       redemption,
-      pontosDisponiveis: pontosDisponiveis - item.pontos_necessarios,
+      pontosDisponiveis: Math.max(0, (participant.points_total || 0) - totalDebitedAfter),
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

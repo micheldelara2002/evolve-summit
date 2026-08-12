@@ -1,18 +1,22 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin' && user.role !== 'manager') {
-      return Response.json({ error: 'Apenas administradores e gerentes podem realizar sorteios.' }, { status: 403 });
-    }
 
     const { eventId, winnerCount, excludeIds = [] } = await req.json();
 
     if (!eventId) {
       return Response.json({ error: 'eventId é obrigatório.' }, { status: 400 });
+    }
+
+    // P0.2: Event-scoped authorization — verify manager has access to THIS event
+    const raffleAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+    if (!raffleAuth.authorized) {
+      return Response.json({ error: 'Sem permissão para realizar sorteios neste evento.' }, { status: 403 });
     }
 
     // Fetch eligible participants from the DB — server-side, not trusting client pool

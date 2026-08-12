@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 /**
  * manageAward — backend function do módulo de premiação (fluxo CFP-like).
@@ -90,11 +91,13 @@ export default async function(req: Request): Promise<Response> {
 
     // ── assignReviewers: admin define a banca avaliadora de uma premiação ────
     if (action === 'assignReviewers') {
-      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
       const { award_id, reviewer_user_ids } = body;
       if (!award_id) return Response.json({ error: 'award_id obrigatório' }, { status: 400 });
       const configs = await svc.entities.AwardConfig.filter({ id: award_id, is_deleted: false });
       if (!configs[0]) return Response.json({ error: 'Premiação não encontrada' }, { status: 404 });
+      // P0.2: Event-scoped authorization
+      const awardAuth = await verifyEventMembership(base44, user, configs[0].event_id, EVENT_MANAGER_ROLES);
+      if (!awardAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
       await svc.entities.AwardConfig.update(award_id, { assigned_reviewer_ids: JSON.stringify(reviewer_user_ids || []) });
       return Response.json({ ok: true, assigned_reviewer_ids: reviewer_user_ids || [] });
     }
@@ -170,9 +173,11 @@ export default async function(req: Request): Promise<Response> {
 
     // ── listResults ──────────────────────────────────────────────────────────
     if (action === 'listResults') {
-      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
       const { event_id, award_id } = body;
       if (!event_id) return Response.json({ error: 'event_id obrigatório' }, { status: 400 });
+      // P0.2: Event-scoped authorization
+      const resultsAuth = await verifyEventMembership(base44, user, event_id, EVENT_MANAGER_ROLES);
+      if (!resultsAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
       const evalQuery = { event_id, is_deleted: false };
       if (award_id) evalQuery.award_id = award_id;
       const evaluations = await svc.entities.AwardEvaluation.filter(evalQuery, undefined, 1000);
@@ -189,12 +194,14 @@ export default async function(req: Request): Promise<Response> {
 
     // ── promoteWinner ────────────────────────────────────────────────────────
     if (action === 'promoteWinner') {
-      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
       const { submission_id, status, new_role } = body;
       if (!submission_id || !status) return Response.json({ error: 'submission_id e status obrigatórios' }, { status: 400 });
       const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
       const sub = subs[0];
       if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
+      // P0.2: Event-scoped authorization
+      const promoteAuth = await verifyEventMembership(base44, user, sub.event_id, EVENT_MANAGER_ROLES);
+      if (!promoteAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
       await svc.entities.AwardSubmission.update(submission_id, { status });
 
       if (new_role && sub.person_id) {
