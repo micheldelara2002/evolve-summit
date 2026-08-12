@@ -13,6 +13,7 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
+import OAuthConsent from "@/pages/OAuthConsent";
 
 // Layout
 import AdminLayout from "@/components/layout/AdminLayout";
@@ -150,6 +151,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/partners" element={<Navigate to="/partner" replace />} />
         </Route>
       </Route>
+      <Route path="/oauth/consent" element={<OAuthConsent />} />
       <Route path="/validate-certificate" element={<ValidaCertificado />} />
       <Route path="/valida-certificado" element={<Navigate to="/validate-certificate" replace />} />
       <Route path="*" element={<PageNotFound />} />
