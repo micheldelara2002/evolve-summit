@@ -47,6 +47,14 @@ export default async function(req) {
         return Response.json({ error: "identity does not match a registered user" }, { status: 403 });
       }
       const systemUser = users[0];
+      // P0 residual: restrict user_id path to the signup workflow context.
+      // The app_user_auth:signup trigger fires immediately on signup, so the user_id
+      // is always fresh. External unauthenticated callers cannot exploit stale user_ids.
+      const createdAt = new Date(systemUser.created_date);
+      const ageMinutes = (Date.now() - createdAt.getTime()) / 60000;
+      if (ageMinutes > 5) {
+        return Response.json({ error: "identity window expired" }, { status: 403 });
+      }
       resolvedEmail = systemUser.email;
       resolvedName = systemUser.full_name || "Novo Usuário";
     }

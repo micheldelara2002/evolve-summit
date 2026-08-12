@@ -68,13 +68,18 @@ Deno.serve(async (req) => {
       // remove as duplicatas mantendo apenas a primeira
       const afterResgate = await base44.asServiceRole.entities.PointTransaction.filter({ chave_idempotencia: chave });
       if (afterResgate.length > 1) {
-        const sorted = [...afterResgate].sort((a, b) =>
-          new Date(a.created_date) - new Date(b.created_date)
-        );
+        // P0 residual: deterministic tiebreaker (created_date + id) — concurrent requests
+        // must agree on the single survivor, otherwise both delete each other and both increment.
+        const sorted = [...afterResgate].sort((a, b) => {
+          const dc = new Date(a.created_date) - new Date(b.created_date);
+          return dc !== 0 ? dc : a.id.localeCompare(b.id);
+        });
         const duplicates = sorted.slice(1);
         const isMyTxDuplicate = duplicates.some((d) => d.id === resgateTx.id);
+        // P0 residual: idempotent deletes — a concurrent request may have already
+        // deleted this duplicate; the survivor must still reach the return below.
         for (const dup of duplicates) {
-          await base44.asServiceRole.entities.PointTransaction.delete(dup.id);
+          try { await base44.asServiceRole.entities.PointTransaction.delete(dup.id); } catch {}
         }
         if (isMyTxDuplicate) {
           return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
@@ -124,13 +129,18 @@ Deno.serve(async (req) => {
       return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
     }
     if (afterCreate.length > limit) {
-      const sorted = [...afterCreate].sort((a, b) =>
-        new Date(a.created_date) - new Date(b.created_date)
-      );
+      // P0 residual: deterministic tiebreaker (created_date + id) — concurrent requests
+      // must agree on the single survivor, otherwise both delete each other and both increment.
+      const sorted = [...afterCreate].sort((a, b) => {
+        const dc = new Date(a.created_date) - new Date(b.created_date);
+        return dc !== 0 ? dc : a.id.localeCompare(b.id);
+      });
       const duplicates = sorted.slice(limit);
       const isMyTxDuplicate = duplicates.some((d) => d.id === tx.id);
+      // P0 residual: idempotent deletes — a concurrent request may have already
+      // deleted this duplicate; the survivor must still reach the increment below.
       for (const dup of duplicates) {
-        await base44.asServiceRole.entities.PointTransaction.delete(dup.id);
+        try { await base44.asServiceRole.entities.PointTransaction.delete(dup.id); } catch {}
       }
       if (isMyTxDuplicate) {
         return Response.json({ credited: false, pontos: 0, reason: "limit_reached" });
