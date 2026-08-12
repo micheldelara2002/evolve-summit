@@ -60,9 +60,13 @@ export default function QRScan() {
     queryKey: ["my_active_events_qr", myEventIds.join(",")],
     queryFn: async () => {
       if (!myEventIds.length) return [];
-      const active = await base44.entities.Event.filter({ status: "active", is_deleted: false });
-      const idSet = new Set(myEventIds);
-      return active.filter((e) => idSet.has(e.id));
+      // P0: Server-side filter restricted to the user's event IDs — no mass loading
+      const active = await base44.entities.Event.filter({
+        id: { $in: myEventIds },
+        status: "active",
+        is_deleted: false,
+      });
+      return active;
     },
     enabled: myEventIds.length > 0,
   });
