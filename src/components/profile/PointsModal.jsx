@@ -4,7 +4,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Star, ChevronRight } from "lucide-react";
+import { Star, ChevronRight, Loader2 } from "lucide-react";
+import { useCursorPagination } from "@/hooks/useCursorPagination";
 
 const ACAO_LABELS = {
   presenca_sessao: "Presença em sessão",
@@ -25,31 +26,40 @@ function formatDateTime(dt) {
 }
 
 export default function PointsModal({ open, onClose, personId, userEmail }) {
+  // P0: Server-side filtered participants (by person_id OR email, merged + deduped)
   const { data: participants = [], isLoading: loadingParts } = useQuery({
     queryKey: ["profile-participants", personId, userEmail],
     queryFn: async () => {
-      const all = await base44.entities.Participant.filter({ is_deleted: false });
-      return all.filter((p) => p.person_id === personId || p.email === userEmail);
+      const [byPerson, byEmail] = await Promise.all([
+        personId ? base44.entities.Participant.filter({ person_id: personId, is_deleted: false }) : [],
+        userEmail ? base44.entities.Participant.filter({ email: userEmail, is_deleted: false }) : [],
+      ]);
+      const map = new Map();
+      [...byPerson, ...byEmail].forEach((p) => map.set(p.id, p));
+      return Array.from(map.values());
     },
     enabled: open && (!!personId || !!userEmail),
   });
 
   const participantIds = participants.map((p) => p.id);
 
-  const { data: transactions = [], isLoading: loadingTx } = useQuery({
-    queryKey: ["profile-point-transactions", participantIds.join(",")],
-    queryFn: async () => {
-      if (!participantIds.length) return [];
-      const all = await base44.entities.PointTransaction.filter({});
-      return all.filter((t) => participantIds.includes(t.participant_id));
-    },
+  // P0: Cursor-based pagination for PointTransaction ledger — deterministic (created_date, id) cursor
+  const { items: transactions, loading: loadingTx, hasMore, loadMore } = useCursorPagination({
+    fetchPage: (query, sort, limit) => base44.entities.PointTransaction.filter(query, sort, limit),
+    baseQuery: { participant_id: { $in: participantIds } },
+    depsKey: `${open}:${participantIds.join(",")}`,
     enabled: open && participantIds.length > 0,
   });
 
+  // P0: Load only events referenced by loaded transactions (server-side by id)
+  const eventIds = [...new Set(transactions.map((t) => t.event_id))];
   const { data: events = [] } = useQuery({
-    queryKey: ["profile-events-list"],
-    queryFn: () => base44.entities.Event.filter({ is_deleted: false }),
-    enabled: open,
+    queryKey: ["profile-events-by-tx", eventIds.join(",")],
+    queryFn: async () => {
+      if (!eventIds.length) return [];
+      return base44.entities.Event.filter({ id: { $in: eventIds }, is_deleted: false });
+    },
+    enabled: eventIds.length > 0,
   });
 
   const eventMap = Object.fromEntries(events.map((e) => [e.id, e]));
@@ -61,9 +71,10 @@ export default function PointsModal({ open, onClose, personId, userEmail }) {
     byEvent[tx.event_id].push(tx);
   });
 
-  const totalGeral = transactions.reduce((s, t) => s + (t.pontos > 0 ? t.pontos : 0), 0);
+  // P0: Total from atomic counter (points_total) — no need to load all transactions
+  const totalGeral = participants.reduce((s, p) => s + (p.points_total || 0), 0);
 
-  const isLoading = loadingParts || loadingTx;
+  const isLoading = loadingParts || (loadingTx && transactions.length === 0);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -118,6 +129,17 @@ export default function PointsModal({ open, onClose, personId, userEmail }) {
                 </div>
               );
             })}
+
+            {/* P0: Cursor pagination — load more */}
+            {hasMore && (
+              <button
+                onClick={loadMore}
+                disabled={loadingTx}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors disabled:opacity-60"
+              >
+                {loadingTx ? <Loader2 className="w-4 h-4 animate-spin" /> : "Carregar mais"}
+              </button>
+            )}
           </div>
         )}
       </DialogContent>

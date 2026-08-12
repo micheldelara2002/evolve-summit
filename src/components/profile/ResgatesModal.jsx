@@ -4,7 +4,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ShoppingBag, Star } from "lucide-react";
+import { ShoppingBag, Star, Loader2 } from "lucide-react";
+import { useCursorPagination } from "@/hooks/useCursorPagination";
 
 const STATUS_LABELS = {
   pendente: "Pendente",
@@ -26,31 +27,40 @@ function formatDateTime(dt) {
 }
 
 export default function ResgatesModal({ open, onClose, personId, userEmail }) {
+  // P0: Server-side filtered participants (by person_id OR email, merged + deduped)
   const { data: participants = [], isLoading: loadingParts } = useQuery({
     queryKey: ["profile-participants-res", personId, userEmail],
     queryFn: async () => {
-      const all = await base44.entities.Participant.filter({ is_deleted: false });
-      return all.filter((p) => p.person_id === personId || p.email === userEmail);
+      const [byPerson, byEmail] = await Promise.all([
+        personId ? base44.entities.Participant.filter({ person_id: personId, is_deleted: false }) : [],
+        userEmail ? base44.entities.Participant.filter({ email: userEmail, is_deleted: false }) : [],
+      ]);
+      const map = new Map();
+      [...byPerson, ...byEmail].forEach((p) => map.set(p.id, p));
+      return Array.from(map.values());
     },
     enabled: open && (!!personId || !!userEmail),
   });
 
   const participantIds = participants.map((p) => p.id);
 
-  const { data: redemptions = [], isLoading: loadingRes } = useQuery({
-    queryKey: ["profile-redemptions", participantIds.join(",")],
-    queryFn: async () => {
-      if (!participantIds.length) return [];
-      const all = await base44.entities.StoreRedemption.filter({ is_deleted: false });
-      return all.filter((r) => participantIds.includes(r.participant_id));
-    },
+  // P0: Cursor-based pagination for StoreRedemption ledger — deterministic (created_date, id) cursor
+  const { items: redemptions, loading: loadingRes, hasMore, loadMore } = useCursorPagination({
+    fetchPage: (query, sort, limit) => base44.entities.StoreRedemption.filter(query, sort, limit),
+    baseQuery: { participant_id: { $in: participantIds }, is_deleted: false },
+    depsKey: `${open}:${participantIds.join(",")}`,
     enabled: open && participantIds.length > 0,
   });
 
+  // P0: Load only events referenced by loaded redemptions (server-side by id)
+  const eventIds = [...new Set(redemptions.map((r) => r.event_id))];
   const { data: events = [] } = useQuery({
-    queryKey: ["profile-events-list"],
-    queryFn: () => base44.entities.Event.filter({ is_deleted: false }),
-    enabled: open,
+    queryKey: ["profile-events-by-res", eventIds.join(",")],
+    queryFn: async () => {
+      if (!eventIds.length) return [];
+      return base44.entities.Event.filter({ id: { $in: eventIds }, is_deleted: false });
+    },
+    enabled: eventIds.length > 0,
   });
 
   const eventMap = Object.fromEntries(events.map((e) => [e.id, e]));
@@ -64,7 +74,7 @@ export default function ResgatesModal({ open, onClose, personId, userEmail }) {
 
   const totalPontos = redemptions.reduce((s, r) => s + (r.pontos_debitados || 0), 0);
 
-  const isLoading = loadingParts || loadingRes;
+  const isLoading = loadingParts || (loadingRes && redemptions.length === 0);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -123,6 +133,17 @@ export default function ResgatesModal({ open, onClose, personId, userEmail }) {
                 </div>
               );
             })}
+
+            {/* P0: Cursor pagination — load more */}
+            {hasMore && (
+              <button
+                onClick={loadMore}
+                disabled={loadingRes}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors disabled:opacity-60"
+              >
+                {loadingRes ? <Loader2 className="w-4 h-4 animate-spin" /> : "Carregar mais"}
+              </button>
+            )}
           </div>
         )}
       </DialogContent>
