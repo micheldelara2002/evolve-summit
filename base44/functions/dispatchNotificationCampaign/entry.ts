@@ -5,56 +5,81 @@
 // GARANTIA DE ENTREGA: "at-least-once processing/attempt semantics, with
 // possible duplicate delivery."
 //
-// Diferenciação formal:
-//   - Tentativa de processamento: execução da função (worker run).
-//   - Aceite pelo provider: bulkUpdate delivery_status="sent" (a "entrega"
-//     in-app é o registro ficar visível no inbox do destinatário).
-//   - Entrega efetiva ao usuário: notificação exibida no NotificationInbox
-//     (fora do controle do Base44).
+// SEMÂNTICA DE ENTREGA — 4 fases distintas (SEM provider externo):
+//
+//   1. Criação do recipient: bulkCreate delivery_status="pending" na fase
+//      de resolução. O registro existe no DB mas NÃO é visível no inbox.
+//
+//   2. Processamento: bulkUpdate delivery_status="processing" antes do
+//      envio. Sinal de work-in-progress. NÃO é um lock atômico.
+//
+//   3. Materialização in-app: bulkUpdate delivery_status="sent" com
+//      delivered_at. O registro torna-se visível no NotificationInbox do
+//      destinatário (que filtra por delivery_status: "sent"). ESTA é a
+//      "entrega" no contexto do Base44 — NÃO há provider externo (email/push).
+//
+//   4. Entrega efetiva ao usuário: notificação renderizada no
+//      NotificationInbox do destinatário. Fora do controle do Base44 —
+//      depende do destinatário abrir o app e visualizar o inbox.
 //
 // STATE MACHINE (NotificationRecipient.delivery_status):
-//   pending → processing → sent   (sucesso)
+//   pending → processing → sent   (sucesso — materializado in-app)
 //   pending → processing → failed  (erro)
 //
-//   - Recipient é criado como "pending" na fase de resolução.
-//   - Antes do envio, marcado como "processing" (sinal visível de work-in-progress).
-//   - Após sucesso do "envio" (bulkUpdate), marcado como "sent" com delivered_at.
-//   - Em erro, marcado como "failed" com error_reason.
 //   - "sent" é terminal: NUNCA reprocessado.
 //   - Retry processa pending, processing (stuck por crash) e failed.
 //
 // CONCORRÊNCIA — LIMITAÇÕES EXPLÍCITAS (sem CAS/UNIQUE/lock atômico no Base44):
 //
 //   1. campaign.status = "processing" NÃO é um lock.
-//      Interleaving: A lê "pending" → B lê "pending" → A grava "processing" →
-//      B grava "processing" → ambos processam.
-//      status é apenas um guard lógico de aplicação (impede reenvio via UI,
-//      não impede concorrência entre workers).
+//      Dois workers podem ambos ler "pending" e ambos setar "processing".
+//      status é apenas um guard lógico de aplicação (impede reenvio via UI).
 //
 //   2. NÃO existe claim/lock atômico de batch.
-//      Dois workers podem ler o mesmo batch de recipients e ambos processar.
+//      Dois workers podem ler o mesmo batch e ambos processar.
 //      Risco residual: duplicate-send (ambos marcam como "sent").
 //
 //   3. idempotency_key (campaignId:userId) é apenas identificação lógica.
 //      Sem UNIQUE constraint, dois workers podem ambos criar recipients
-//      para o mesmo userId (race condition filter→create→filter→create).
-//      A deduplicação via $in query reduz drasticamente a probabilidade
-//      mas NÃO é uma garantia atômica.
+//      para o mesmo userId. A deduplicação via $in query reduz a
+//      probabilidade mas NÃO é uma garantia atômica.
 //
 //   4. Retry seguro: recipients "sent" são terminais e nunca reprocessados.
-//      Retry reprocessa apenas pending, processing e failed.
 //
-// PERFORMANCE — O(batch) memory:
-//   - Audiência resolvida em batches de 500 (paginação por skip/limit).
-//   - Sem User.list() global.
-//   - Sem array global de recipients.
-//   - Deduplicação por batch via $in query (1 query por batch, não N queries).
-//   - Set local de recipients apenas por batch (O(500)).
+// PERFORMANCE — O(batch) memory em TODAS as paths (batch=500):
 //
-// NOTA: O Set de emails de Participants (audiência "all") é O(P) onde P =
-// participantes do evento. Isto é um requisito de business logic (dedup de
-// email entre Participants), não um Set global de recipients. É necessário
-// para preservar a regra de audiência exata do código original.
+//   RESOLUÇÃO DE AUDIÊNCIA (AsyncGenerator, batches de 500):
+//     - "all": Participants do evento (com dedup de email cross-batch via
+//       query $in em recipient_email) → Users globais → Sender.
+//       ORDEM: Participants ANTES de Users para que a query $in em
+//       recipient_email só matched recipients de batches anteriores de
+//       Participants (preserva regra: User+Participant mesmo email → ambos
+//       recebem notificação). O Set de email é PER-BATCH (O(500)), não global.
+//     - "segment": Users por role → Participants por role_in_event.
+//     - "my_leads"/"partner_leads": Leads do partner (paginado).
+//     - "partner_all_event": Participants do evento (sem dedup de email).
+//     - "my_attendees": Speaker → Sessions (paginado por speaker_id $in) →
+//       Attendance (paginado) → Participants (por batch, via id $in).
+//       Sem Sets globais; cross-batch dedup via processRecipientBatch.
+//     - Sender sempre recebe sua própria mensagem (regra de negócio).
+//
+//   DEDUP CROSS-BATCH:
+//     - Por user_id: query $in em recipient_user_id (1 query/batch).
+//     - Por email (apenas "all" Participants): query $in em recipient_email
+//       (1 query adicional/batch). recipient_email armazenado em lowercase.
+//
+//   DELIVERY: bulkUpdate em batches de 500. O(batch) memory.
+//   FINAL COUNT: paginação por skip. O(batch) memory, O(N/batch) queries.
+//
+// ESTRUTURAS NÃO-GLOBAIS (O(batch) ou O(speaker-data), nunca O(N)):
+//   - speakerPartIds: O(participant records do speaker) — tipicamente 1-3.
+//   - speakerSessionIds: O(sessions do speaker) — tipicamente <50.
+//   - Per-batch Sets (localSeen, batchEmails, batchPartIds): O(500).
+//
+// COMPLEXIDADE:
+//   - Memory: O(500) em todas as paths. Para 1M recipients: sem OOM.
+//   - Queries: O(N/500) resolução + O(N/500) delivery + O(N/500) count.
+//     Para 1M: ~2000 batches, ~6000 queries. Sem truncamento.
 // =============================================================================
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
@@ -63,11 +88,14 @@ import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } 
 const BATCH_SIZE = 500;
 
 type Recipient = { user_id: string; name: string; email: string; role: string };
+type YieldedBatch = { recipients: Recipient[]; dedupByEmail: boolean };
 
 // =============================================================================
 // Async Generator: Resolve audience in batches of up to BATCH_SIZE.
-// Yields Recipient[] arrays. Within-batch dedup by user_id is applied.
-// Cross-batch dedup is handled by the caller via $in query.
+// Yields { recipients, dedupByEmail }. dedupByEmail=true ONLY for "all"
+// audience Participants (preserves original email dedup business rule).
+// Within-batch dedup by user_id applied in processRecipientBatch.
+// Cross-batch dedup by user_id (and email when dedupByEmail) via $in query.
 // =============================================================================
 async function* resolveAudienceBatches(
   svc: any,
@@ -79,50 +107,55 @@ async function* resolveAudienceBatches(
     senderUser: any;
     senderPartnerId: string | null;
   }
-): AsyncGenerator<Recipient[]> {
+): AsyncGenerator<YieldedBatch> {
   const { scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser, senderPartnerId } = params;
 
   const isAll = audienceType === "all" || (audienceType === "segment" && audienceSegments.includes("all"));
 
   if (isAll) {
-    // --- All Users (paginated, O(batch) memory) ---
-    let skip = 0;
-    while (true) {
-      const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
-      if (users.length === 0) break;
-      yield users.map((u: any) => ({
-        user_id: u.id, name: u.full_name || "", email: u.email || "", role: u.role || "",
-      }));
-      skip += BATCH_SIZE;
-      if (users.length < BATCH_SIZE) break;
-    }
-
-    // --- All Participants of the event (paginated, email dedup) ---
+    // --- All Participants of the event (FIRST — email dedup applies) ---
+    // Yielded BEFORE Users so cross-batch email dedup $in query on
+    // recipient_email only matches recipients from previous Participants
+    // batches. Preserves business rule: User + Participant with same email
+    // → both receive notifications (Users batch uses dedupByEmail=false).
     if (scopeEventId) {
-      skip = 0;
-      // Cross-batch email dedup Set — O(P) where P = event participants.
-      // Business logic requirement: preserves exact same recipient selection
-      // as original code (dedup Participants by email within "all" audience).
-      const emailSeen = new Set<string>();
+      let skip = 0;
       while (true) {
         const parts = await svc.entities.Participant.filter(
           { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
         );
         if (parts.length === 0) break;
+        // Per-batch email dedup Set — O(batch), replaces former global emailSeen
+        const batchEmails = new Set<string>();
         const batch: Recipient[] = [];
         for (const p of parts) {
           const key = p.email?.toLowerCase();
-          if (!key || emailSeen.has(key)) continue;
-          emailSeen.add(key);
+          if (!key || batchEmails.has(key)) continue;
+          batchEmails.add(key);
           batch.push({
             user_id: p.id, name: p.full_name || "", email: p.email || "",
             role: p.role_in_event || "attendee",
           });
         }
-        if (batch.length > 0) yield batch;
+        if (batch.length > 0) yield { recipients: batch, dedupByEmail: true };
         skip += BATCH_SIZE;
         if (parts.length < BATCH_SIZE) break;
       }
+    }
+
+    // --- All Users (paginated, O(batch) memory, no email dedup) ---
+    let skip = 0;
+    while (true) {
+      const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
+      if (users.length === 0) break;
+      yield {
+        recipients: users.map((u: any) => ({
+          user_id: u.id, name: u.full_name || "", email: u.email || "", role: u.role || "",
+        })),
+        dedupByEmail: false,
+      };
+      skip += BATCH_SIZE;
+      if (users.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "segment") {
     // --- Segment: collect User-role filters for single scan ---
@@ -145,7 +178,7 @@ async function* resolveAudienceBatches(
             user_id: u.id, name: u.full_name || "", email: u.email || "",
             role: userRoleMap[u.role] || u.role || "",
           }));
-        if (batch.length > 0) yield batch;
+        if (batch.length > 0) yield { recipients: batch, dedupByEmail: false };
         skip += BATCH_SIZE;
         if (users.length < BATCH_SIZE) break;
       }
@@ -179,9 +212,12 @@ async function* resolveAudienceBatches(
           "id", BATCH_SIZE, skip
         );
         if (parts.length === 0) break;
-        yield parts.map((p: any) => ({
-          user_id: p.id, name: p.full_name || "", email: p.email || "", role: roleLabel,
-        }));
+        yield {
+          recipients: parts.map((p: any) => ({
+            user_id: p.id, name: p.full_name || "", email: p.email || "", role: roleLabel,
+          })),
+          dedupByEmail: false,
+        };
         skip += BATCH_SIZE;
         if (parts.length < BATCH_SIZE) break;
       }
@@ -194,10 +230,13 @@ async function* resolveAudienceBatches(
         "id", BATCH_SIZE, skip
       );
       if (leads.length === 0) break;
-      yield leads.map((l: any) => ({
-        user_id: l.participant_id, name: l.participant_name || "",
-        email: l.participant_email || "", role: "attendee",
-      }));
+      yield {
+        recipients: leads.map((l: any) => ({
+          user_id: l.participant_id, name: l.participant_name || "",
+          email: l.participant_email || "", role: "attendee",
+        })),
+        dedupByEmail: false,
+      };
       skip += BATCH_SIZE;
       if (leads.length < BATCH_SIZE) break;
     }
@@ -208,10 +247,13 @@ async function* resolveAudienceBatches(
         { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
       );
       if (parts.length === 0) break;
-      yield parts.map((p: any) => ({
-        user_id: p.id, name: p.full_name || "", email: p.email || "",
-        role: p.role_in_event || "attendee",
-      }));
+      yield {
+        recipients: parts.map((p: any) => ({
+          user_id: p.id, name: p.full_name || "", email: p.email || "",
+          role: p.role_in_event || "attendee",
+        })),
+        dedupByEmail: false,
+      };
       skip += BATCH_SIZE;
       if (parts.length < BATCH_SIZE) break;
     }
@@ -223,73 +265,124 @@ async function* resolveAudienceBatches(
         "id", BATCH_SIZE, skip
       );
       if (leads.length === 0) break;
-      yield leads.map((l: any) => ({
-        user_id: l.participant_id, name: l.participant_name || "",
-        email: l.participant_email || "", role: "attendee",
-      }));
+      yield {
+        recipients: leads.map((l: any) => ({
+          user_id: l.participant_id, name: l.participant_name || "",
+          email: l.participant_email || "", role: "attendee",
+        })),
+        dedupByEmail: false,
+      };
       skip += BATCH_SIZE;
       if (leads.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "my_attendees" && senderUser && scopeEventId) {
-    // Complex resolution: speaker → sessions → attendance → participants
+    // Paginated resolution: Speaker → Person → Participant → Sessions →
+    // Attendance → Participants. ALL O(batch) memory. No global Sets.
+    // Cross-batch participant dedup handled by processRecipientBatch ($in
+    // on recipient_user_id — a participant in multiple sessions appears in
+    // multiple attendance batches, but $in catches the duplicate create).
+
+    // Step 1: senderUser → Person (O(1) result)
     const persons = await svc.entities.Person.filter({ contact_email: senderUser.email, is_active: true });
     const speakerPerson = persons?.[0];
     if (speakerPerson) {
-      const speakerParts = await svc.entities.Participant.filter({
-        event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false,
-      });
-      const speakerPartIds = speakerParts.map((p: any) => p.id);
+      // Step 2: Person → Speaker's Participant records (paginated, collect IDs)
+      // O(speaker's participant records) — bounded, typically 1-3.
+      const speakerPartIds: string[] = [];
+      let skipP = 0;
+      while (true) {
+        const speakerParts = await svc.entities.Participant.filter(
+          { event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false },
+          "id", BATCH_SIZE, skipP
+        );
+        if (speakerParts.length === 0) break;
+        for (const p of speakerParts) speakerPartIds.push(p.id);
+        skipP += BATCH_SIZE;
+        if (speakerParts.length < BATCH_SIZE) break;
+      }
+
       if (speakerPartIds.length > 0) {
-        const allSessions = await svc.entities.Session.filter({ event_id: scopeEventId, is_deleted: false });
-        const speakerSessionIds = allSessions
-          .filter((s: any) => speakerPartIds.includes(s.speaker_id))
-          .map((s: any) => s.id);
+        // Step 3: Speaker's Participant IDs → Sessions (paginated by speaker_id $in)
+        // O(speaker's sessions) — bounded, typically <50. Replaces former
+        // allSessions (which loaded ALL event sessions unpaginated — O(S)).
+        const speakerSessionIds: string[] = [];
+        let skipS = 0;
+        while (true) {
+          const sessions = await svc.entities.Session.filter(
+            { event_id: scopeEventId, speaker_id: { $in: speakerPartIds }, is_deleted: false },
+            "id", BATCH_SIZE, skipS
+          );
+          if (sessions.length === 0) break;
+          for (const s of sessions) speakerSessionIds.push(s.id);
+          skipS += BATCH_SIZE;
+          if (sessions.length < BATCH_SIZE) break;
+        }
+
         if (speakerSessionIds.length > 0) {
-          const attendance = await svc.entities.SessionAttendance.filter({
-            event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds },
-          });
-          // attendedParticipantIds is O(attendance) — business logic, not recipient Set
-          const attendedParticipantIds = new Set(attendance.map((a: any) => a.participant_id));
-          let skip = 0;
+          // Step 4+5: Sessions → Attendance (paginated) → Participants (per batch)
+          // O(batch) memory. Replaces former global attendance array (O(A))
+          // and attendedParticipantIds Set (O(A)).
+          let skipA = 0;
           while (true) {
-            const parts = await svc.entities.Participant.filter(
-              { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+            const attendance = await svc.entities.SessionAttendance.filter(
+              { event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds } },
+              "id", BATCH_SIZE, skipA
             );
-            if (parts.length === 0) break;
-            const batch: Recipient[] = parts
-              .filter((p: any) => attendedParticipantIds.has(p.id))
-              .map((p: any) => ({
+            if (attendance.length === 0) break;
+
+            // Extract unique participant_ids from this batch (O(batch) Set)
+            const batchPartIds = new Set<string>();
+            for (const a of attendance) {
+              if (a.participant_id) batchPartIds.add(a.participant_id);
+            }
+
+            if (batchPartIds.size > 0) {
+              // Query Participants for these IDs (O(batch) result)
+              const parts = await svc.entities.Participant.filter(
+                { id: { $in: Array.from(batchPartIds) }, is_deleted: false },
+                "id", BATCH_SIZE, 0
+              );
+              const batch: Recipient[] = parts.map((p: any) => ({
                 user_id: p.id, name: p.full_name || "", email: p.email || "",
                 role: p.role_in_event || "attendee",
               }));
-            if (batch.length > 0) yield batch;
-            skip += BATCH_SIZE;
-            if (parts.length < BATCH_SIZE) break;
+              if (batch.length > 0) yield { recipients: batch, dedupByEmail: false };
+            }
+
+            skipA += BATCH_SIZE;
+            if (attendance.length < BATCH_SIZE) break;
           }
         }
       }
     }
   }
 
-  // --- Sender always receives their own message ---
+  // --- Sender always receives their own message (business rule) ---
   if (senderUser) {
-    yield [{
-      user_id: senderUser.id,
-      name: senderUser.full_name || "",
-      email: senderUser.email || "",
-      role: senderUser.role || "",
-    }];
+    yield {
+      recipients: [{
+        user_id: senderUser.id,
+        name: senderUser.full_name || "",
+        email: senderUser.email || "",
+        role: senderUser.role || "",
+      }],
+      dedupByEmail: false,
+    };
   }
 }
 
 // =============================================================================
 // Process a batch: within-batch dedup → cross-batch dedup via $in → bulkCreate
+// When dedupByEmail=true: also queries recipient_email for cross-batch email
+// dedup (preserves "all" audience Participants email dedup business rule).
+// recipient_email stored in lowercase for case-insensitive $in matching.
 // =============================================================================
 async function processRecipientBatch(
   svc: any,
   campaignId: string,
   recipients: Recipient[],
-  stats: any
+  stats: any,
+  dedupByEmail: boolean = false
 ): Promise<void> {
   if (recipients.length === 0) return;
 
@@ -303,25 +396,47 @@ async function processRecipientBatch(
   }
   if (unique.length === 0) return;
 
-  // Cross-batch dedup: single $in query (1 query per batch, not N)
-  const existing = await svc.entities.NotificationRecipient.filter({
+  // Cross-batch dedup by user_id (1 query per batch)
+  const existingByUserId = await svc.entities.NotificationRecipient.filter({
     campaign_id: campaignId,
     recipient_user_id: { $in: unique.map((r) => r.user_id) },
   }, undefined, unique.length);
   stats.queries++;
   stats.resolutionBatches++;
-  const existingIds = new Set(existing.map((r: any) => r.recipient_user_id));
+  const existingIds = new Set(existingByUserId.map((r: any) => r.recipient_user_id));
 
-  const toCreate = unique.filter((r) => !existingIds.has(r.user_id));
+  // Cross-batch dedup by email (only when dedupByEmail — "all" Participants)
+  // Replaces former global emailSeen Set (O(P)) with O(batch) query.
+  let existingEmails = new Set<string>();
+  if (dedupByEmail) {
+    const emailsLower = unique.map((r) => (r.email || "").toLowerCase()).filter(Boolean);
+    if (emailsLower.length > 0) {
+      const existingByEmail = await svc.entities.NotificationRecipient.filter({
+        campaign_id: campaignId,
+        recipient_email: { $in: emailsLower },
+      }, undefined, emailsLower.length);
+      stats.queries++;
+      existingEmails = new Set(existingByEmail.map((r: any) => (r.recipient_email || "").toLowerCase()));
+    }
+  }
+
+  const toCreate = unique.filter((r) => {
+    if (existingIds.has(r.user_id)) return false;
+    if (dedupByEmail && r.email) {
+      if (existingEmails.has(r.email.toLowerCase())) return false;
+    }
+    return true;
+  });
   if (toCreate.length === 0) return;
 
-  // Create as "pending" — NOT yet delivered
+  // Create as "pending" — NOT yet delivered (not visible in inbox)
+  // recipient_email stored in lowercase for email dedup $in queries
   await svc.entities.NotificationRecipient.bulkCreate(
     toCreate.map((r) => ({
       campaign_id: campaignId,
       recipient_user_id: r.user_id,
       recipient_name: r.name,
-      recipient_email: r.email,
+      recipient_email: (r.email || "").toLowerCase(),
       recipient_role: r.role,
       delivery_status: "pending",
     }))
@@ -449,9 +564,9 @@ Deno.serve(async (req) => {
 
     // === Phase 1: Resolve audience + create recipients as "pending" ===
     // Batched: O(batch) memory. No User.list() global. No global recipients Set.
-    // Dedup via $in query per batch (1 query, not N per batch).
+    // No global emailSeen Set — cross-batch email dedup via $in query.
     try {
-      for await (const batch of resolveAudienceBatches(svc, {
+      for await (const { recipients, dedupByEmail } of resolveAudienceBatches(svc, {
         scopeType: campaign.scope_type,
         scopeEventId: campaign.scope_event_id,
         audienceType: campaign.audience_type,
@@ -459,7 +574,7 @@ Deno.serve(async (req) => {
         senderUser: user,
         senderPartnerId,
       })) {
-        await processRecipientBatch(svc, campaign.id, batch, stats);
+        await processRecipientBatch(svc, campaign.id, recipients, stats, dedupByEmail);
       }
     } catch (e) {
       await svc.entities.NotificationCampaign.update(campaign.id, { status: "failed" });
@@ -471,7 +586,9 @@ Deno.serve(async (req) => {
       }, { status: 500 });
     }
 
-    // === Phase 2: Deliver — process pending/processing/failed → sent ===
+    // === Phase 2: Materialize in-app — process pending/processing/failed → sent ===
+    // bulkUpdate to "sent" makes the notification visible in the recipient's
+    // NotificationInbox (which filters by delivery_status: "sent").
     // Query always starts at skip=0: processed records leave the result set
     // (their delivery_status changes from pending/processing/failed to sent/failed).
     // "sent" is terminal and never reprocessed.
@@ -495,9 +612,8 @@ Deno.serve(async (req) => {
       stats.queries++;
 
       try {
-        // "Send" — update to "sent" with delivered_at.
-        // In-app delivery: the notification becomes visible in the recipient's
-        // NotificationInbox (which filters by delivery_status: "sent").
+        // Materialize in-app: update to "sent" with delivered_at.
+        // The notification becomes visible in the recipient's NotificationInbox.
         const now = new Date().toISOString();
         await svc.entities.NotificationRecipient.bulkUpdate(
           batch.map((r: any) => ({ id: r.id, delivery_status: "sent", delivered_at: now }))
