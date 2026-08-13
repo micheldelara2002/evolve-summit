@@ -33,9 +33,9 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true });
     }
     if (action === 'incLeads') {
-      const { eventId, createdDateISO, count } = body;
+      const { eventId, partnerId, createdDateISO, count } = body;
       if (!eventId || !createdDateISO) return Response.json({ error: 'eventId e createdDateISO obrigatórios' }, { status: 400 });
-      await incLeads(svc, eventId, createdDateISO, count || 1);
+      await incLeads(svc, eventId, partnerId || '', createdDateISO, count || 1);
       return Response.json({ ok: true });
     }
     if (action === 'bulkIncParticipants') {

@@ -74,7 +74,7 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
         person_company: person?.company || "",
         person_job_title: person?.job_title || "",
       });
-      await incLeadsCounter(eventId, lead?.created_date);
+      await incLeadsCounter(eventId, lead?.created_date, partnerId);
       // Trigger scoring engine (best-effort — lead is already saved)
       try {
         await processAction({ eventId, participantId, personId, acao: "visita_estande", refId: partnerId });

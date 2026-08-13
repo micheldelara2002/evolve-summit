@@ -17,10 +17,10 @@ export async function decParticipantCounter(eventId, createdDateISO) {
   } catch {}
 }
 
-export async function incLeadsCounter(eventId, createdDateISO) {
+export async function incLeadsCounter(eventId, createdDateISO, partnerId) {
   if (!eventId || !createdDateISO) return;
   try {
-    await base44.functions.invoke("maintainBusinessCounter", { action: "incLeads", eventId, createdDateISO });
+    await base44.functions.invoke("maintainBusinessCounter", { action: "incLeads", eventId, partnerId, createdDateISO });
   } catch {}
 }
 

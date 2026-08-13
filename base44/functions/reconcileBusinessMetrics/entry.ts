@@ -44,8 +44,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- Pass 2: leads, cursor em 'id' desc ---
+    // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
     let totalLeads = 0;
+    const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId -> count
     let lcursor: string | null = null;
     while (true) {
       const q: any = { event_id: eventId };
@@ -53,7 +54,12 @@ Deno.serve(async (req) => {
       const batch = await svc.entities.Lead.filter(q, '-id', BATCH);
       if (batch.length === 0) break;
       lcursor = batch[batch.length - 1].id;
-      totalLeads += batch.length;
+      for (const l of batch) {
+        totalLeads++;
+        const dk = dayKey(l.created_date);
+        const key = `${dk}|${l.partner_id || ""}`;
+        leadsByDayPartner.set(key, (leadsByDayPartner.get(key) || 0) + 1);
+      }
     }
 
     // --- Alvos ---
@@ -98,7 +104,11 @@ Deno.serve(async (req) => {
     await svc.entities.MetricBucket.deleteMany({ event_id: eventId });
     const buckets: any[] = [];
     for (const [day, set] of partByDay.entries()) {
-      buckets.push({ event_id: eventId, metric_type: 'unique_participants', bucket_date: day, value: set.size });
+      buckets.push({ event_id: eventId, metric_type: 'unique_participants', bucket_date: day, partner_id: '', value: set.size });
+    }
+    for (const [key, count] of leadsByDayPartner.entries()) {
+      const [day, partnerId] = key.split('|');
+      buckets.push({ event_id: eventId, metric_type: 'leads', bucket_date: day, partner_id: partnerId || '', value: count });
     }
     for (let i = 0; i < buckets.length; i += 500) {
       await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
