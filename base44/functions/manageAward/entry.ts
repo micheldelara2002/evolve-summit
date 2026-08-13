@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { incPersons } from "../../shared/businessMetrics.ts";
 
 /**
  * manageAward — backend function do módulo de premiação (fluxo CFP-like).
@@ -55,6 +56,8 @@ export default async function(req: Request): Promise<Response> {
           const created = await base44.entities.Person.create({ full_name: personName, contact_email: personEmail, created_day: new Date().toISOString().slice(0, 10) });
           personId = created.id;
           await base44.auth.updateMe({ person_id: personId });
+          // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+          try { await incPersons(svc, created.created_date); } catch {}
         }
       }
 

@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
+import { incPersonsCounter } from "@/lib/businessCounters";
 
 const SESSION_TYPES = [
   { value: "palestra", label: "Palestra" },
@@ -111,8 +112,11 @@ export default function CFPSubmit() {
     const created = await base44.entities.Person.create({
       full_name: user.full_name || user.email,
       contact_email: user.email,
+      created_day: new Date().toISOString().slice(0, 10),
     });
     await base44.auth.updateMe({ person_id: created.id });
+    // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+    try { await incPersonsCounter(created?.created_date); } catch {}
     return created;
   };
 

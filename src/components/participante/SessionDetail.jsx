@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { sendEmail } from "@/lib/apiClient";
 import { processAction } from "@/lib/scoringEngine";
+import { incLeadsCounter } from "@/lib/businessCounters";
 import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, BookUser,
@@ -604,7 +605,10 @@ export default function SessionDetail({ session, track, room, participant, isRea
             participant_email: participant?.email || "",
             source: "session",
             notes: `Presença na sessão: ${session.title}`,
-          }).catch(() => {});
+            created_day: new Date().toISOString().slice(0, 10),
+          })
+            .then((lead) => incLeadsCounter(session.event_id, lead?.created_date, ""))
+            .catch(() => {});
         }
         await processAction({
           eventId: session.event_id,

@@ -24,14 +24,12 @@ const GLOBAL = GLOBAL_EVENT_ID;
 async function rebuildMetric(svc: any, metricType: string, entityName: string, filter: any, dryRun: boolean) {
   const dayCounts = new Map<string, number>();
   const backfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
-  let cursor: string | null = null;
+  let skip = 0;
   let total = 0;
   while (true) {
-    const q: any = { ...filter };
-    if (cursor) q.id = { $lt: cursor };
-    const batch = await svc.entities[entityName].filter(q, '-id', BATCH);
+    // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
+    const batch = await svc.entities[entityName].filter(filter, 'id', BATCH, skip);
     if (batch.length === 0) break;
-    cursor = batch[batch.length - 1].id;
     for (const r of batch) {
       if (!r.created_date) continue;
       const dk = dayKey(r.created_date);
@@ -39,6 +37,8 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
       total++;
       if (!r.created_day) backfill.push({ id: r.id, created_day: dk });
     }
+    skip += BATCH;
+    if (batch.length < BATCH) break;
   }
   if (dryRun) return { metricType, total, days: dayCounts.size };
 

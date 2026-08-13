@@ -47,13 +47,11 @@ Deno.serve(async (req) => {
     const uniqByDay = new Map<string, number>();
     const roleByDay = new Map<string, number>(); // key: day|role
     const partBackfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
-    let pcursor: string | null = null;
+    let pskip = 0;
     while (true) {
-      const q: any = { event_id: eventId, is_deleted: false };
-      if (pcursor) q.id = { $lt: pcursor };
-      const batch = await svc.entities.Participant.filter(q, '-id', BATCH);
+      // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
+      const batch = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false }, 'id', BATCH, pskip);
       if (batch.length === 0) break;
-      pcursor = batch[batch.length - 1].id;
       for (const p of batch) {
         if (!p.created_date) continue;
         const dk = dayKey(p.created_date);
@@ -64,19 +62,19 @@ Deno.serve(async (req) => {
         roleByDay.set(rk, (roleByDay.get(rk) || 0) + 1);
         if (!p.created_day) partBackfill.push({ id: p.id, created_day: dk });
       }
+      pskip += BATCH;
+      if (batch.length < BATCH) break;
     }
 
     // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
     let totalLeads = 0;
     const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId
     const leadBackfill: any[] = []; // P0.3 — records missing created_day
-    let lcursor: string | null = null;
+    let lskip = 0;
     while (true) {
-      const q: any = { event_id: eventId };
-      if (lcursor) q.id = { $lt: lcursor };
-      const batch = await svc.entities.Lead.filter(q, '-id', BATCH);
+      // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
+      const batch = await svc.entities.Lead.filter({ event_id: eventId }, 'id', BATCH, lskip);
       if (batch.length === 0) break;
-      lcursor = batch[batch.length - 1].id;
       for (const l of batch) {
         totalLeads++;
         if (!l.created_date) continue;
@@ -85,6 +83,8 @@ Deno.serve(async (req) => {
         leadsByDayPartner.set(key, (leadsByDayPartner.get(key) || 0) + 1);
         if (!l.created_day) leadBackfill.push({ id: l.id, created_day: dk });
       }
+      lskip += BATCH;
+      if (batch.length < BATCH) break;
     }
 
     // --- Estado atual (soma TODAS as linhas de EventStats — consistente com o read-side,

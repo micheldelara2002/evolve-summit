@@ -104,22 +104,35 @@ async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerI
   return await svc.entities.MetricBucket.filter(q, undefined, 20000);
 }
 
-// Carrega registros do dia de borda via equality query em created_day (campo string custom —
-// range queries em created_date built-in NÃO funcionam). Filtra in-memory por created_date ∈ [start, end].
-async function boundaryRecords(svc, entityName, filterBase, day, start, end) {
-  const q: any = { ...filterBase, created_day: day };
-  const records = await svc.entities[entityName].filter(q, undefined, 10000);
-  const out: any[] = [];
-  for (const r of records) {
-    if (!r.created_date) continue;
-    const d = new Date(r.created_date);
-    if (d >= start && d <= end) out.push(r);
+// P0.3 — Paginação por cursor (sort '-id') sobre os registros do dia de borda. Para cada
+// registro com created_date ∈ [start, end], chama onMatch(r). Memória O(BOUNDARY_BATCH),
+// independente do total de registros no dia — substitui o limite fixo de 10.000 que
+// truncava dias com >10k registros. Equivalente ao filtro created_date ∈ [start, end]
+// (mesmo predicado, aplicado em batches). Acumula apenas contadores, não arrays completos.
+// P0.3 — Paginação por skip (sort 'id' determinístico) sobre os registros do dia de borda.
+// $lt/$gt em `id` NÃO são suportados pelo SDK (retornam 0); skip é o mecanismo disponível.
+// Memória O(BOUNDARY_BATCH), independente do total do dia — substitui o limite fixo de
+// 10.000 que truncava dias com >10k registros. Equivalente ao filtro created_date ∈ [start, end]
+// (mesmo predicado, aplicado em batches via skip). Acumula apenas contadores, não arrays.
+const BOUNDARY_BATCH = 500;
+async function scanBoundary(svc, entityName, filterBase, day, start, end, onMatch) {
+  const base: any = { ...filterBase, created_day: day };
+  let skip = 0;
+  while (true) {
+    const batch = await svc.entities[entityName].filter(base, "id", BOUNDARY_BATCH, skip);
+    if (!batch || batch.length === 0) break;
+    for (const r of batch) {
+      if (!r.created_date) continue;
+      const d = new Date(r.created_date);
+      if (d >= start && d <= end) onMatch(r);
+    }
+    skip += BOUNDARY_BATCH;
+    if (batch.length < BOUNDARY_BATCH) break;
   }
-  return out;
 }
 
 // KPI de participantes únicos (ou por papel se profileFilter != 'all').
-// bulk = buckets de dias cheios; borda = registros raw dos dias de start/end.
+// bulk = buckets de dias cheios; borda = contagem paginada dos dias de start/end.
 async function computeUniqueParticipants(svc, evId, profileFilter, startDay, endDay, start, end, driftWarnings) {
   const metricType = profileFilter === "all" ? "unique_participants" : "participants_by_role";
   const dimension = profileFilter === "all" ? undefined : profileFilter;
@@ -133,27 +146,53 @@ async function computeUniqueParticipants(svc, evId, profileFilter, startDay, end
   const filterBase: any = { is_deleted: false };
   if (evId) filterBase.event_id = evId;
   const roleFilter = profileFilter === "all" ? null : profileFilter;
-  const startRaw = await boundaryRecords(svc, "Participant", filterBase, startDay, start, end);
-  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, "Participant", filterBase, endDay, start, end);
-  const startCount = startRaw.filter((r) => !roleFilter || r.role_in_event === roleFilter).length;
-  const endCount = endRaw.filter((r) => !roleFilter || r.role_in_event === roleFilter).length;
+  const roleMatch = (r) => !roleFilter || r.role_in_event === roleFilter;
+  let startCount = 0;
+  await scanBoundary(svc, "Participant", filterBase, startDay, start, end, (r) => { if (roleMatch(r)) startCount++; });
+  let endCount = 0;
+  if (startDay !== endDay) {
+    await scanBoundary(svc, "Participant", filterBase, endDay, start, end, (r) => { if (roleMatch(r)) endCount++; });
+  }
   return { count: bulk + startCount + endCount, buckets };
 }
 
-// KPI de leads + agregação por parceiro.
+// KPI de leads + agregação por parceiro (bulk full-days + borda paginada).
 async function computeLeads(svc, evId, startDay, endDay, start, end, driftWarnings) {
   const buckets = await fetchBuckets(svc, { eventId: evId, metricType: "leads", fromDay: startDay, toDay: endDay });
   let bulk = 0;
+  const bulkByPartner = new Map<string, number>();
   for (const b of buckets) {
     const v = b.value || 0;
-    if (b.bucket_date > startDay && b.bucket_date < endDay) bulk += v;
+    if (b.bucket_date > startDay && b.bucket_date < endDay) {
+      bulk += v;
+      const pid = b.partner_id || "";
+      bulkByPartner.set(pid, (bulkByPartner.get(pid) || 0) + v);
+    }
     if (v < 0) driftWarnings.push({ metric: "leads", bucket_date: b.bucket_date, partner_id: b.partner_id || "", dimension: b.dimension || "", value: v });
   }
   const filterBase: any = {};
   if (evId) filterBase.event_id = evId;
-  const startRaw = await boundaryRecords(svc, "Lead", filterBase, startDay, start, end);
-  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, "Lead", filterBase, endDay, start, end);
-  return { count: bulk + startRaw.length + endRaw.length, buckets, boundaryRaw: [...startRaw, ...endRaw] };
+  const boundaryByPartner = new Map<string, number>();
+  let startCount = 0;
+  const addLead = (l) => {
+    startCount++;
+    const pid = l.partner_id || "";
+    boundaryByPartner.set(pid, (boundaryByPartner.get(pid) || 0) + 1);
+  };
+  await scanBoundary(svc, "Lead", filterBase, startDay, start, end, addLead);
+  let endCount = 0;
+  if (startDay !== endDay) {
+    await scanBoundary(svc, "Lead", filterBase, endDay, start, end, (l) => {
+      endCount++;
+      const pid = l.partner_id || "";
+      boundaryByPartner.set(pid, (boundaryByPartner.get(pid) || 0) + 1);
+    });
+  }
+  // byPartner = bulk (full days) + boundary, agregado por partner_id
+  const byPartner = new Map<string, number>();
+  for (const [pid, v] of bulkByPartner) byPartner.set(pid, (byPartner.get(pid) || 0) + v);
+  for (const [pid, v] of boundaryByPartner) byPartner.set(pid, (byPartner.get(pid) || 0) + v);
+  return { count: bulk + startCount + endCount, buckets, byPartner };
 }
 
 // KPI global (users/persons/partners).
@@ -165,9 +204,13 @@ async function computeGlobal(svc, metricType, entityName, filterBase, startDay, 
     if (b.bucket_date > startDay && b.bucket_date < endDay) bulk += v;
     if (v < 0) driftWarnings.push({ metric: metricType, bucket_date: b.bucket_date, partner_id: "", dimension: "", value: v });
   }
-  const startRaw = await boundaryRecords(svc, entityName, filterBase, startDay, start, end);
-  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, entityName, filterBase, endDay, start, end);
-  return bulk + startRaw.length + endRaw.length;
+  let startCount = 0;
+  await scanBoundary(svc, entityName, filterBase, startDay, start, end, () => { startCount++; });
+  let endCount = 0;
+  if (startDay !== endDay) {
+    await scanBoundary(svc, entityName, filterBase, endDay, start, end, () => { endCount++; });
+  }
+  return bulk + startCount + endCount;
 }
 
 Deno.serve(async (req) => {
@@ -246,19 +289,8 @@ Deno.serve(async (req) => {
     const leadsNow = curLeads.count;
     const leadsPrev = prevLeads.count;
 
-    // LeadsByPartner: bulk (full days) + boundary raw, agregado por partner_id
-    const lbpMap = new Map<string, number>();
-    for (const b of curLeads.buckets) {
-      if (b.bucket_date > curStartDay && b.bucket_date < curEndDay) {
-        const pid = b.partner_id || "";
-        lbpMap.set(pid, (lbpMap.get(pid) || 0) + (b.value || 0));
-      }
-    }
-    for (const l of curLeads.boundaryRaw) {
-      const pid = l.partner_id || "";
-      lbpMap.set(pid, (lbpMap.get(pid) || 0) + 1);
-    }
-    const topPartners = Array.from(lbpMap.entries())
+    // LeadsByPartner: bulk (full days) + boundary, já agregado por partner_id em computeLeads
+    const topPartners = Array.from((curLeads.byPartner || new Map()).entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
     const topPartnerIds = topPartners.map(([pid]) => pid).filter(Boolean);

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { processAction } from "@/lib/scoringEngine";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import { sanitizeText } from "@/utils/sanitize";
+import { incPersonsCounter } from "@/lib/businessCounters";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -128,10 +129,12 @@ export default function UserProfileEdit() {
         await base44.entities.Person.update(personId, payload);
       } else {
         // Criar Person novo
-        const created = await base44.entities.Person.create(payload);
+        const created = await base44.entities.Person.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
         personId = created.id;
         // Vincular ao user
         await base44.auth.updateMe({ person_id: personId });
+        // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+        try { await incPersonsCounter(created?.created_date); } catch {}
       }
 
       // Sincronização de nome em mão única: person.full_name → users.name
@@ -192,9 +195,11 @@ export default function UserProfileEdit() {
       Object.keys(form).forEach((key) => {
         payload[key] = typeof form[key] === "string" ? sanitizeText(form[key].trim()) : (form[key] ?? "");
       });
-      const created = await base44.entities.Person.create(payload);
+      const created = await base44.entities.Person.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
       personId = created.id;
       await base44.auth.updateMe({ person_id: personId, full_name: payload.full_name });
+      // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+      try { await incPersonsCounter(created?.created_date); } catch {}
       await refreshUser();
       queryClient.invalidateQueries({ queryKey: ["my_person"] });
     }
