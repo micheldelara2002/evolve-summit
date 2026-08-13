@@ -39,6 +39,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 // Memória: O(BATCH) por página. O backfill de created_day é processado
 // incrementalmente por batch (bulkUpdate a cada página lida) — NUNCA acumula todos os
 // registros legados; suporta milhões de registros sem created_day com memória O(BATCH).
+//
+// --- AVALIAÇÃO DE PERFORMANCE DO SKIP (P0.3) ---
+// Medido em 13/08/2026: scan skip de 10.100 registros (21 páginas de 500, sort 'id')
+// → ~6103ms total (~291ms/página). Aceitável para reconciliação sob demanda/admin.
+// Decisão: manter skip; sem otimização especulativa. skip escala linearmente em páginas
+// (N/500 fetches), latência por página ~constante; para milhões de registros o custo é
+// proporcional ao volume mas o reconcílio roda assíncrono/admin, fora do hot-path.
 
 function dayKey(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
