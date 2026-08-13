@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
+import { incParticipantCounter, decParticipantCounter } from "@/lib/businessCounters";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,6 +235,7 @@ export default function PessoasTab({
       return;
     }
     await base44.entities.Participant.update(pessoa.id, { is_deleted: true });
+    await decParticipantCounter(eventId, pessoa?.created_date);
     logAudit({ event_id: eventId, action: "soft_delete", entity_type: "Participant", entity_id: pessoa.id, user,
       details: { field: "vínculo_evento", new_value: "removido" } });
     invalidate();
@@ -493,7 +495,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
       return;
     }
     setAssociating(true);
-    await base44.entities.Participant.create({
+    const created = await base44.entities.Participant.create({
       event_id: eventId,
       full_name: person.full_name,
       email: person.contact_email || "",
@@ -507,6 +509,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
       registration_status: "registered",
       is_deleted: false,
     });
+    await incParticipantCounter(eventId, created?.created_date);
     logAudit({ event_id: eventId, action: "create", entity_type: "Participant", entity_id: person.id, user,
       details: { field: "vínculo_evento", new_value: "associado" } });
     setAssociating(false);

@@ -1,0 +1,24 @@
+{
+  "name": "EventStats",
+  "type": "object",
+  "description": "P0.3 \u2014 Contadores de estado ATUAL por evento (cache de leitura O(1) para o Business Dashboard). Mantidos via $inc at\u00f4mico nas mutations de Participant/Lead. Reconstru\u00eddos por reconcileBusinessMetrics (admin-only). TopEvents usa unique_participants_count e total_leads_count (all-time, excluindo soft-deleted).",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (chave de isolamento)"
+    },
+    "unique_participants_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Participantes \u00fanicos ativos (is_deleted=false) no evento \u2014 cardinalidade por (event_id, person_id||id)"
+    },
+    "total_leads_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de leads do evento (leads s\u00e3o append-only, sem is_deleted)"
+    }
+  },
+  "required": [
+    "event_id"
+  ]
+}

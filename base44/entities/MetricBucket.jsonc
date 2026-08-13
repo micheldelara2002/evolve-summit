@@ -1,0 +1,32 @@
+{
+  "name": "MetricBucket",
+  "type": "object",
+  "description": "P0.3 \u2014 S\u00e9rie temporal di\u00e1ria materializada para o Business Dashboard. Usada para uniqNow/Prev e ParticipantsEvolution (participantes \u00fanicos por dia). SOFRE decremento no soft-delete de Participant (preserva a sem\u00e2ntica is_deleted:false do c\u00e1lculo original \u2014 ver P0.3). Reconstru\u00edda por reconcileBusinessMetrics.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "metric_type": {
+      "type": "string",
+      "enum": [
+        "unique_participants"
+      ],
+      "description": "Tipo de m\u00e9trica. P0.3 usa apenas unique_participants."
+    },
+    "bucket_date": {
+      "type": "string",
+      "description": "Chave do dia (YYYY-MM-DD) derivada do created_date do registro de origem"
+    },
+    "value": {
+      "type": "number",
+      "default": 0,
+      "description": "Contador do bucket (pode ser negativo transitivamente se delete precede create; reconcile corrige)"
+    }
+  },
+  "required": [
+    "event_id",
+    "metric_type",
+    "bucket_date"
+  ]
+}

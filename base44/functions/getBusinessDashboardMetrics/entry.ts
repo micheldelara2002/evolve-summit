@@ -1,17 +1,22 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
-// P0.3 — Backend-driven aggregation for the Business Dashboard.
+// P0.3 — Backend-driven aggregation for the Business Dashboard (read-side materializado).
 //
-// Replaces the previous pattern of loading 6 entities (users, persons, events,
-// partners, participants, leads) at FETCH_LIMIT=10000 each to the client and
-// aggregating via Array.reduce in a useMemo. This function runs filtered,
-// date-bounded queries server-side and returns only the final metrics — no
-// 10k-record transfer to the client, no client-side Array.reduce.
+// Read-side:
+//   - EventStats  → TopEvents (all-time unique_participants_count, total_leads_count) — O(1)/evento
+//   - MetricBucket(unique_participants, daily) → uniqNow/Prev + ParticipantsEvolution.
+//     buildExactDailyUnique() soma buckets diários e aplica TRIM de boundary-day
+//     (query bounded de 1 dia) para preservar inRange(created_date, start, end) EXATO.
+//   - Leads (Now/Prev, LeadsByPartner) → query date-bounded [prev_start, current_end] em memória
+//     (leads são append-only, menor volume; dimensão partner_id inviabiliza bucket por partner)
+//   - profileFilter != 'all' → fallback bounded de participantes (bucket não tem dimensão role)
+//   - Users/Persons/Partners/Events → date-bounded ou small (igual antes)
 //
-// Authorization: admin only (BusinessDashboard is behind AdminRoute).
+// Semântica preservada EXATAMENTE igual à versão in-memory anterior; a materialização remove
+// o cap de 10000 e o load global de participants.
+// Authorization: admin only.
 
-// === Port of src/lib/businessUtils.js ===
-
+// === helpers (port de src/lib/businessUtils.js) ===
 function getPeriodRange(period, customStart, customEnd) {
   const now = new Date();
   const end = new Date(now);
@@ -30,38 +35,32 @@ function getPeriodRange(period, customStart, customEnd) {
   }
   return { start, end };
 }
-
 function getPreviousRange(start, end) {
   const duration = end.getTime() - start.getTime();
   const prevEnd = new Date(start);
   const prevStart = new Date(start.getTime() - duration);
   return { start: prevStart, end: prevEnd };
 }
-
 function inRange(dateStr, start, end) {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   return d >= start && d <= end;
 }
-
 function pctChange(current, previous) {
   if (previous === 0 && current === 0) return 0;
   if (previous === 0) return null;
   return ((current - previous) / previous) * 100;
 }
-
 function getBucketKey(dateStr, bucketType) {
   const d = new Date(dateStr);
   if (bucketType === "day") return d.toISOString().slice(0, 10);
   if (bucketType === "month") return d.toISOString().slice(0, 7);
-  // week: compute Monday
   const tmp = new Date(d);
   const day = tmp.getDay();
   const diff = tmp.getDate() - day + (day === 0 ? -6 : 1);
   tmp.setDate(diff);
   return tmp.toISOString().slice(0, 10);
 }
-
 function formatBucketLabel(key, bucketType) {
   if (bucketType === "month") {
     const [y, m] = key.split("-");
@@ -71,11 +70,68 @@ function formatBucketLabel(key, bucketType) {
   const [, m, d] = key.split("-");
   return `${d}/${m}`;
 }
-
 function getBucketType(days) {
   if (days <= 31) return "day";
   if (days <= 180) return "week";
   return "month";
+}
+function dayKeyOf(d: Date): string { return d.toISOString().slice(0, 10); }
+function startOfDay(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function endOfDay(d: Date): Date { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+
+// Conta unique participants (is_deleted:false) criados em [lo, hi] (datetimes). Bounded.
+async function countUniqueParticipants(svc, eventId, lo: Date, hi: Date, profileFilter: string): Promise<number> {
+  const q: any = { is_deleted: false };
+  if (eventId) q.event_id = eventId;
+  if (profileFilter && profileFilter !== "all") q.role_in_event = profileFilter;
+  q.created_date = { $gte: lo.toISOString(), $lte: hi.toISOString() };
+  const records = await svc.entities.Participant.filter(q, "-created_date", 10000);
+  const set = new Set();
+  for (const p of records) set.add(`${p.event_id}:${p.person_id || p.id}`);
+  return set.size;
+}
+
+// Map<dayKey, exactUniqueCount> para [startDT, endDT].
+// - profileFilter='all': soma buckets diários + trim de boundary-day (startDay e endDay) via
+//   2 queries bounded. Dias interiores usam o bucket direto (dias inteiros = exato).
+// - profileFilter!=all: fallback — query bounded de participantes no período, agrupados por dia.
+async function buildExactDailyUnique(svc, eventId, startDT: Date, endDT: Date, profileFilter: string): Promise<Map<string, number>> {
+  if (profileFilter && profileFilter !== "all") {
+    const q: any = { is_deleted: false, role_in_event: profileFilter };
+    if (eventId) q.event_id = eventId;
+    q.created_date = { $gte: startDT.toISOString(), $lte: endDT.toISOString() };
+    const records = await svc.entities.Participant.filter(q, "-created_date", 10000);
+    const byDay = new Map<string, Set<string>>();
+    for (const p of records) {
+      const dk = dayKeyOf(new Date(p.created_date));
+      if (!byDay.has(dk)) byDay.set(dk, new Set());
+      byDay.get(dk).add(`${p.event_id}:${p.person_id || p.id}`);
+    }
+    const out = new Map<string, number>();
+    for (const [k, s] of byDay) out.set(k, s.size);
+    return out;
+  }
+  const startDay = dayKeyOf(startDT);
+  const endDay = dayKeyOf(endDT);
+  const bf: any = { metric_type: "unique_participants", bucket_date: { $gte: startDay, $lte: endDay } };
+  if (eventId) bf.event_id = eventId;
+  const buckets = await svc.entities.MetricBucket.filter(bf, undefined, 20000);
+  const byDay = new Map<string, number>();
+  for (const b of buckets) byDay.set(b.bucket_date, (byDay.get(b.bucket_date) || 0) + (b.value || 0));
+
+  // Trim startDay: subtrai criados antes de startDT
+  const sdStart = startOfDay(startDT);
+  if (startDT.getTime() > sdStart.getTime()) {
+    const before = await countUniqueParticipants(svc, eventId, sdStart, new Date(startDT.getTime() - 1), profileFilter);
+    byDay.set(startDay, (byDay.get(startDay) || 0) - before);
+  }
+  // Trim endDay: subtrai criados depois de endDT
+  const edEnd = endOfDay(endDT);
+  if (endDT.getTime() < edEnd.getTime()) {
+    const after = await countUniqueParticipants(svc, eventId, new Date(endDT.getTime() + 1), edEnd, profileFilter);
+    byDay.set(endDay, (byDay.get(endDay) || 0) - after);
+  }
+  return byDay;
 }
 
 Deno.serve(async (req) => {
@@ -87,32 +143,22 @@ Deno.serve(async (req) => {
 
     const { period = '3m', customStart = '', customEnd = '', eventFilter = 'all', statusFilter = 'all', profileFilter = 'all' } = await req.json();
 
-    // Period ranges
     const current = getPeriodRange(period, customStart, customEnd);
     const previous = getPreviousRange(current.start, current.end);
     const combinedStartISO = previous.start.toISOString();
     const currentEndISO = current.end.toISOString();
+    const evId = eventFilter !== 'all' ? eventFilter : null;
+    const svc = base44.asServiceRole;
 
-    // P0.3: Parallel queries.
-    // Events + Partners: all records (small datasets, needed for by-month chart, dropdown, name mapping).
-    // Users + Persons: date-bounded (only used for KPI counts — smaller working set).
-    // Participants + Leads: event/profile-filtered (needed for both period KPIs and all-time topEvents).
-    const [events, partners, users, persons, participants, leads] = await Promise.all([
-      base44.asServiceRole.entities.Event.filter({ is_deleted: false }, '-created_date', 5000),
-      base44.asServiceRole.entities.Partner.filter({ is_deleted: false }, '-created_date', 5000),
-      base44.asServiceRole.entities.User.filter({ created_date: { $gte: combinedStartISO, $lte: currentEndISO } }, '-created_date', 5000),
-      base44.asServiceRole.entities.Person.filter({ created_date: { $gte: combinedStartISO, $lte: currentEndISO } }, '-created_date', 5000),
-      base44.asServiceRole.entities.Participant.filter({
-        is_deleted: false,
-        ...(eventFilter !== 'all' ? { event_id: eventFilter } : {}),
-        ...(profileFilter !== 'all' ? { role_in_event: profileFilter } : {}),
-      }, '-created_date', 10000),
-      base44.asServiceRole.entities.Lead.filter({
-        ...(eventFilter !== 'all' ? { event_id: eventFilter } : {}),
-      }, '-created_date', 10000),
+    const [events, partners, users, persons, eventStats] = await Promise.all([
+      svc.entities.Event.filter({ is_deleted: false }, '-created_date', 5000),
+      svc.entities.Partner.filter({ is_deleted: false }, '-created_date', 5000),
+      svc.entities.User.filter({ created_date: { $gte: combinedStartISO, $lte: currentEndISO } }, '-created_date', 5000),
+      svc.entities.Person.filter({ created_date: { $gte: combinedStartISO, $lte: currentEndISO } }, '-created_date', 5000),
+      svc.entities.EventStats.filter({}, undefined, 5000),
     ]);
 
-    // === Events: exclude draft and cancelled ===
+    // === Events: exclui draft e cancelled ===
     const validEvents = events.filter((e) => e.status === "active" || e.status === "finished");
     const statusEvents = statusFilter === "all" ? validEvents : validEvents.filter((e) => e.status === statusFilter);
     const eventScopedEvents = eventFilter === "all" ? statusEvents : statusEvents.filter((e) => e.id === eventFilter);
@@ -124,45 +170,43 @@ Deno.serve(async (req) => {
     const finishedNow = currentEvents.filter((e) => e.status === "finished").length;
     const finishedPrev = prevEvents.filter((e) => e.status === "finished").length;
 
-    // === Users ===
+    // === Users / Persons / Partners (date-bounded in-memory) ===
     const usersNow = users.filter((u) => inRange(u.created_date, current.start, current.end)).length;
     const usersPrev = users.filter((u) => inRange(u.created_date, previous.start, previous.end)).length;
-
-    // === Persons ===
     const personsNow = persons.filter((p) => inRange(p.created_date, current.start, current.end)).length;
     const personsPrev = persons.filter((p) => inRange(p.created_date, previous.start, previous.end)).length;
-
-    // === Partners ===
     const partnersNow = partners.filter((p) => inRange(p.created_date, current.start, current.end)).length;
     const partnersPrev = partners.filter((p) => inRange(p.created_date, previous.start, previous.end)).length;
 
-    // === Participants (event + profile scoped — already filtered in query) ===
-    const currentParticipants = participants.filter((p) => inRange(p.created_date, current.start, current.end));
-    const prevParticipants = participants.filter((p) => inRange(p.created_date, previous.start, previous.end));
+    // === uniqNow/Prev + Evolution via buildExactDailyUnique (buckets + trim) ===
+    const [curDayMap, prevDayMap] = await Promise.all([
+      buildExactDailyUnique(svc, evId, current.start, current.end, profileFilter),
+      buildExactDailyUnique(svc, evId, previous.start, previous.end, profileFilter),
+    ]);
+    const uniqNow = Array.from(curDayMap.values()).reduce((s, v) => s + Math.max(0, v), 0);
+    const uniqPrev = Array.from(prevDayMap.values()).reduce((s, v) => s + Math.max(0, v), 0);
 
-    const uniqKey = (p) => `${p.event_id}:${p.person_id || p.id}`;
-    const uniqNow = new Set(currentParticipants.map(uniqKey)).size;
-    const uniqPrev = new Set(prevParticipants.map(uniqKey)).size;
+    // ParticipantsEvolution: agrega curDayMap em display buckets (day/week/month)
+    const days = (current.end.getTime() - current.start.getTime()) / (1000 * 60 * 60 * 24);
+    const bucketType = getBucketType(days);
+    const displayMap = new Map<string, number>();
+    for (const [dk, count] of curDayMap.entries()) {
+      const displayKey = getBucketKey(dk + "T12:00:00", bucketType);
+      displayMap.set(displayKey, (displayMap.get(displayKey) || 0) + Math.max(0, count));
+    }
+    const participantsEvolution = Array.from(displayMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, count]) => ({ date: formatBucketLabel(key, bucketType), count }));
 
-    // === Leads (event scoped — already filtered in query) ===
+    // === Leads: query date-bounded [prev_start, current_end], in-memory ===
+    const leadQ: any = {};
+    if (evId) leadQ.event_id = evId;
+    leadQ.created_date = { $gte: combinedStartISO, $lte: currentEndISO };
+    const leads = await svc.entities.Lead.filter(leadQ, '-created_date', 10000);
     const currentLeads = leads.filter((l) => inRange(l.created_date, current.start, current.end));
     const prevLeads = leads.filter((l) => inRange(l.created_date, previous.start, previous.end));
 
-    // === Chart: participants evolution ===
-    const days = (current.end.getTime() - current.start.getTime()) / (1000 * 60 * 60 * 24);
-    const bucketType = getBucketType(days);
-    const buckets = new Map();
-    participants.forEach((p) => {
-      if (!inRange(p.created_date, current.start, current.end)) return;
-      const key = getBucketKey(p.created_date, bucketType);
-      if (!buckets.has(key)) buckets.set(key, new Set());
-      buckets.get(key).add(uniqKey(p));
-    });
-    const participantsEvolution = Array.from(buckets.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, set]) => ({ date: formatBucketLabel(key, bucketType), count: set.size }));
-
-    // === Chart: leads by partner ===
+    // === Leads by partner (current period, in-memory) ===
     const partnerMap = new Map(partners.map((p) => [p.id, p.trade_name || p.legal_name || "Sem nome"]));
     const leadsByPartnerMap = new Map();
     currentLeads.forEach((l) => {
@@ -174,29 +218,21 @@ Deno.serve(async (req) => {
       .sort((a, b) => b.leads - a.leads)
       .slice(0, 10);
 
-    // === Chart: events status ===
+    // === Events status ===
     const eventsStatus = [
       { name: "Ativos", value: activeNow },
       { name: "Encerrados", value: finishedNow },
     ];
 
-    // === Top events table (all-time unique participants + leads per event) ===
-    const participantsByEvent = new Map();
-    participants.forEach((p) => {
-      if (!participantsByEvent.has(p.event_id)) participantsByEvent.set(p.event_id, new Set());
-      participantsByEvent.get(p.event_id).add(p.person_id || p.id);
-    });
-    const leadsByEvent = new Map();
-    leads.forEach((l) => {
-      leadsByEvent.set(l.event_id, (leadsByEvent.get(l.event_id) || 0) + 1);
-    });
+    // === Top events (all-time) via EventStats ===
+    const statsByEvent = new Map(eventStats.map((s) => [s.event_id, s]));
     const topEvents = eventScopedEvents
       .map((e) => ({
         id: e.id,
         name: e.name,
         status: e.status,
-        uniqueParticipants: participantsByEvent.get(e.id)?.size || 0,
-        leads: leadsByEvent.get(e.id) || 0,
+        uniqueParticipants: statsByEvent.get(e.id)?.unique_participants_count || 0,
+        leads: statsByEvent.get(e.id)?.total_leads_count || 0,
       }))
       .sort((a, b) => b.uniqueParticipants - a.uniqueParticipants)
       .slice(0, 10);

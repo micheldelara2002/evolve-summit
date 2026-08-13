@@ -16,6 +16,7 @@ import {
   Building2, Plus, Search, MoreVertical, Pencil, Trash2, Star,
 } from "lucide-react";
 import { toast } from "sonner";
+import { incParticipantCounter } from "@/lib/businessCounters";
 
 const PLAN_LABELS = {
   diamante: "Diamante",
@@ -142,7 +143,8 @@ function AssociatePartnerModal({ eventId, existingEventPartners = [], onClose, o
               person_id: rep.person_id,
             });
           } else {
-            await base44.entities.Participant.create(payload);
+            const created = await base44.entities.Participant.create(payload);
+            await incParticipantCounter(eventId, created?.created_date);
           }
         }
       }

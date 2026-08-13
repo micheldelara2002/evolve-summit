@@ -10,6 +10,7 @@ import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { processAction } from "@/lib/scoringEngine";
+import { incLeadsCounter } from "@/lib/businessCounters";
 import { Building2, Globe, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function PartnerVisitModal({ partnerId, eventId, personId, participantId, person, isReadOnly, onClose }) {
@@ -59,7 +60,7 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
 
   const confirmMut = useMutation({
     mutationFn: async () => {
-      await base44.entities.Lead.create({
+      const lead = await base44.entities.Lead.create({
         event_id: eventId,
         partner_id: partnerId,
         participant_id: participantId,
@@ -73,6 +74,7 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
         person_company: person?.company || "",
         person_job_title: person?.job_title || "",
       });
+      await incLeadsCounter(eventId, lead?.created_date);
       // Trigger scoring engine (best-effort — lead is already saved)
       try {
         await processAction({ eventId, participantId, personId, acao: "visita_estande", refId: partnerId });

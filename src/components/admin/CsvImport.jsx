@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/lib/i18n";
 import { logAudit } from "@/lib/audit";
+import { incParticipantCounter, bulkIncParticipantsCounter } from "@/lib/businessCounters";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
@@ -192,8 +193,9 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
     for (let i = 0; i < newPayloads.length; i += 50) {
       const batch = newPayloads.slice(i, i + 50);
       try {
-        await base44.entities.Participant.bulkCreate(batch);
+        const createdBatch = await base44.entities.Participant.bulkCreate(batch);
         novosCriados += batch.length;
+        await bulkIncParticipantsCounter(eventId, (createdBatch || []).map((p) => p?.created_date).filter(Boolean));
       } catch {
         errosCriacao += batch.length;
       }
@@ -206,7 +208,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         // Create a new event-linked record reusing data, or just update event_id if needed
         // Since participant is per-event, create a new record with same person data + this event
         try {
-          await base44.entities.Participant.create({
+          const created = await base44.entities.Participant.create({
             event_id: eventId,
             full_name: sanitizeText(gp.full_name),
             email: gp.email,
@@ -224,6 +226,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
             is_deleted: false,
             import_id: importRecord.id,
           });
+          await incParticipantCounter(eventId, created?.created_date);
           existentesVinculados++;
         } catch {
           errosCriacao++;
