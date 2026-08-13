@@ -71,6 +71,10 @@
     "person_job_title": {
       "type": "string",
       "description": "Cargo (snapshot da Person)"
+    },
+    "created_day": {
+      "type": "string",
+      "description": "P0.3 \u2014 Chave do dia (YYYY-MM-DD) derivada do created_date. Usada para corre\u00e7\u00e3o de borda no Business Dashboard (equality query). Populado no create; backfill via reconcileBusinessMetrics."
     }
   },
   "required": [

@@ -62,7 +62,7 @@ export default function PersonFormDialog({ person, onClose, onSaved }) {
         await base44.entities.Person.update(person.id, cleanForm);
         saved = { ...person, ...cleanForm };
       } else {
-        saved = await base44.entities.Person.create(cleanForm);
+        saved = await base44.entities.Person.create({ ...cleanForm, created_day: new Date().toISOString().slice(0, 10) });
         // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
         try { await incPersonsCounter(saved?.created_date); } catch {}
       }

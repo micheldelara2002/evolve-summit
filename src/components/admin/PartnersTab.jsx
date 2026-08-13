@@ -16,7 +16,7 @@ import {
   Building2, Plus, Search, MoreVertical, Pencil, Trash2, Star,
 } from "lucide-react";
 import { toast } from "sonner";
-import { incParticipantCounter } from "@/lib/businessCounters";
+import { incParticipantCounter, moveParticipantRoleCounter } from "@/lib/businessCounters";
 
 const PLAN_LABELS = {
   diamante: "Diamante",
@@ -135,13 +135,19 @@ function AssociatePartnerModal({ eventId, existingEventPartners = [], onClose, o
             registration_status: "confirmed",
             person_id: rep.person_id,
             is_deleted: false,
+            created_day: new Date().toISOString().slice(0, 10),
           };
 
           if (existing) {
+            const oldRole = existing.role_in_event;
             await base44.entities.Participant.update(existing.id, {
               role_in_event: "partner_rep",
               person_id: rep.person_id,
             });
+            // P0.3 — move o bucket participants_by_role do papel antigo para partner_rep (unique não muda)
+            if (oldRole !== "partner_rep") {
+              await moveParticipantRoleCounter(eventId, existing.created_date, oldRole, "partner_rep");
+            }
           } else {
             const created = await base44.entities.Participant.create(payload);
             await incParticipantCounter(eventId, created?.created_date, "partner_rep");

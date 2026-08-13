@@ -23,6 +23,7 @@ const GLOBAL = GLOBAL_EVENT_ID;
 
 async function rebuildMetric(svc: any, metricType: string, entityName: string, filter: any, dryRun: boolean) {
   const dayCounts = new Map<string, number>();
+  const backfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
   let cursor: string | null = null;
   let total = 0;
   while (true) {
@@ -36,6 +37,7 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
       const dk = dayKey(r.created_date);
       dayCounts.set(dk, (dayCounts.get(dk) || 0) + 1);
       total++;
+      if (!r.created_day) backfill.push({ id: r.id, created_day: dk });
     }
   }
   if (dryRun) return { metricType, total, days: dayCounts.size };
@@ -48,7 +50,13 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
   for (let i = 0; i < buckets.length; i += 500) {
     await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
   }
-  return { metricType, total, days: dayCounts.size, bucketsWritten: buckets.length };
+  // P0.3 — backfill de created_day (best-effort; User é platform-owned mas asServiceRole bypassa RLS)
+  let backfilled = 0;
+  for (let i = 0; i < backfill.length; i += 500) {
+    const chunk = backfill.slice(i, i + 500);
+    try { await svc.entities[entityName].bulkUpdate(chunk); backfilled += chunk.length; } catch {}
+  }
+  return { metricType, total, days: dayCounts.size, bucketsWritten: buckets.length, backfilled };
 }
 
 Deno.serve(async (req) => {

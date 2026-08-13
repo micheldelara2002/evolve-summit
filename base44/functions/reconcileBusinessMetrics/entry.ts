@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
     let totalUnique = 0;
     const uniqByDay = new Map<string, number>();
     const roleByDay = new Map<string, number>(); // key: day|role
+    const partBackfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
     let pcursor: string | null = null;
     while (true) {
       const q: any = { event_id: eventId, is_deleted: false };
@@ -61,12 +62,14 @@ Deno.serve(async (req) => {
         const role = p.role_in_event || "attendee";
         const rk = `${dk}|${role}`;
         roleByDay.set(rk, (roleByDay.get(rk) || 0) + 1);
+        if (!p.created_day) partBackfill.push({ id: p.id, created_day: dk });
       }
     }
 
     // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
     let totalLeads = 0;
     const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId
+    const leadBackfill: any[] = []; // P0.3 — records missing created_day
     let lcursor: string | null = null;
     while (true) {
       const q: any = { event_id: eventId };
@@ -80,14 +83,19 @@ Deno.serve(async (req) => {
         const dk = dayKey(l.created_date);
         const key = `${dk}|${l.partner_id || ""}`;
         leadsByDayPartner.set(key, (leadsByDayPartner.get(key) || 0) + 1);
+        if (!l.created_day) leadBackfill.push({ id: l.id, created_day: dk });
       }
     }
 
-    // --- Estado atual ---
+    // --- Estado atual (soma TODAS as linhas de EventStats — consistente com o read-side,
+    //     que soma tudo para tolerar a race do ensureEventStats que pode criar duplicatas) ---
     const existing = await svc.entities.EventStats.filter({ event_id: eventId });
-    const cur = existing[0];
-    const currentUnique = cur?.unique_participants_count || 0;
-    const currentLeads = cur?.total_leads_count || 0;
+    let currentUnique = 0;
+    let currentLeads = 0;
+    for (const s of existing) {
+      currentUnique += s.unique_participants_count || 0;
+      currentLeads += s.total_leads_count || 0;
+    }
     const drift = {
       unique: totalUnique - currentUnique,
       leads: totalLeads - currentLeads,
@@ -131,6 +139,17 @@ Deno.serve(async (req) => {
       await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
     }
 
+    // P0.3 — backfill de created_day em registros legados (necessário para correção de borda do dashboard)
+    let backfilledParticipants = 0, backfilledLeads = 0;
+    for (let i = 0; i < partBackfill.length; i += 500) {
+      const chunk = partBackfill.slice(i, i + 500);
+      try { await svc.entities.Participant.bulkUpdate(chunk); backfilledParticipants += chunk.length; } catch {}
+    }
+    for (let i = 0; i < leadBackfill.length; i += 500) {
+      const chunk = leadBackfill.slice(i, i + 500);
+      try { await svc.entities.Lead.bulkUpdate(chunk); backfilledLeads += chunk.length; } catch {}
+    }
+
     return Response.json({
       ok: true,
       eventId,
@@ -139,6 +158,7 @@ Deno.serve(async (req) => {
       totalLeads,
       bucketsCreated: buckets.length,
       previousDrift: drift,
+      backfill: { participants: backfilledParticipants, leads: backfilledLeads },
     });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

@@ -507,6 +507,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
       person_id: person.id,
       role_in_event: "attendee",
       registration_status: "registered",
+      created_day: new Date().toISOString().slice(0, 10),
       is_deleted: false,
     });
     await incParticipantCounter(eventId, created?.created_date, "attendee");

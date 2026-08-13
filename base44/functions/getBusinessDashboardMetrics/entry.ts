@@ -3,15 +3,30 @@ import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 
 // P0.3 — Backend-driven aggregation for the Business Dashboard (read-side materializado).
 //
-// IMPORTANTE — limitação da plataforma: queries de range em `created_date` (built-in) NÃO
-// funcionam (retornam 0). Apenas range queries em campos string (bucket_date) funcionam.
-// Leitura NÃO carrega a base global (User/Person/Partner) — lê MetricBucket:
-//   - EventStats                → TopEvents (all-time unique_participants_count, total_leads_count) — O(1)/evento
-//   - MetricBucket(unique_participants, daily)        → uniqNow/Prev + ParticipantsEvolution (profileFilter=all)
-//   - MetricBucket(participants_by_role, daily, dimension=role) → uniqNow/Prev + Evolution (profileFilter!=all)
-//   - MetricBucket(leads, daily, partner_id)          → leads Now/Prev + LeadsByPartner
-//   - MetricBucket(users/persons/partners, __global__)→ usersNow/Prev, personsNow/Prev, partnersNow/Prev
-//   - Periodos bucket-based alinhados ao início do dia (snap to midnight).
+// *** SEMÂNTICA TEMPORAL EXATA (equivalente ao algoritmo original de timestamp range) ***
+// O algoritmo original filtrava registros por created_date ∈ [start, end] (precisão de timestamp).
+// A plataforma NÃO suporta range queries no created_date (built-in), apenas em campos string
+// custom (bucket_date, created_day). A solução preserva a semântica exata E é escalável:
+//
+//   Para cada KPI sobre [start, end]:
+//     bulk   = soma de buckets diários para dias CHEIOS (strictly between startDay e endDay)
+//              — todo registro nesses dias tem created_date ∈ [start, end]. O(1) por dia.
+//     borda  = registros do dia de start e do dia de end, carregados via equality query em
+//              `created_day` (campo string custom), filtrados in-memory por created_date ∈ [start, end].
+//              Carga limitada a 1–2 dias de registros, independente de N total.
+//     total  = bulk + borda(start) + (startDay==endDay ? 0 : borda(end))
+//
+// Demonstração de equivalência (período custom, start=meia-noite, end=23:59:59):
+//   Para registro com created_date = D HH:MM, bucket_date = D.
+//   - bulk inclui dias D com startDay < D < endDay ⟺ created_date ∈ (startDay, endDay) cheios ⊆ [start,end]. ✓
+//   - borda(startDay): created_date ≥ start(00:00) ∧ ≤ end(23:59:59) ⟺ todo registro do dia startDay. ✓
+//   - borda(endDay): created_date ≤ end(23:59:59) ∧ ≥ start(00:00) ⟺ todo registro do dia endDay. ✓
+//   ⟹ total ≡ count(created_date ∈ [start, end]). EXATO.
+//   Períodos preset (start não-meia-noite): a borda corrige registros do startDay antes de start
+//   (excluídos pelo filtro in-memory) e registros do endDay depois de end. EXATO.
+//
+// participantsEvolution: timeseries diário (day/week/month) — permanece em buckets diários,
+// coerente com a semântica do gráfico original (agregação por dia). Não é KPI pontual.
 //
 // DRIFT: valores de bucket são somados RAW (sem Math.max(0,...)); buckets negativos são
 // evidenciados em `driftWarnings` para disparar reconcile — nunca mascarados a zero.
@@ -30,8 +45,9 @@ function getPeriodRange(period, customStart, customEnd) {
     case "6m": start.setMonth(start.getMonth() - 6); break;
     case "1y": start.setFullYear(start.getFullYear() - 1); break;
     case "custom":
-      if (customStart) start = new Date(customStart + "T00:00:00");
-      if (customEnd) end.setTime(new Date(customEnd + "T23:59:59").getTime());
+      // Aceita date-only (snap meia-noite / fim-do-dia, retrocompatível) OU ISO datetime (precisão de minuto).
+      if (customStart) start = customStart.includes("T") ? new Date(customStart) : new Date(customStart + "T00:00:00");
+      if (customEnd) end.setTime((customEnd.includes("T") ? new Date(customEnd) : new Date(customEnd + "T23:59:59")).getTime());
       break;
     default: start.setMonth(start.getMonth() - 3);
   }
@@ -55,8 +71,8 @@ function pctChange(current, previous) {
 }
 function getBucketKey(dateStr, bucketType) {
   const d = new Date(dateStr);
-  if (bucketType === "day") return d.toISOString().slice(0, 10);
   if (bucketType === "month") return d.toISOString().slice(0, 7);
+  if (bucketType === "day") return d.toISOString().slice(0, 10);
   const tmp = new Date(d);
   const day = tmp.getDay();
   const diff = tmp.getDate() - day + (day === 0 ? -6 : 1);
@@ -77,8 +93,7 @@ function getBucketType(days) {
   if (days <= 180) return "week";
   return "month";
 }
-function dayKeyOf(d: Date): string { return d.toISOString().slice(0, 10); }
-function snapToMidnight(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function dayKeyOf(d) { return new Date(d).toISOString().slice(0, 10); }
 
 // Lê buckets casados pela chave. `dimension` só entra no filtro quando não-vazio.
 async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerId, dimension }) {
@@ -89,15 +104,70 @@ async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerI
   return await svc.entities.MetricBucket.filter(q, undefined, 20000);
 }
 
-// Soma RAW (sem clamp); coleta buckets negativos como evidência de drift.
-function sumRaw(buckets, warnings, metricLabel) {
-  let s = 0;
-  for (const b of buckets) {
-    const v = (b.value === null || b.value === undefined) ? 0 : b.value;
-    s += v;
-    if (v < 0) warnings.push({ metric: metricLabel, bucket_date: b.bucket_date, partner_id: b.partner_id || "", dimension: b.dimension || "", value: v });
+// Carrega registros do dia de borda via equality query em created_day (campo string custom —
+// range queries em created_date built-in NÃO funcionam). Filtra in-memory por created_date ∈ [start, end].
+async function boundaryRecords(svc, entityName, filterBase, day, start, end) {
+  const q: any = { ...filterBase, created_day: day };
+  const records = await svc.entities[entityName].filter(q, undefined, 10000);
+  const out: any[] = [];
+  for (const r of records) {
+    if (!r.created_date) continue;
+    const d = new Date(r.created_date);
+    if (d >= start && d <= end) out.push(r);
   }
-  return s;
+  return out;
+}
+
+// KPI de participantes únicos (ou por papel se profileFilter != 'all').
+// bulk = buckets de dias cheios; borda = registros raw dos dias de start/end.
+async function computeUniqueParticipants(svc, evId, profileFilter, startDay, endDay, start, end, driftWarnings) {
+  const metricType = profileFilter === "all" ? "unique_participants" : "participants_by_role";
+  const dimension = profileFilter === "all" ? undefined : profileFilter;
+  const buckets = await fetchBuckets(svc, { eventId: evId, metricType, fromDay: startDay, toDay: endDay, dimension });
+  let bulk = 0;
+  for (const b of buckets) {
+    const v = b.value || 0;
+    if (b.bucket_date > startDay && b.bucket_date < endDay) bulk += v;
+    if (v < 0) driftWarnings.push({ metric: metricType, bucket_date: b.bucket_date, partner_id: b.partner_id || "", dimension: b.dimension || "", value: v });
+  }
+  const filterBase: any = { is_deleted: false };
+  if (evId) filterBase.event_id = evId;
+  const roleFilter = profileFilter === "all" ? null : profileFilter;
+  const startRaw = await boundaryRecords(svc, "Participant", filterBase, startDay, start, end);
+  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, "Participant", filterBase, endDay, start, end);
+  const startCount = startRaw.filter((r) => !roleFilter || r.role_in_event === roleFilter).length;
+  const endCount = endRaw.filter((r) => !roleFilter || r.role_in_event === roleFilter).length;
+  return { count: bulk + startCount + endCount, buckets };
+}
+
+// KPI de leads + agregação por parceiro.
+async function computeLeads(svc, evId, startDay, endDay, start, end, driftWarnings) {
+  const buckets = await fetchBuckets(svc, { eventId: evId, metricType: "leads", fromDay: startDay, toDay: endDay });
+  let bulk = 0;
+  for (const b of buckets) {
+    const v = b.value || 0;
+    if (b.bucket_date > startDay && b.bucket_date < endDay) bulk += v;
+    if (v < 0) driftWarnings.push({ metric: "leads", bucket_date: b.bucket_date, partner_id: b.partner_id || "", dimension: b.dimension || "", value: v });
+  }
+  const filterBase: any = {};
+  if (evId) filterBase.event_id = evId;
+  const startRaw = await boundaryRecords(svc, "Lead", filterBase, startDay, start, end);
+  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, "Lead", filterBase, endDay, start, end);
+  return { count: bulk + startRaw.length + endRaw.length, buckets, boundaryRaw: [...startRaw, ...endRaw] };
+}
+
+// KPI global (users/persons/partners).
+async function computeGlobal(svc, metricType, entityName, filterBase, startDay, endDay, start, end, driftWarnings) {
+  const buckets = await fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType, fromDay: startDay, toDay: endDay });
+  let bulk = 0;
+  for (const b of buckets) {
+    const v = b.value || 0;
+    if (b.bucket_date > startDay && b.bucket_date < endDay) bulk += v;
+    if (v < 0) driftWarnings.push({ metric: metricType, bucket_date: b.bucket_date, partner_id: "", dimension: "", value: v });
+  }
+  const startRaw = await boundaryRecords(svc, entityName, filterBase, startDay, start, end);
+  const endRaw = (startDay === endDay) ? [] : await boundaryRecords(svc, entityName, filterBase, endDay, start, end);
+  return bulk + startRaw.length + endRaw.length;
 }
 
 Deno.serve(async (req) => {
@@ -115,7 +185,7 @@ Deno.serve(async (req) => {
     const svc = base44.asServiceRole;
     const driftWarnings: any[] = [];
 
-    // Events (bounded — dezenas/centenas) + EventStats (O(1)/evento). Sem User/Person/Partner globais.
+    // Events (bounded) + EventStats (O(1)/evento).
     const [events, eventStats] = await Promise.all([
       svc.entities.Event.filter({ is_deleted: false }, '-created_date', 5000),
       svc.entities.EventStats.filter({}, undefined, 5000),
@@ -132,87 +202,61 @@ Deno.serve(async (req) => {
     const finishedNow = currentEvents.filter((e) => e.status === "finished").length;
     const finishedPrev = prevEvents.filter((e) => e.status === "finished").length;
 
-    // === Periodos bucket-based alinhados ao dia (snap to midnight) ===
-    const curSnapStart = snapToMidnight(current.start);
-    const curFromDay = dayKeyOf(curSnapStart);
-    const curToDay = dayKeyOf(current.end);
-    const prevSnapStart = snapToMidnight(previous.start);
-    const prevFromDay = dayKeyOf(prevSnapStart);
-    const prevToDay = dayKeyOf(new Date(curSnapStart.getTime() - 1));
+    // === Dias de borda (reais, não snapped) ===
+    const curStartDay = dayKeyOf(current.start);
+    const curEndDay = dayKeyOf(current.end);
+    const prevStartDay = dayKeyOf(previous.start);
+    const prevEndDay = dayKeyOf(previous.end);
 
-    // === Globais (users/persons/partners) — MetricBucket __global__ ===
-    const [usersCur, usersPrev, personsCur, personsPrev, partnersCur, partnersPrev] = await Promise.all([
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "users", fromDay: curFromDay, toDay: curToDay }),
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "users", fromDay: prevFromDay, toDay: prevToDay }),
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "persons", fromDay: curFromDay, toDay: curToDay }),
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "persons", fromDay: prevFromDay, toDay: prevToDay }),
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "partners", fromDay: curFromDay, toDay: curToDay }),
-      fetchBuckets(svc, { eventId: GLOBAL_EVENT_ID, metricType: "partners", fromDay: prevFromDay, toDay: prevToDay }),
+    // === Globais (users/persons/partners) — bulk + correção de borda (corrente E anterior) ===
+    const [usersNow, usersPrev, personsNow, personsPrev, partnersNow, partnersPrev] = await Promise.all([
+      computeGlobal(svc, "users", "User", {}, curStartDay, curEndDay, current.start, current.end, driftWarnings),
+      computeGlobal(svc, "users", "User", {}, prevStartDay, prevEndDay, previous.start, previous.end, driftWarnings),
+      computeGlobal(svc, "persons", "Person", {}, curStartDay, curEndDay, current.start, current.end, driftWarnings),
+      computeGlobal(svc, "persons", "Person", {}, prevStartDay, prevEndDay, previous.start, previous.end, driftWarnings),
+      computeGlobal(svc, "partners", "Partner", { is_deleted: false }, curStartDay, curEndDay, current.start, current.end, driftWarnings),
+      computeGlobal(svc, "partners", "Partner", { is_deleted: false }, prevStartDay, prevEndDay, previous.start, previous.end, driftWarnings),
     ]);
-    const usersNow = sumRaw(usersCur, driftWarnings, "users");
-    const usersPrevSum = sumRaw(usersPrev, driftWarnings, "users");
-    const personsNow = sumRaw(personsCur, driftWarnings, "persons");
-    const personsPrevSum = sumRaw(personsPrev, driftWarnings, "persons");
-    const partnersNow = sumRaw(partnersCur, driftWarnings, "partners");
-    const partnersPrevSum = sumRaw(partnersPrev, driftWarnings, "partners");
 
-    let uniqNow, uniqPrev, participantsEvolution, leadsNow, leadsPrev, leadsByPartner;
+    // === uniqueParticipants (corrente + anterior) + evolution ===
+    const [curUniq, prevUniq] = await Promise.all([
+      computeUniqueParticipants(svc, evId, profileFilter, curStartDay, curEndDay, current.start, current.end, driftWarnings),
+      computeUniqueParticipants(svc, evId, profileFilter, prevStartDay, prevEndDay, previous.start, previous.end, driftWarnings),
+    ]);
+    const uniqNow = curUniq.count;
+    const uniqPrev = prevUniq.count;
 
-    if (profileFilter === "all") {
-      // uniqNow/Prev via MetricBucket(unique_participants)
-      const [curBuckets, prevBuckets] = await Promise.all([
-        fetchBuckets(svc, { eventId: evId, metricType: "unique_participants", fromDay: curFromDay, toDay: curToDay, partnerId: "" }),
-        fetchBuckets(svc, { eventId: evId, metricType: "unique_participants", fromDay: prevFromDay, toDay: prevToDay, partnerId: "" }),
-      ]);
-      uniqNow = sumRaw(curBuckets, driftWarnings, "unique_participants");
-      uniqPrev = sumRaw(prevBuckets, driftWarnings, "unique_participants");
-
-      const days = (current.end.getTime() - curSnapStart.getTime()) / (1000 * 60 * 60 * 24);
-      const bucketType = getBucketType(days);
-      const displayMap = new Map<string, number>();
-      for (const b of curBuckets) {
-        const displayKey = getBucketKey(b.bucket_date + "T12:00:00", bucketType);
-        const v = b.value || 0;
-        displayMap.set(displayKey, (displayMap.get(displayKey) || 0) + v);
-      }
-      participantsEvolution = Array.from(displayMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, count]) => ({ date: formatBucketLabel(key, bucketType), count }));
-    } else {
-      // profileFilter via MetricBucket(participants_by_role, dimension=role) — escalável, sem load de Participants
-      const [curBuckets, prevBuckets] = await Promise.all([
-        fetchBuckets(svc, { eventId: evId, metricType: "participants_by_role", fromDay: curFromDay, toDay: curToDay, dimension: profileFilter }),
-        fetchBuckets(svc, { eventId: evId, metricType: "participants_by_role", fromDay: prevFromDay, toDay: prevToDay, dimension: profileFilter }),
-      ]);
-      uniqNow = sumRaw(curBuckets, driftWarnings, "participants_by_role");
-      uniqPrev = sumRaw(prevBuckets, driftWarnings, "participants_by_role");
-
-      const days = (current.end.getTime() - curSnapStart.getTime()) / (1000 * 60 * 60 * 24);
-      const bucketType = getBucketType(days);
-      const displayMap = new Map<string, number>();
-      for (const b of curBuckets) {
-        const displayKey = getBucketKey(b.bucket_date + "T12:00:00", bucketType);
-        const v = b.value || 0;
-        displayMap.set(displayKey, (displayMap.get(displayKey) || 0) + v);
-      }
-      participantsEvolution = Array.from(displayMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, count]) => ({ date: formatBucketLabel(key, bucketType), count }));
+    // participantsEvolution (timeseries diário — dia/semana/mês; borda inclusa como dia cheio, coerente com gráfico)
+    const days = (current.end.getTime() - new Date(curStartDay + "T00:00:00").getTime()) / (1000 * 60 * 60 * 24);
+    const bucketType = getBucketType(days);
+    const displayMap = new Map<string, number>();
+    for (const b of curUniq.buckets) {
+      const displayKey = getBucketKey(b.bucket_date + "T12:00:00", bucketType);
+      displayMap.set(displayKey, (displayMap.get(displayKey) || 0) + (b.value || 0));
     }
+    const participantsEvolution = Array.from(displayMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, count]) => ({ date: formatBucketLabel(key, bucketType), count }));
 
-    // Leads Now/Prev + ByPartner via MetricBucket(leads, partner_id)
-    const [curLeadsBuckets, prevLeadsBuckets] = await Promise.all([
-      fetchBuckets(svc, { eventId: evId, metricType: "leads", fromDay: curFromDay, toDay: curToDay }),
-      fetchBuckets(svc, { eventId: evId, metricType: "leads", fromDay: prevFromDay, toDay: prevToDay }),
+    // === leads (corrente + anterior) + byPartner ===
+    const [curLeads, prevLeads] = await Promise.all([
+      computeLeads(svc, evId, curStartDay, curEndDay, current.start, current.end, driftWarnings),
+      computeLeads(svc, evId, prevStartDay, prevEndDay, previous.start, previous.end, driftWarnings),
     ]);
-    leadsNow = sumRaw(curLeadsBuckets, driftWarnings, "leads");
-    leadsPrev = sumRaw(prevLeadsBuckets, driftWarnings, "leads");
+    const leadsNow = curLeads.count;
+    const leadsPrev = prevLeads.count;
 
-    // LeadsByPartner: agrega por partner_id, top 10, resolve nomes on-demand (não carrega Partner global)
+    // LeadsByPartner: bulk (full days) + boundary raw, agregado por partner_id
     const lbpMap = new Map<string, number>();
-    for (const b of curLeadsBuckets) {
-      const pid = b.partner_id || "";
-      lbpMap.set(pid, (lbpMap.get(pid) || 0) + (b.value || 0));
+    for (const b of curLeads.buckets) {
+      if (b.bucket_date > curStartDay && b.bucket_date < curEndDay) {
+        const pid = b.partner_id || "";
+        lbpMap.set(pid, (lbpMap.get(pid) || 0) + (b.value || 0));
+      }
+    }
+    for (const l of curLeads.boundaryRaw) {
+      const pid = l.partner_id || "";
+      lbpMap.set(pid, (lbpMap.get(pid) || 0) + 1);
     }
     const topPartners = Array.from(lbpMap.entries())
       .sort((a, b) => b[1] - a[1])
@@ -223,7 +267,7 @@ Deno.serve(async (req) => {
       const fetched = await svc.entities.Partner.filter({ id: { $in: topPartnerIds } }, undefined, 50);
       for (const p of fetched) partnerNameMap.set(p.id, p.trade_name || p.legal_name || "Sem nome");
     }
-    leadsByPartner = topPartners.map(([pid, leads]) => ({
+    const leadsByPartner = topPartners.map(([pid, leads]) => ({
       name: pid ? (partnerNameMap.get(pid) || "Sem parceiro") : "Sem parceiro",
       leads,
     }));
@@ -234,9 +278,7 @@ Deno.serve(async (req) => {
       { name: "Encerrados", value: finishedNow },
     ];
 
-    // === Top events (all-time) via EventStats ===
-    // Soma todas as linhas de EventStats por evento (pode haver duplicatas por race concorrente
-    // em ensureEventStats; reconcile consolida). Mesmo padrão "soma todos os casados" do MetricBucket.
+    // === Top events (all-time) via EventStats (soma todas as linhas por evento) ===
     const statsByEvent = new Map<string, any>();
     for (const s of eventStats) {
       const cur = statsByEvent.get(s.event_id) || { unique_participants_count: 0, total_leads_count: 0 };
@@ -261,11 +303,11 @@ Deno.serve(async (req) => {
 
     return Response.json({
       kpis: {
-        users: { count: usersNow, delta: pctChange(usersNow, usersPrevSum) },
-        persons: { count: personsNow, delta: pctChange(personsNow, personsPrevSum) },
+        users: { count: usersNow, delta: pctChange(usersNow, usersPrev) },
+        persons: { count: personsNow, delta: pctChange(personsNow, personsPrev) },
         eventsActive: { count: activeNow, delta: pctChange(activeNow, activePrev) },
         eventsFinished: { count: finishedNow, delta: pctChange(finishedNow, finishedPrev) },
-        partners: { count: partnersNow, delta: pctChange(partnersNow, partnersPrevSum) },
+        partners: { count: partnersNow, delta: pctChange(partnersNow, partnersPrev) },
         uniqueParticipants: { count: uniqNow, delta: pctChange(uniqNow, uniqPrev) },
         leads: { count: leadsNow, delta: pctChange(leadsNow, leadsPrev) },
       },

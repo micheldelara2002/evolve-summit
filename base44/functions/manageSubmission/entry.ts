@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { verifyEventMembership, EVENT_CURATOR_ROLES } from "../../shared/eventAuth.ts";
-import { incUniqueParticipant } from "../../shared/businessMetrics.ts";
+import { incUniqueParticipant, incParticipantsByRole, moveParticipantsByRole } from "../../shared/businessMetrics.ts";
 
 /**
  * Gerencia o ciclo de vida de uma Submission (Call for Papers).
@@ -79,11 +79,16 @@ export default async function(req: Request): Promise<Response> {
           person_id: submission.person_id,
           role_in_event: 'speaker',
           registration_status: 'registered',
+          created_day: new Date().toISOString().slice(0, 10),
         });
-        // P0.3 — mantém EventStats + MetricBucket do dashboard
+        // P0.3 — mantém EventStats + MetricBucket do dashboard (unique + participants_by_role)
         await incUniqueParticipant(svc, eventId, participant.created_date);
+        await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
       } else if (participant.role_in_event !== 'speaker') {
+        const oldRole = participant.role_in_event;
         await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
+        // P0.3 — move o bucket participants_by_role do papel antigo para speaker (unique não muda)
+        await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
       }
 
       // Cria Session vinculada à submission (status "aprovada mas a completar")

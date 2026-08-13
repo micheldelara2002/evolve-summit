@@ -70,7 +70,8 @@ export default async function(req) {
     const person = await base44.asServiceRole.entities.Person.create({
       full_name: resolvedName,
       contact_email: resolvedEmail,
-      is_active: true
+      is_active: true,
+      created_day: new Date().toISOString().slice(0, 10)
     });
     // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
     try { await incPersons(base44.asServiceRole, person.created_date); } catch {}

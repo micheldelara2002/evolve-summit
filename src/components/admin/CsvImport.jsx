@@ -158,6 +158,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
             bio: sanitizeText((row.sobre_mim || "").trim()),
             role_in_event: "attendee",
             registration_status: "registered",
+            created_day: new Date().toISOString().slice(0, 10),
             is_deleted: false,
           },
         });
@@ -224,6 +225,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
             bio: sanitizeText(gp.bio || ""),
             role_in_event: "attendee",
             registration_status: "registered",
+            created_day: new Date().toISOString().slice(0, 10),
             is_deleted: false,
             import_id: importRecord.id,
           });

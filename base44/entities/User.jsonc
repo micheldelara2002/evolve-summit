@@ -28,6 +28,10 @@
       ],
       "default": "dark",
       "description": "Prefer\u00eancia de tema visual do usu\u00e1rio"
+    },
+    "created_day": {
+      "type": "string",
+      "description": "P0.3 \u2014 Chave do dia (YYYY-MM-DD) derivada do created_date. Usada para corre\u00e7\u00e3o de borda no Business Dashboard (equality query). Populado no signup via workflow (maintainBusinessCounter incUsers); backfill via reconcileGlobalMetrics."
     }
   }
 }

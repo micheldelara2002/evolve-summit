@@ -49,6 +49,10 @@
       "default": true,
       "description": "Se a empresa est\u00e1 ativa"
     },
+    "created_day": {
+      "type": "string",
+      "description": "P0.3 \u2014 Chave do dia (YYYY-MM-DD) derivada do created_date. Usada para corre\u00e7\u00e3o de borda no Business Dashboard (equality query). Populado no create; backfill via reconcileGlobalMetrics."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

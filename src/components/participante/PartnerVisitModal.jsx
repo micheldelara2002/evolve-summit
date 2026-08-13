@@ -69,6 +69,7 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
         participant_email: person?.contact_email || "",
         source: "booth_scan",
         visited_at: new Date().toISOString(),
+        created_day: new Date().toISOString().slice(0, 10),
         person_phone: person?.phone || "",
         person_linkedin: person?.linkedin || "",
         person_company: person?.company || "",

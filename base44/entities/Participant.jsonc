@@ -106,6 +106,10 @@
       "type": "string",
       "description": "ID do usu\u00e1rio (staff/gerente) que confirmou o check-in"
     },
+    "created_day": {
+      "type": "string",
+      "description": "P0.3 \u2014 Chave do dia (YYYY-MM-DD) derivada do created_date. Usada para corre\u00e7\u00e3o de borda no Business Dashboard (equality query), j\u00e1 que range queries no created_date (built-in) n\u00e3o funcionam. Populado em todos os create paths; backfill via reconcileBusinessMetrics."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

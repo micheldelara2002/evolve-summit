@@ -127,7 +127,7 @@ function PartnerFormDialog({ partner, onClose, onSaved, allPartners = [] }) {
       if (partner?.id) {
         await base44.entities.Partner.update(partner.id, payload);
       } else {
-        const created = await base44.entities.Partner.create(payload);
+        const created = await base44.entities.Partner.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
         // P0.3 — bucket global diário de partners (best-effort; reconcile corrige drift)
         try { await incPartnersCounter(created?.created_date); } catch {}
       }

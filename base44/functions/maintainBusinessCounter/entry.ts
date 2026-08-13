@@ -72,6 +72,13 @@ Deno.serve(async (req) => {
       const { createdDateISO } = body;
       if (!createdDateISO) return Response.json({ error: 'createdDateISO obrigatório' }, { status: 400 });
       await incUsers(svc, createdDateISO);
+      // P0.3 — popula created_day no User para correção de borda do dashboard (equality query).
+      // User é criado pelo auth (platform-owned); este handler (chamado pelo workflow de signup)
+      // é o único hook pós-signup. Best-effort: reconcileGlobalMetrics faz backfill se falhar.
+      try {
+        const dk = new Date(createdDateISO).toISOString().slice(0, 10);
+        await svc.entities.User.update(user.id, { created_day: dk });
+      } catch {}
       return Response.json({ ok: true });
     }
     if (action === 'incPersons') {
