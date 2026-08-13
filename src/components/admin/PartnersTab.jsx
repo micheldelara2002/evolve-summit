@@ -144,7 +144,7 @@ function AssociatePartnerModal({ eventId, existingEventPartners = [], onClose, o
             });
           } else {
             const created = await base44.entities.Participant.create(payload);
-            await incParticipantCounter(eventId, created?.created_date);
+            await incParticipantCounter(eventId, created?.created_date, "partner_rep");
           }
         }
       }

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { incPersons } from "../../shared/businessMetrics.ts";
 
 // P0.4 + P0 residual — Hardened identity resolution.
 //
@@ -71,6 +72,8 @@ export default async function(req) {
       contact_email: resolvedEmail,
       is_active: true
     });
+    // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+    try { await incPersons(base44.asServiceRole, person.created_date); } catch {}
 
     return Response.json({ status: "created", person_id: person.id });
   } catch (error) {

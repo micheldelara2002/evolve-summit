@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
+import { incPartnersCounter, decPartnersCounter } from "@/lib/businessCounters";
 import { uploadFile } from "@/lib/apiClient";
 import PageHeader from "@/components/layout/PageHeader";
 
@@ -126,7 +127,9 @@ function PartnerFormDialog({ partner, onClose, onSaved, allPartners = [] }) {
       if (partner?.id) {
         await base44.entities.Partner.update(partner.id, payload);
       } else {
-        await base44.entities.Partner.create(payload);
+        const created = await base44.entities.Partner.create(payload);
+        // P0.3 — bucket global diário de partners (best-effort; reconcile corrige drift)
+        try { await incPartnersCounter(created?.created_date); } catch {}
       }
       onSaved();
     } catch (err) { toast.error("Erro: " + err.message); }
@@ -448,6 +451,8 @@ export default function AdminPartners() {
 
   const handleDelete = async (partner) => {
     await base44.entities.Partner.update(partner.id, { is_deleted: true });
+    // P0.3 — decrementa o bucket global diário de partners (soft-delete)
+    try { await decPartnersCounter(partner?.created_date); } catch {}
     queryClient.invalidateQueries({ queryKey: ["admin_partners"] });
     toast.success("Empresa removida.");
   };

@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
-import { incParticipantCounter, decParticipantCounter } from "@/lib/businessCounters";
+import { incParticipantCounter, decParticipantCounter, moveParticipantRoleCounter } from "@/lib/businessCounters";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -235,7 +235,7 @@ export default function PessoasTab({
       return;
     }
     await base44.entities.Participant.update(pessoa.id, { is_deleted: true });
-    await decParticipantCounter(eventId, pessoa?.created_date);
+    await decParticipantCounter(eventId, pessoa?.created_date, pessoa?.role_in_event);
     logAudit({ event_id: eventId, action: "soft_delete", entity_type: "Participant", entity_id: pessoa.id, user,
       details: { field: "vínculo_evento", new_value: "removido" } });
     invalidate();
@@ -509,7 +509,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
       registration_status: "registered",
       is_deleted: false,
     });
-    await incParticipantCounter(eventId, created?.created_date);
+    await incParticipantCounter(eventId, created?.created_date, "attendee");
     logAudit({ event_id: eventId, action: "create", entity_type: "Participant", entity_id: person.id, user,
       details: { field: "vínculo_evento", new_value: "associado" } });
     setAssociating(false);
@@ -746,6 +746,8 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
       else if (roles.includes("team")) newRole = "team";
       if (newRole !== pessoa.role_in_event) {
         await base44.entities.Participant.update(pessoa.id, { role_in_event: newRole });
+        // P0.3 — move o bucket participants_by_role do papel antigo para o novo (unique não muda)
+        await moveParticipantRoleCounter(eventId, pessoa.created_date, pessoa.role_in_event, newRole);
         logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
           details: { field: "role_in_event", old_value: pessoa.role_in_event, new_value: newRole } });
       }

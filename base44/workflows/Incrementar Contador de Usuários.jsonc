@@ -1,0 +1,40 @@
+{
+  "name": "Incrementar Contador de Usu\u00e1rios",
+  "description": "No signup de um novo usu\u00e1rio do app, incrementa o bucket global di\u00e1rio de users (MetricBucket metric_type=users, event_id=__global__) para alimentar o KPI usersNow/Prev do Business Dashboard sem carregar a base global de Users.",
+  "trigger": {
+    "condition": "${ .trigger.event_type == \"signup\" }",
+    "config": {
+      "trigger_type": "app_user_auth",
+      "events": [
+        "signup"
+      ]
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "increment_user_counter_on_signup",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "inc_users": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "maintainBusinessCounter",
+            "args": {
+              "action": "incUsers",
+              "createdDateISO": "${ .trigger.occurred_at }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Incrementar users",
+            "description": "Bucket global di\u00e1rio de usu\u00e1rios"
+          }
+        }
+      }
+    ]
+  }
+}

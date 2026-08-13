@@ -195,7 +195,8 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       try {
         const createdBatch = await base44.entities.Participant.bulkCreate(batch);
         novosCriados += batch.length;
-        await bulkIncParticipantsCounter(eventId, (createdBatch || []).map((p) => p?.created_date).filter(Boolean));
+        const createdDates = (createdBatch || []).map((p) => p?.created_date).filter(Boolean);
+        await bulkIncParticipantsCounter(eventId, createdDates, createdDates.map(() => "attendee"));
       } catch {
         errosCriacao += batch.length;
       }
@@ -226,7 +227,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
             is_deleted: false,
             import_id: importRecord.id,
           });
-          await incParticipantCounter(eventId, created?.created_date);
+          await incParticipantCounter(eventId, created?.created_date, "attendee");
           existentesVinculados++;
         } catch {
           errosCriacao++;

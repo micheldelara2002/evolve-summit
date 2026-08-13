@@ -4,10 +4,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 // autoritativas (Participant is_deleted:false, Lead). Admin-only, bounded por
 // cursor/batches (BATCH=500). É a rede de segurança para drift nos counters.
 //
+// *** INVARIANTE DE NEGÓCIO (documentada e testada) ***
+// Uma Person aparece no MÁXIMO uma vez como Participant(is_deleted:false) por evento.
+// Logo unique_participants(evento) = count de Participant(is_deleted:false), e
+// participants_by_role(evento,role,day) = count de Participant(is_deleted:false, role, day).
+// Isso elimina a necessidade de um Set global de dedup — a reconciliação usa contagem
+// direta com memória O(dias × papéis distintos), verdadeiramente bounded (suporta 5M
+// Participants sem crescimento de memória com N).
+// Risco residual: se a invariante for violada (pessoa duplicada no mesmo evento), a
+// contagem superestima. O app impede duplicatas no create (PersonFormDialog/PessoasTab/
+// CsvImport checam person_id/email antes de criar). reconcile NÃO detecta duplicatas
+// (detectá-las exigiria O(N) de memória, contradizendo o requisito bounded).
+//
 // Fonte da verdade:
-//   unique_participants = cardinalidade de (person_id || id) entre Participants is_deleted:false
-//   total_leads         = count de Leads (append-only)
-//   bucket[day]         = unique_participants criados naquele dia (is_deleted:false)
+//   unique_participants        = count de Participant(is_deleted:false)
+//   participants_by_role[d,r]  = count de Participant(is_deleted:false, role=r, day=d)
+//   total_leads                = count de Leads (append-only)
+//   leads[d,partner]           = count de Leads criados no dia d para o partner
 //
 // dryRun=true: reporta drift sem aplicar.
 
@@ -28,8 +41,11 @@ Deno.serve(async (req) => {
     if (!eventId) return Response.json({ error: 'eventId obrigatório' }, { status: 400 });
     const svc = base44.asServiceRole;
 
-    // --- Pass 1: participants is_deleted:false, cursor em 'id' desc ---
-    const partByDay = new Map<string, Set<string>>(); // day -> Set(person_id||id)
+    // --- Pass 1: participants is_deleted:false, cursor em 'id' desc, contagem direta ---
+    // Memória: Map<day, number> + Map<day|role, number> = O(dias × papéis). Sem Set de IDs.
+    let totalUnique = 0;
+    const uniqByDay = new Map<string, number>();
+    const roleByDay = new Map<string, number>(); // key: day|role
     let pcursor: string | null = null;
     while (true) {
       const q: any = { event_id: eventId, is_deleted: false };
@@ -38,15 +54,19 @@ Deno.serve(async (req) => {
       if (batch.length === 0) break;
       pcursor = batch[batch.length - 1].id;
       for (const p of batch) {
+        if (!p.created_date) continue;
         const dk = dayKey(p.created_date);
-        if (!partByDay.has(dk)) partByDay.set(dk, new Set());
-        partByDay.get(dk).add(p.person_id || p.id);
+        totalUnique++;
+        uniqByDay.set(dk, (uniqByDay.get(dk) || 0) + 1);
+        const role = p.role_in_event || "attendee";
+        const rk = `${dk}|${role}`;
+        roleByDay.set(rk, (roleByDay.get(rk) || 0) + 1);
       }
     }
 
     // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
     let totalLeads = 0;
-    const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId -> count
+    const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId
     let lcursor: string | null = null;
     while (true) {
       const q: any = { event_id: eventId };
@@ -56,19 +76,12 @@ Deno.serve(async (req) => {
       lcursor = batch[batch.length - 1].id;
       for (const l of batch) {
         totalLeads++;
+        if (!l.created_date) continue;
         const dk = dayKey(l.created_date);
         const key = `${dk}|${l.partner_id || ""}`;
         leadsByDayPartner.set(key, (leadsByDayPartner.get(key) || 0) + 1);
       }
     }
-
-    // --- Alvos ---
-    let targetUnique = 0;
-    for (const set of partByDay.values()) targetUnique += 0; // placeholder, recalc below
-    // unique global = union de todos os sets
-    const unionSet = new Set<string>();
-    for (const set of partByDay.values()) for (const k of set) unionSet.add(k);
-    targetUnique = unionSet.size;
 
     // --- Estado atual ---
     const existing = await svc.entities.EventStats.filter({ event_id: eventId });
@@ -76,7 +89,7 @@ Deno.serve(async (req) => {
     const currentUnique = cur?.unique_participants_count || 0;
     const currentLeads = cur?.total_leads_count || 0;
     const drift = {
-      unique: targetUnique - currentUnique,
+      unique: totalUnique - currentUnique,
       leads: totalLeads - currentLeads,
     };
 
@@ -85,7 +98,7 @@ Deno.serve(async (req) => {
         eventId,
         dryRun: true,
         current: { unique: currentUnique, leads: currentLeads },
-        target: { unique: targetUnique, leads: totalLeads },
+        target: { unique: totalUnique, leads: totalLeads },
         drift,
       });
     }
@@ -96,19 +109,23 @@ Deno.serve(async (req) => {
     }
     await svc.entities.EventStats.create({
       event_id: eventId,
-      unique_participants_count: targetUnique,
+      unique_participants_count: totalUnique,
       total_leads_count: totalLeads,
     });
 
-    // --- Aplicar MetricBucket (recria limpo) ---
+    // --- Aplicar MetricBucket (recria limpo: unique_participants + participants_by_role + leads) ---
     await svc.entities.MetricBucket.deleteMany({ event_id: eventId });
     const buckets: any[] = [];
-    for (const [day, set] of partByDay.entries()) {
-      buckets.push({ event_id: eventId, metric_type: 'unique_participants', bucket_date: day, partner_id: '', value: set.size });
+    for (const [day, count] of uniqByDay.entries()) {
+      buckets.push({ event_id: eventId, metric_type: 'unique_participants', bucket_date: day, partner_id: '', dimension: '', value: count });
+    }
+    for (const [key, count] of roleByDay.entries()) {
+      const [day, role] = key.split('|');
+      buckets.push({ event_id: eventId, metric_type: 'participants_by_role', bucket_date: day, partner_id: '', dimension: role, value: count });
     }
     for (const [key, count] of leadsByDayPartner.entries()) {
       const [day, partnerId] = key.split('|');
-      buckets.push({ event_id: eventId, metric_type: 'leads', bucket_date: day, partner_id: partnerId || '', value: count });
+      buckets.push({ event_id: eventId, metric_type: 'leads', bucket_date: day, partner_id: partnerId || '', dimension: '', value: count });
     }
     for (let i = 0; i < buckets.length; i += 500) {
       await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
@@ -118,7 +135,7 @@ Deno.serve(async (req) => {
       ok: true,
       eventId,
       applied: true,
-      uniqueParticipants: targetUnique,
+      uniqueParticipants: totalUnique,
       totalLeads,
       bucketsCreated: buckets.length,
       previousDrift: drift,

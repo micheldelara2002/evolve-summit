@@ -1,17 +1,21 @@
 {
   "name": "MetricBucket",
   "type": "object",
-  "description": "P0.3 \u2014 S\u00e9rie temporal di\u00e1ria materializada para o Business Dashboard. unique_participants (por evento) e leads (por evento + partner_id). SOFRE decremento no soft-delete de Participant (preserva sem\u00e2ntica is_deleted:false). Leads s\u00e3o append-only. Reconstru\u00edda por reconcileBusinessMetrics. Queries por bucket_date (string YYYY-MM-DD) funcionam (range queries em created_date n\u00e3o).",
+  "description": "P0.3 \u2014 S\u00e9rie temporal di\u00e1ria materializada. Tipos:\n  unique_participants (por evento, dimension='')\n  leads (por evento + partner_id)\n  participants_by_role (por evento + dimension=role_in_event)\n  users / persons / partners (globais \u2014 event_id='__global__', append-only; partners sofre dec no soft-delete)\nReconstru\u00edda por reconcileBusinessMetrics (por evento) / reconcileGlobalMetrics (globais).\nQueries por bucket_date (string YYYY-MM-DD) funcionam (range queries em created_date N\u00c3O funcionam).\nvalue \u00e9 RAW \u2014 nunca clampado a 0; drift negativo \u00e9 evidenciado pela leitura e corrigido por reconcile.",
   "properties": {
     "event_id": {
       "type": "string",
-      "description": "ID do evento"
+      "description": "ID do evento. '__global__' para m\u00e9tricas globais (users/persons/partners)."
     },
     "metric_type": {
       "type": "string",
       "enum": [
         "unique_participants",
-        "leads"
+        "leads",
+        "participants_by_role",
+        "users",
+        "persons",
+        "partners"
       ],
       "description": "Tipo de m\u00e9trica di\u00e1ria"
     },
@@ -22,12 +26,17 @@
     "partner_id": {
       "type": "string",
       "default": "",
-      "description": "Para m\u00e9trica 'leads': ID do parceiro. Vazio para unique_participants."
+      "description": "Para 'leads': ID do parceiro. Vazio para demais m\u00e9tricas."
+    },
+    "dimension": {
+      "type": "string",
+      "default": "",
+      "description": "Para 'participants_by_role': valor de role_in_event. Vazio para demais m\u00e9tricas. Inclu\u00eddo no filtro apenas quando n\u00e3o-vazio (evita mismatch com buckets legados sem o campo)."
     },
     "value": {
       "type": "number",
       "default": 0,
-      "description": "Contador do bucket"
+      "description": "Contador do bucket (raw; nunca clampado a zero)"
     }
   },
   "required": [
