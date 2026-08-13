@@ -1,7 +1,377 @@
+// =============================================================================
+// P0 NotificationCampaign — Batched dispatch with state machine
+// =============================================================================
+//
+// GARANTIA DE ENTREGA: "at-least-once processing/attempt semantics, with
+// possible duplicate delivery."
+//
+// Diferenciação formal:
+//   - Tentativa de processamento: execução da função (worker run).
+//   - Aceite pelo provider: bulkUpdate delivery_status="sent" (a "entrega"
+//     in-app é o registro ficar visível no inbox do destinatário).
+//   - Entrega efetiva ao usuário: notificação exibida no NotificationInbox
+//     (fora do controle do Base44).
+//
+// STATE MACHINE (NotificationRecipient.delivery_status):
+//   pending → processing → sent   (sucesso)
+//   pending → processing → failed  (erro)
+//
+//   - Recipient é criado como "pending" na fase de resolução.
+//   - Antes do envio, marcado como "processing" (sinal visível de work-in-progress).
+//   - Após sucesso do "envio" (bulkUpdate), marcado como "sent" com delivered_at.
+//   - Em erro, marcado como "failed" com error_reason.
+//   - "sent" é terminal: NUNCA reprocessado.
+//   - Retry processa pending, processing (stuck por crash) e failed.
+//
+// CONCORRÊNCIA — LIMITAÇÕES EXPLÍCITAS (sem CAS/UNIQUE/lock atômico no Base44):
+//
+//   1. campaign.status = "processing" NÃO é um lock.
+//      Interleaving: A lê "pending" → B lê "pending" → A grava "processing" →
+//      B grava "processing" → ambos processam.
+//      status é apenas um guard lógico de aplicação (impede reenvio via UI,
+//      não impede concorrência entre workers).
+//
+//   2. NÃO existe claim/lock atômico de batch.
+//      Dois workers podem ler o mesmo batch de recipients e ambos processar.
+//      Risco residual: duplicate-send (ambos marcam como "sent").
+//
+//   3. idempotency_key (campaignId:userId) é apenas identificação lógica.
+//      Sem UNIQUE constraint, dois workers podem ambos criar recipients
+//      para o mesmo userId (race condition filter→create→filter→create).
+//      A deduplicação via $in query reduz drasticamente a probabilidade
+//      mas NÃO é uma garantia atômica.
+//
+//   4. Retry seguro: recipients "sent" são terminais e nunca reprocessados.
+//      Retry reprocessa apenas pending, processing e failed.
+//
+// PERFORMANCE — O(batch) memory:
+//   - Audiência resolvida em batches de 500 (paginação por skip/limit).
+//   - Sem User.list() global.
+//   - Sem array global de recipients.
+//   - Deduplicação por batch via $in query (1 query por batch, não N queries).
+//   - Set local de recipients apenas por batch (O(500)).
+//
+// NOTA: O Set de emails de Participants (audiência "all") é O(P) onde P =
+// participantes do evento. Isto é um requisito de business logic (dedup de
+// email entre Participants), não um Set global de recipients. É necessário
+// para preservar a regra de audiência exata do código original.
+// =============================================================================
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
+const BATCH_SIZE = 500;
+
+type Recipient = { user_id: string; name: string; email: string; role: string };
+
+// =============================================================================
+// Async Generator: Resolve audience in batches of up to BATCH_SIZE.
+// Yields Recipient[] arrays. Within-batch dedup by user_id is applied.
+// Cross-batch dedup is handled by the caller via $in query.
+// =============================================================================
+async function* resolveAudienceBatches(
+  svc: any,
+  params: {
+    scopeType: string;
+    scopeEventId: string | null;
+    audienceType: string;
+    audienceSegments: string[];
+    senderUser: any;
+    senderPartnerId: string | null;
+  }
+): AsyncGenerator<Recipient[]> {
+  const { scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser, senderPartnerId } = params;
+
+  const isAll = audienceType === "all" || (audienceType === "segment" && audienceSegments.includes("all"));
+
+  if (isAll) {
+    // --- All Users (paginated, O(batch) memory) ---
+    let skip = 0;
+    while (true) {
+      const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
+      if (users.length === 0) break;
+      yield users.map((u: any) => ({
+        user_id: u.id, name: u.full_name || "", email: u.email || "", role: u.role || "",
+      }));
+      skip += BATCH_SIZE;
+      if (users.length < BATCH_SIZE) break;
+    }
+
+    // --- All Participants of the event (paginated, email dedup) ---
+    if (scopeEventId) {
+      skip = 0;
+      // Cross-batch email dedup Set — O(P) where P = event participants.
+      // Business logic requirement: preserves exact same recipient selection
+      // as original code (dedup Participants by email within "all" audience).
+      const emailSeen = new Set<string>();
+      while (true) {
+        const parts = await svc.entities.Participant.filter(
+          { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+        );
+        if (parts.length === 0) break;
+        const batch: Recipient[] = [];
+        for (const p of parts) {
+          const key = p.email?.toLowerCase();
+          if (!key || emailSeen.has(key)) continue;
+          emailSeen.add(key);
+          batch.push({
+            user_id: p.id, name: p.full_name || "", email: p.email || "",
+            role: p.role_in_event || "attendee",
+          });
+        }
+        if (batch.length > 0) yield batch;
+        skip += BATCH_SIZE;
+        if (parts.length < BATCH_SIZE) break;
+      }
+    }
+  } else if (audienceType === "segment") {
+    // --- Segment: collect User-role filters for single scan ---
+    const userRoleMap: Record<string, string> = {};
+    for (const seg of audienceSegments) {
+      if (seg === "admin") userRoleMap["admin"] = "admin";
+      if (seg === "gerente") { userRoleMap["gerente"] = "gerente"; userRoleMap["manager"] = "gerente"; }
+      if (seg === "attendee" && !scopeEventId) userRoleMap["user"] = "user";
+    }
+
+    const userRoles = Object.keys(userRoleMap);
+    if (userRoles.length > 0) {
+      let skip = 0;
+      while (true) {
+        const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
+        if (users.length === 0) break;
+        const batch: Recipient[] = users
+          .filter((u: any) => userRoles.includes(u.role))
+          .map((u: any) => ({
+            user_id: u.id, name: u.full_name || "", email: u.email || "",
+            role: userRoleMap[u.role] || u.role || "",
+          }));
+        if (batch.length > 0) yield batch;
+        skip += BATCH_SIZE;
+        if (users.length < BATCH_SIZE) break;
+      }
+    }
+
+    // --- Participant-based segments (paginated per role) ---
+    const participantSegMap: Record<string, string> = {
+      gerente: "manager",
+      staff: "team",
+      palestrante: "speaker",
+      representante: "partner_rep",
+      attendee: "attendee",
+    };
+    const roleLabels: Record<string, string> = {
+      gerente: "manager",
+      staff: "team",
+      palestrante: "speaker",
+      representante: "representante",
+      attendee: "attendee",
+    };
+
+    for (const seg of audienceSegments) {
+      if (!participantSegMap[seg]) continue;
+      if (!scopeEventId) continue; // attendee without event handled by Users above
+      const roleInEvent = participantSegMap[seg];
+      const roleLabel = roleLabels[seg];
+      let skip = 0;
+      while (true) {
+        const parts = await svc.entities.Participant.filter(
+          { event_id: scopeEventId, role_in_event: roleInEvent, is_deleted: false },
+          "id", BATCH_SIZE, skip
+        );
+        if (parts.length === 0) break;
+        yield parts.map((p: any) => ({
+          user_id: p.id, name: p.full_name || "", email: p.email || "", role: roleLabel,
+        }));
+        skip += BATCH_SIZE;
+        if (parts.length < BATCH_SIZE) break;
+      }
+    }
+  } else if (audienceType === "my_leads" && senderUser && senderPartnerId && scopeEventId) {
+    let skip = 0;
+    while (true) {
+      const leads = await svc.entities.Lead.filter(
+        { event_id: scopeEventId, partner_id: senderPartnerId },
+        "id", BATCH_SIZE, skip
+      );
+      if (leads.length === 0) break;
+      yield leads.map((l: any) => ({
+        user_id: l.participant_id, name: l.participant_name || "",
+        email: l.participant_email || "", role: "attendee",
+      }));
+      skip += BATCH_SIZE;
+      if (leads.length < BATCH_SIZE) break;
+    }
+  } else if (audienceType === "partner_all_event" && scopeEventId) {
+    let skip = 0;
+    while (true) {
+      const parts = await svc.entities.Participant.filter(
+        { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+      );
+      if (parts.length === 0) break;
+      yield parts.map((p: any) => ({
+        user_id: p.id, name: p.full_name || "", email: p.email || "",
+        role: p.role_in_event || "attendee",
+      }));
+      skip += BATCH_SIZE;
+      if (parts.length < BATCH_SIZE) break;
+    }
+  } else if (audienceType === "partner_leads" && scopeEventId && senderPartnerId) {
+    let skip = 0;
+    while (true) {
+      const leads = await svc.entities.Lead.filter(
+        { event_id: scopeEventId, partner_id: senderPartnerId },
+        "id", BATCH_SIZE, skip
+      );
+      if (leads.length === 0) break;
+      yield leads.map((l: any) => ({
+        user_id: l.participant_id, name: l.participant_name || "",
+        email: l.participant_email || "", role: "attendee",
+      }));
+      skip += BATCH_SIZE;
+      if (leads.length < BATCH_SIZE) break;
+    }
+  } else if (audienceType === "my_attendees" && senderUser && scopeEventId) {
+    // Complex resolution: speaker → sessions → attendance → participants
+    const persons = await svc.entities.Person.filter({ contact_email: senderUser.email, is_active: true });
+    const speakerPerson = persons?.[0];
+    if (speakerPerson) {
+      const speakerParts = await svc.entities.Participant.filter({
+        event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false,
+      });
+      const speakerPartIds = speakerParts.map((p: any) => p.id);
+      if (speakerPartIds.length > 0) {
+        const allSessions = await svc.entities.Session.filter({ event_id: scopeEventId, is_deleted: false });
+        const speakerSessionIds = allSessions
+          .filter((s: any) => speakerPartIds.includes(s.speaker_id))
+          .map((s: any) => s.id);
+        if (speakerSessionIds.length > 0) {
+          const attendance = await svc.entities.SessionAttendance.filter({
+            event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds },
+          });
+          // attendedParticipantIds is O(attendance) — business logic, not recipient Set
+          const attendedParticipantIds = new Set(attendance.map((a: any) => a.participant_id));
+          let skip = 0;
+          while (true) {
+            const parts = await svc.entities.Participant.filter(
+              { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+            );
+            if (parts.length === 0) break;
+            const batch: Recipient[] = parts
+              .filter((p: any) => attendedParticipantIds.has(p.id))
+              .map((p: any) => ({
+                user_id: p.id, name: p.full_name || "", email: p.email || "",
+                role: p.role_in_event || "attendee",
+              }));
+            if (batch.length > 0) yield batch;
+            skip += BATCH_SIZE;
+            if (parts.length < BATCH_SIZE) break;
+          }
+        }
+      }
+    }
+  }
+
+  // --- Sender always receives their own message ---
+  if (senderUser) {
+    yield [{
+      user_id: senderUser.id,
+      name: senderUser.full_name || "",
+      email: senderUser.email || "",
+      role: senderUser.role || "",
+    }];
+  }
+}
+
+// =============================================================================
+// Process a batch: within-batch dedup → cross-batch dedup via $in → bulkCreate
+// =============================================================================
+async function processRecipientBatch(
+  svc: any,
+  campaignId: string,
+  recipients: Recipient[],
+  stats: any
+): Promise<void> {
+  if (recipients.length === 0) return;
+
+  // Within-batch dedup by user_id (O(batch) Set)
+  const localSeen = new Set<string>();
+  const unique: Recipient[] = [];
+  for (const r of recipients) {
+    if (!r.user_id || localSeen.has(r.user_id)) continue;
+    localSeen.add(r.user_id);
+    unique.push(r);
+  }
+  if (unique.length === 0) return;
+
+  // Cross-batch dedup: single $in query (1 query per batch, not N)
+  const existing = await svc.entities.NotificationRecipient.filter({
+    campaign_id: campaignId,
+    recipient_user_id: { $in: unique.map((r) => r.user_id) },
+  }, undefined, unique.length);
+  stats.queries++;
+  stats.resolutionBatches++;
+  const existingIds = new Set(existing.map((r: any) => r.recipient_user_id));
+
+  const toCreate = unique.filter((r) => !existingIds.has(r.user_id));
+  if (toCreate.length === 0) return;
+
+  // Create as "pending" — NOT yet delivered
+  await svc.entities.NotificationRecipient.bulkCreate(
+    toCreate.map((r) => ({
+      campaign_id: campaignId,
+      recipient_user_id: r.user_id,
+      recipient_name: r.name,
+      recipient_email: r.email,
+      recipient_role: r.role,
+      delivery_status: "pending",
+    }))
+  );
+  stats.queries++;
+  stats.created += toCreate.length;
+}
+
+// =============================================================================
+// Count recipients by status — paginated, O(batch) memory
+// =============================================================================
+async function countRecipientsByStatus(
+  svc: any,
+  campaignId: string,
+  stats: any
+): Promise<{ total: number; sent: number; failed: number; pending: number }> {
+  let total = 0, sent = 0, failed = 0, pending = 0;
+  let skip = 0;
+  while (true) {
+    const batch = await svc.entities.NotificationRecipient.filter(
+      { campaign_id: campaignId }, "id", BATCH_SIZE, skip
+    );
+    stats.queries++;
+    if (batch.length === 0) break;
+    for (const r of batch) {
+      total++;
+      if (r.delivery_status === "sent") sent++;
+      else if (r.delivery_status === "failed") failed++;
+      else pending++; // pending or processing
+    }
+    if (batch.length < BATCH_SIZE) break;
+    skip += BATCH_SIZE;
+  }
+  return { total, sent, failed, pending };
+}
+
+// =============================================================================
+// Main handler
+// =============================================================================
 Deno.serve(async (req) => {
+  const stats = {
+    resolutionBatches: 0,
+    deliveryBatches: 0,
+    created: 0,
+    delivered: 0,
+    failed: 0,
+    queries: 0,
+    startTime: Date.now(),
+  };
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -15,38 +385,26 @@ Deno.serve(async (req) => {
     const campaign = campaignRecords[0];
     if (!campaign) return Response.json({ error: 'Campanha não encontrada.' }, { status: 404 });
 
-    // P0.2: Event-scoped authorization
+    // === Authorization (UNCHANGED) ===
     if (campaign.scope_event_id) {
       const broadcastAudiences = ['all', 'segment', 'manual'];
       if (broadcastAudiences.includes(campaign.audience_type)) {
-        // Broadcast campaigns require manager/team role for the event
         const canDispatch = await verifyEventMembership(base44, user, campaign.scope_event_id, EVENT_MANAGER_ROLES);
         if (!canDispatch.authorized) {
           return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
         }
       } else {
-        // Partner/speaker-scoped campaigns.
-        // P0 residual: sender_user_id is REQUIRED — no anonymous partner/speaker sends.
-        // This closes the gap where a campaign without sender_user_id could be sent by
-        // anyone with any event membership.
         if (!campaign.sender_user_id) {
           return Response.json({ error: 'Campanhas partner/speaker requerem sender_user_id.' }, { status: 403 });
         }
         if (campaign.sender_user_id !== user.id) {
           return Response.json({ error: 'Sem permissão para enviar esta campanha.' }, { status: 403 });
         }
-
-        // P0 residual: validate senderPartnerId against the authenticated user + event.
-        // Partner audiences (my_leads, partner_leads, partner_all_event) use
-        // senderPartnerId to filter leads — a malicious user could otherwise pass
-        // another partner's ID and send to their leads.
         const partnerAudiences = ['my_leads', 'partner_leads', 'partner_all_event'];
         if (partnerAudiences.includes(campaign.audience_type) && senderPartnerId) {
-          // Validate: the authenticated user is a representative of this partner
           let repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
             partner_id: senderPartnerId, user_id: user.id, is_active: true, is_deleted: false,
           });
-          // Fallback: resolve via Person if user_id not set on the rep record
           if (repRecords.length === 0) {
             const persons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email, is_active: true });
             if (persons.length > 0) {
@@ -58,7 +416,6 @@ Deno.serve(async (req) => {
           if (repRecords.length === 0) {
             return Response.json({ error: 'senderPartnerId não pertence ao usuário autenticado.' }, { status: 403 });
           }
-          // Validate: the partner is associated with the event
           const eventPartners = await base44.asServiceRole.entities.EventPartner.filter({
             event_id: campaign.scope_event_id, partner_id: senderPartnerId, is_active: true, is_deleted: false,
           });
@@ -66,211 +423,127 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Partner não está associado a este evento.' }, { status: 403 });
           }
         }
-
         const hasAnyMembership = await verifyAnyEventMembership(base44, user, campaign.scope_event_id);
         if (!hasAnyMembership.authorized) {
           return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
         }
       }
     } else {
-      // Global campaign (no event scope) — admin only
       if (user.role !== 'admin') {
         return Response.json({ error: 'Apenas administradores podem enviar campanhas globais.' }, { status: 403 });
       }
     }
 
-    // Mark as processing
-    await base44.asServiceRole.entities.NotificationCampaign.update(campaign.id, {
+    const svc = base44.asServiceRole;
+
+    // === Logical guard: campaign.status = "processing" ===
+    // NOT a lock. Without CAS/UNIQUE/atomic-lock, two concurrent workers can
+    // both read "pending" and both set "processing". This is an application-
+    // level guard to prevent accidental re-dispatch via UI, NOT a concurrency
+    // safety mechanism. Risco residual: duplicate processing se dois workers
+    // executam simultaneamente.
+    await svc.entities.NotificationCampaign.update(campaign.id, {
       status: "processing",
     });
+    stats.queries++;
 
-    let recipients = [];
+    // === Phase 1: Resolve audience + create recipients as "pending" ===
+    // Batched: O(batch) memory. No User.list() global. No global recipients Set.
+    // Dedup via $in query per batch (1 query, not N per batch).
     try {
-      recipients = await resolveRecipientsServerSide(base44, {
+      for await (const batch of resolveAudienceBatches(svc, {
         scopeType: campaign.scope_type,
         scopeEventId: campaign.scope_event_id,
         audienceType: campaign.audience_type,
         audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
         senderUser: user,
         senderPartnerId,
-      });
+      })) {
+        await processRecipientBatch(svc, campaign.id, batch, stats);
+      }
     } catch (e) {
-      await base44.asServiceRole.entities.NotificationCampaign.update(campaign.id, {
-        status: "failed",
-      });
-      return Response.json({ ok: false, error: 'Falha ao resolver destinatários: ' + e.message }, { status: 500 });
+      await svc.entities.NotificationCampaign.update(campaign.id, { status: "failed" });
+      stats.queries++;
+      return Response.json({
+        ok: false,
+        error: 'Falha ao resolver destinatários: ' + e.message,
+        stats,
+      }, { status: 500 });
     }
 
-    // Deduplicate against existing recipients
-    const existing = await base44.asServiceRole.entities.NotificationRecipient.filter({ campaign_id: campaign.id });
-    const existingIds = new Set(existing.map((r) => r.recipient_user_id));
+    // === Phase 2: Deliver — process pending/processing/failed → sent ===
+    // Query always starts at skip=0: processed records leave the result set
+    // (their delivery_status changes from pending/processing/failed to sent/failed).
+    // "sent" is terminal and never reprocessed.
+    while (true) {
+      const batch = await svc.entities.NotificationRecipient.filter(
+        {
+          campaign_id: campaign.id,
+          delivery_status: { $in: ["pending", "processing", "failed"] },
+        },
+        "id", BATCH_SIZE, 0
+      );
+      stats.queries++;
+      if (batch.length === 0) break;
+
+      // Mark as "processing" — best-effort, NOT a lock.
+      // Two workers could both grab this batch (no atomic claim exists in Base44).
+      // Risco residual: duplicate-send (ambos marcam como "sent").
+      await svc.entities.NotificationRecipient.bulkUpdate(
+        batch.map((r: any) => ({ id: r.id, delivery_status: "processing" }))
+      );
+      stats.queries++;
+
+      try {
+        // "Send" — update to "sent" with delivered_at.
+        // In-app delivery: the notification becomes visible in the recipient's
+        // NotificationInbox (which filters by delivery_status: "sent").
+        const now = new Date().toISOString();
+        await svc.entities.NotificationRecipient.bulkUpdate(
+          batch.map((r: any) => ({ id: r.id, delivery_status: "sent", delivered_at: now }))
+        );
+        stats.queries++;
+        stats.delivered += batch.length;
+      } catch (e: any) {
+        await svc.entities.NotificationRecipient.bulkUpdate(
+          batch.map((r: any) => ({ id: r.id, delivery_status: "failed", error_reason: e.message }))
+        );
+        stats.queries++;
+        stats.failed += batch.length;
+      }
+
+      stats.deliveryBatches++;
+      if (batch.length < BATCH_SIZE) break;
+    }
+
+    // === Final count (paginated, O(batch) memory) ===
+    const counts = await countRecipientsByStatus(svc, campaign.id, stats);
 
     const now = new Date().toISOString();
-    const toCreate = recipients.filter((r) => !existingIds.has(r.user_id));
+    const campaignStatus = counts.pending > 0
+      ? "partially_sent"
+      : (counts.failed > 0 ? "partially_sent" : "sent");
 
-    let createdCount = 0;
-    if (toCreate.length > 0) {
-      try {
-        await base44.asServiceRole.entities.NotificationRecipient.bulkCreate(
-          toCreate.map((r) => ({
-            campaign_id: campaign.id,
-            recipient_user_id: r.user_id,
-            recipient_name: r.name,
-            recipient_email: r.email,
-            recipient_role: r.role,
-            delivery_status: "sent",
-            delivered_at: now,
-          }))
-        );
-        createdCount = toCreate.length;
-      } catch (e) {
-        await base44.asServiceRole.entities.NotificationCampaign.update(campaign.id, {
-          status: "partially_sent",
-          sent_at: now,
-          recipients_count: existing.length,
-          delivered_count: existing.length,
-        });
-        return Response.json({ ok: false, error: 'Falha parcial ao criar destinatários: ' + e.message }, { status: 500 });
-      }
-    }
-
-    const totalRecipients = existing.length + createdCount;
-
-    // Mark as sent
-    await base44.asServiceRole.entities.NotificationCampaign.update(campaign.id, {
-      status: "sent",
+    await svc.entities.NotificationCampaign.update(campaign.id, {
+      status: campaignStatus,
       sent_at: now,
-      recipients_count: totalRecipients,
-      delivered_count: totalRecipients,
+      recipients_count: counts.total,
+      delivered_count: counts.sent,
     });
+    stats.queries++;
 
-    return Response.json({ ok: true, recipients_count: totalRecipients });
+    stats.totalTimeMs = Date.now() - stats.startTime;
+
+    return Response.json({
+      ok: true,
+      recipients_count: counts.total,
+      delivered_count: counts.sent,
+      failed_count: counts.failed,
+      pending_count: counts.pending,
+      stats,
+    });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    stats.totalTimeMs = Date.now() - stats.startTime;
+    return Response.json({ error: error.message, stats }, { status: 500 });
   }
 });
-
-async function resolveRecipientsServerSide(base44, { scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser, senderPartnerId }) {
-  const recipients = [];
-  const seen = new Set();
-
-  const addRecipient = (userId, name, email, role) => {
-    if (!userId || seen.has(userId)) return;
-    seen.add(userId);
-    recipients.push({ user_id: userId, name: name || "", email: email || "", role: role || "" });
-  };
-
-  let _allUsers = null;
-  const getAllUsers = async () => {
-    if (!_allUsers) _allUsers = await base44.asServiceRole.entities.User.list();
-    return _allUsers;
-  };
-
-  if (audienceType === "all" || (audienceType === "segment" && audienceSegments.includes("all"))) {
-    const users = await getAllUsers();
-    users.forEach((u) => addRecipient(u.id, u.full_name, u.email, u.role));
-
-    if (scopeEventId) {
-      const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
-      parts.forEach((p) => {
-        const key = p.email?.toLowerCase();
-        if (!key || seen.has(key)) return;
-        seen.add(key);
-        recipients.push({ user_id: p.id, name: p.full_name, email: p.email, role: p.role_in_event || "attendee" });
-      });
-    }
-  } else if (audienceType === "segment") {
-    const roleMap = {
-      admin: async () => {
-        const users = await getAllUsers();
-        users.filter((u) => u.role === "admin").forEach((u) => addRecipient(u.id, u.full_name, u.email, "admin"));
-      },
-      gerente: async () => {
-        const users = await getAllUsers();
-        users.filter((u) => u.role === "gerente" || u.role === "manager").forEach((u) => addRecipient(u.id, u.full_name, u.email, u.role));
-        if (scopeEventId) {
-          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "manager", is_deleted: false });
-          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "manager"));
-        }
-      },
-      staff: async () => {
-        if (scopeEventId) {
-          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "team", is_deleted: false });
-          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "team"));
-        }
-      },
-      palestrante: async () => {
-        if (scopeEventId) {
-          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "speaker", is_deleted: false });
-          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "speaker"));
-        }
-      },
-      representante: async () => {
-        if (scopeEventId) {
-          // PartnerRepresentative has no event_id — use Participant with role_in_event="partner_rep"
-          // to get event-scoped representatives with correct name/email fields
-          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "partner_rep", is_deleted: false });
-          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "representante"));
-        }
-      },
-      attendee: async () => {
-        if (scopeEventId) {
-          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "attendee", is_deleted: false });
-          parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "attendee"));
-        } else {
-          const users = await getAllUsers();
-          users.filter((u) => u.role === "user").forEach((u) => addRecipient(u.id, u.full_name, u.email, "user"));
-        }
-      },
-    };
-
-    for (const seg of audienceSegments) {
-      if (roleMap[seg]) await roleMap[seg]();
-    }
-  } else if (audienceType === "my_leads" && senderUser) {
-    if (senderPartnerId && scopeEventId) {
-      const leads = await base44.asServiceRole.entities.Lead.filter({ event_id: scopeEventId, partner_id: senderPartnerId });
-      leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
-    }
-  } else if (audienceType === "partner_all_event" && scopeEventId) {
-    const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
-    parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, p.role_in_event || "attendee"));
-  } else if (audienceType === "partner_leads" && scopeEventId && senderPartnerId) {
-    const leads = await base44.asServiceRole.entities.Lead.filter({ event_id: scopeEventId, partner_id: senderPartnerId });
-    leads.forEach((l) => addRecipient(l.participant_id, l.participant_name, l.participant_email, "attendee"));
-  } else if (audienceType === "my_attendees" && senderUser) {
-    if (scopeEventId) {
-      const persons = await base44.asServiceRole.entities.Person.filter({ contact_email: senderUser.email, is_active: true });
-      const speakerPerson = persons?.[0];
-      if (speakerPerson) {
-        const speakerParts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false });
-        const speakerPartIds = speakerParts.map((p) => p.id);
-        if (speakerPartIds.length > 0) {
-          const allSessions = await base44.asServiceRole.entities.Session.filter({ event_id: scopeEventId, is_deleted: false });
-          const speakerSessionIds = allSessions
-            .filter((s) => speakerPartIds.includes(s.speaker_id))
-            .map((s) => s.id);
-          if (speakerSessionIds.length > 0) {
-            const attendance = await base44.asServiceRole.entities.SessionAttendance.filter({
-              event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds },
-            });
-            const attendedParticipantIds = new Set(attendance.map((a) => a.participant_id));
-            const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false });
-            parts.forEach((p) => {
-              if (attendedParticipantIds.has(p.id)) {
-                addRecipient(p.id, p.full_name, p.email, p.role_in_event || "attendee");
-              }
-            });
-          }
-        }
-      }
-    }
-  }
-
-  // Sender always receives their own message
-  if (senderUser) {
-    addRecipient(senderUser.id, senderUser.full_name, senderUser.email, senderUser.role);
-  }
-
-  return recipients;
-}
