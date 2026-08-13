@@ -23,6 +23,22 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 //   leads[d,partner]           = count de Leads criados no dia d para o partner
 //
 // dryRun=true: reporta drift sem aplicar.
+//
+// --- PAGINAÇÃO POR SKIP (documentação da limitação P0.3) ---
+// $lt/$gt sobre o campo `id` NÃO são suportados pelo SDK filter (retornam 0). Logo
+// skip é o mecanismo disponível; NÃO existe cursor transacional. Não tentar inventar
+// um cursor (já testado — falha silenciosamente truncando em 500).
+//   • Ordenação determinística por `id` (sort 'id') — janelas estáveis.
+//   • Skip = paginação funcional, NÃO cursor transacional: sem garantia de snapshot.
+//     Alterações concorrentes (insert/delete) durante um scan podem deslocar janelas
+//     e produzir uma fotografia EVENTUALMENTE CONSISTENTE (possível dupla-contagem
+//     ou omissão de poucos registros na borda).
+//   • reconcile (esta função) é a rede de correção: roda sob demanda/admin e
+//     reconstrói os counters da fonte autoritativa, corrigindo qualquer drift
+//     acumulado por scans eventualmente consistentes no read-side (dashboard).
+// Memória: O(BATCH) por página. O backfill de created_day é processado
+// incrementalmente por batch (bulkUpdate a cada página lida) — NUNCA acumula todos os
+// registros legados; suporta milhões de registros sem created_day com memória O(BATCH).
 
 function dayKey(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
@@ -46,12 +62,13 @@ Deno.serve(async (req) => {
     let totalUnique = 0;
     const uniqByDay = new Map<string, number>();
     const roleByDay = new Map<string, number>(); // key: day|role
-    const partBackfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
+    let backfilledParticipants = 0;
     let pskip = 0;
     while (true) {
-      // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
       const batch = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false }, 'id', BATCH, pskip);
       if (batch.length === 0) break;
+      // Backfill incremental por batch — O(BATCH) memória (não acumula todos os legados).
+      const batchBackfill: any[] = [];
       for (const p of batch) {
         if (!p.created_date) continue;
         const dk = dayKey(p.created_date);
@@ -60,7 +77,10 @@ Deno.serve(async (req) => {
         const role = p.role_in_event || "attendee";
         const rk = `${dk}|${role}`;
         roleByDay.set(rk, (roleByDay.get(rk) || 0) + 1);
-        if (!p.created_day) partBackfill.push({ id: p.id, created_day: dk });
+        if (!p.created_day) batchBackfill.push({ id: p.id, created_day: dk });
+      }
+      if (!dryRun && batchBackfill.length > 0) {
+        try { await svc.entities.Participant.bulkUpdate(batchBackfill); backfilledParticipants += batchBackfill.length; } catch {}
       }
       pskip += BATCH;
       if (batch.length < BATCH) break;
@@ -69,19 +89,22 @@ Deno.serve(async (req) => {
     // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
     let totalLeads = 0;
     const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId
-    const leadBackfill: any[] = []; // P0.3 — records missing created_day
+    let backfilledLeads = 0;
     let lskip = 0;
     while (true) {
-      // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
       const batch = await svc.entities.Lead.filter({ event_id: eventId }, 'id', BATCH, lskip);
       if (batch.length === 0) break;
+      const batchBackfill: any[] = [];
       for (const l of batch) {
         totalLeads++;
         if (!l.created_date) continue;
         const dk = dayKey(l.created_date);
         const key = `${dk}|${l.partner_id || ""}`;
         leadsByDayPartner.set(key, (leadsByDayPartner.get(key) || 0) + 1);
-        if (!l.created_day) leadBackfill.push({ id: l.id, created_day: dk });
+        if (!l.created_day) batchBackfill.push({ id: l.id, created_day: dk });
+      }
+      if (!dryRun && batchBackfill.length > 0) {
+        try { await svc.entities.Lead.bulkUpdate(batchBackfill); backfilledLeads += batchBackfill.length; } catch {}
       }
       lskip += BATCH;
       if (batch.length < BATCH) break;
@@ -139,16 +162,7 @@ Deno.serve(async (req) => {
       await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
     }
 
-    // P0.3 — backfill de created_day em registros legados (necessário para correção de borda do dashboard)
-    let backfilledParticipants = 0, backfilledLeads = 0;
-    for (let i = 0; i < partBackfill.length; i += 500) {
-      const chunk = partBackfill.slice(i, i + 500);
-      try { await svc.entities.Participant.bulkUpdate(chunk); backfilledParticipants += chunk.length; } catch {}
-    }
-    for (let i = 0; i < leadBackfill.length; i += 500) {
-      const chunk = leadBackfill.slice(i, i + 500);
-      try { await svc.entities.Lead.bulkUpdate(chunk); backfilledLeads += chunk.length; } catch {}
-    }
+    // Backfill de created_day já executado incrementalmente durante os scans (O(BATCH) memória).
 
     return Response.json({
       ok: true,

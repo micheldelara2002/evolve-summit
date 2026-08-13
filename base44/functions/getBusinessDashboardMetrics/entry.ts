@@ -110,7 +110,10 @@ async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerI
 // truncava dias com >10k registros. Equivalente ao filtro created_date ∈ [start, end]
 // (mesmo predicado, aplicado em batches). Acumula apenas contadores, não arrays completos.
 // P0.3 — Paginação por skip (sort 'id' determinístico) sobre os registros do dia de borda.
-// $lt/$gt em `id` NÃO são suportados pelo SDK (retornam 0); skip é o mecanismo disponível.
+// $lt/$gt em `id` NÃO são suportados pelo SDK (retornam 0); skip é o mecanismo disponível
+// (NÃO é cursor transacional). Ordenação 'id' determinística garante janelas estáveis.
+// Alterações concorrentes durante o scan podem deslocar janelas → fotografia eventualmente
+// consistente; reconcileBusinessMetrics é a rede de correção para o drift resultante.
 // Memória O(BOUNDARY_BATCH), independente do total do dia — substitui o limite fixo de
 // 10.000 que truncava dias com >10k registros. Equivalente ao filtro created_date ∈ [start, end]
 // (mesmo predicado, aplicado em batches via skip). Acumula apenas contadores, não arrays.

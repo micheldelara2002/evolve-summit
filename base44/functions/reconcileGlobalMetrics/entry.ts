@@ -10,7 +10,16 @@ import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 //   persons(day) = count de Persons criados no dia
 //   partners(day)= count de Partners is_deleted:false criados no dia
 //
-// (created_date range queries NÃO funcionam — por isso paginação por cursor + bucket por dia.)
+// (created_date range queries NÃO funcionam — por isso paginação por skip + bucket por dia.)
+//
+// --- PAGINAÇÃO POR SKIP (documentação da limitação P0.3) ---
+// $lt/$gt sobre `id` NÃO são suportados pelo SDK filter (retornam 0); skip é o mecanismo
+// disponível. Ordenação determinística por `id` (sort 'id'). Skip NÃO é cursor transacional:
+// sem garantia de snapshot; alterações concorrentes durante o scan podem deslocar janelas
+// e produzir fotografia eventualmente consistente. reconcile (esta função) é a rede de
+// correção que reconstrói os buckets da fonte autoritativa, corrigindo drift do read-side.
+// Memória O(BATCH): o backfill de created_day é bulkUpdate incremental por batch durante o
+// scan — nunca acumula todos os registros legados (suporta milhões sem created_day).
 //
 // dryRun=true: reporta o que seria gravado sem aplicar.
 
@@ -23,19 +32,23 @@ const GLOBAL = GLOBAL_EVENT_ID;
 
 async function rebuildMetric(svc: any, metricType: string, entityName: string, filter: any, dryRun: boolean) {
   const dayCounts = new Map<string, number>();
-  const backfill: any[] = []; // P0.3 — records missing created_day (backfill para correção de borda)
   let skip = 0;
   let total = 0;
+  let backfilled = 0;
   while (true) {
-    // P0.3 — skip-based pagination ($lt em `id` NÃO é suportado pelo SDK; sort 'id' determinístico)
     const batch = await svc.entities[entityName].filter(filter, 'id', BATCH, skip);
     if (batch.length === 0) break;
+    // Backfill incremental por batch — O(BATCH) memória (não acumula todos os legados).
+    const batchBackfill: any[] = [];
     for (const r of batch) {
       if (!r.created_date) continue;
       const dk = dayKey(r.created_date);
       dayCounts.set(dk, (dayCounts.get(dk) || 0) + 1);
       total++;
-      if (!r.created_day) backfill.push({ id: r.id, created_day: dk });
+      if (!r.created_day) batchBackfill.push({ id: r.id, created_day: dk });
+    }
+    if (!dryRun && batchBackfill.length > 0) {
+      try { await svc.entities[entityName].bulkUpdate(batchBackfill); backfilled += batchBackfill.length; } catch {}
     }
     skip += BATCH;
     if (batch.length < BATCH) break;
@@ -49,12 +62,6 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
   }
   for (let i = 0; i < buckets.length; i += 500) {
     await svc.entities.MetricBucket.bulkCreate(buckets.slice(i, i + 500));
-  }
-  // P0.3 — backfill de created_day (best-effort; User é platform-owned mas asServiceRole bypassa RLS)
-  let backfilled = 0;
-  for (let i = 0; i < backfill.length; i += 500) {
-    const chunk = backfill.slice(i, i + 500);
-    try { await svc.entities[entityName].bulkUpdate(chunk); backfilled += chunk.length; } catch {}
   }
   return { metricType, total, days: dayCounts.size, bucketsWritten: buckets.length, backfilled };
 }
