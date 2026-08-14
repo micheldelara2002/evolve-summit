@@ -225,9 +225,10 @@ export default function UserProfile() {
                   <h1 className="text-xl font-display font-bold truncate">{displayName}</h1>
                   <Badge variant="outline" className="mt-1 text-xs">{roleLabel}</Badge>
                 </div>
-                <Link to="/profile/edit">
-                  <Button variant="outline" size="icon" className="shrink-0" aria-label="Editar perfil">
+                <Link to="/profile/edit" className="shrink-0">
+                  <Button variant="outline" className="h-11 sm:h-9 gap-1.5 shrink-0 touch-manipulation" aria-label="Editar perfil">
                     <Pencil className="w-4 h-4" />
+                    <span className="text-sm font-medium">Editar</span>
                   </Button>
                 </Link>
               </div>
