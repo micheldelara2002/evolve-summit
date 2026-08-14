@@ -47,7 +47,7 @@ export default function AdminLayout() {
             <span className="font-display font-bold text-sm sm:text-lg truncate">{t("app.name")}</span>
           </Link>
 
-          <div className="flex items-center shrink-0 relative z-10 gap-2">
+          <div className="flex items-center shrink-0 relative z-10 gap-1">
             <UserChip user={user} />
             <InboxBell />
           </div>
@@ -122,7 +122,7 @@ function InboxBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative h-12 w-12 min-h-12 min-w-12 shrink-0 p-0 touch-manipulation active:bg-muted rounded-xl"
+          className="relative h-11 w-11 shrink-0 touch-manipulation active:bg-muted rounded-lg"
           aria-label="Notificações"
         >
           <Bell className="w-5 h-5" />
