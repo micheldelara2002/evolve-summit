@@ -23,6 +23,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 //      debit points; in redeemStoreItem, cancellations happen BEFORE the $inc,
 //      so they never reached the counter)
 //
+// Pagination: skip + limit (BATCH_SIZE=500), deterministic sort by '-id'.
+// Cursor pagination on 'id' via $lt/$gt does NOT work in the Base44 SDK — this
+// is the same skip-based pattern validated in reconcileBusinessMetrics /
+// reconcileGlobalMetrics. Memory is O(batch) in every path; ledgers are paged
+// so there is no arbitrary truncation limit.
+//
 // Scope:
 //   - participantId: reconcile a single participant
 //   - eventId: reconcile all participants in the event
@@ -37,6 +43,49 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 // overwritten. This is an acceptable trade-off for a manual admin tool — it is
 // NOT called on every read.
 
+const BATCH_SIZE = 500;
+
+// =============================================================================
+// Paginated sum of a ledger for a single participant. O(batch) memory.
+// =============================================================================
+async function sumParticipantLedger(svc, entity, participantId, filterExtra, valueField) {
+  let sum = 0;
+  let skip = 0;
+  while (true) {
+    const batch = await svc.entities[entity].filter(
+      { participant_id: participantId, ...filterExtra }, '-id', BATCH_SIZE, skip
+    );
+    if (batch.length === 0) break;
+    for (const r of batch) sum += (r[valueField] || 0);
+    skip += BATCH_SIZE;
+    if (batch.length < BATCH_SIZE) break;
+  }
+  return sum;
+}
+
+// =============================================================================
+// Paginated sum of a ledger for a batch of participants (participant_id $in).
+// Returns a Map<participant_id, sum>. O(batch) memory — paged by skip+limit.
+// =============================================================================
+async function sumBatchLedger(svc, entity, eventId, batchIds, filterExtra, valueField) {
+  const map = new Map();
+  let skip = 0;
+  while (true) {
+    const batch = await svc.entities[entity].filter(
+      { event_id: eventId, participant_id: { $in: batchIds }, ...filterExtra },
+      '-id', BATCH_SIZE, skip
+    );
+    if (batch.length === 0) break;
+    for (const r of batch) {
+      if (!r.participant_id) continue;
+      map.set(r.participant_id, (map.get(r.participant_id) || 0) + (r[valueField] || 0));
+    }
+    skip += BATCH_SIZE;
+    if (batch.length < BATCH_SIZE) break;
+  }
+  return map;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -49,22 +98,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Especifique participantId ou eventId.' }, { status: 400 });
     }
 
+    const svc = base44.asServiceRole;
+
     // === Single participant ===
     if (participantId) {
-      const [participant] = await base44.asServiceRole.entities.Participant.filter({
+      const [participant] = await svc.entities.Participant.filter({
         id: participantId, is_deleted: false,
       });
       if (!participant) return Response.json({ error: 'Participante não encontrado.' }, { status: 404 });
 
-      const [txs, redemptions] = await Promise.all([
-        base44.asServiceRole.entities.PointTransaction.filter({ participant_id: participantId }, '-created_date', 10000),
-        base44.asServiceRole.entities.StoreRedemption.filter({
-          participant_id: participantId, is_deleted: false, status: { $ne: 'cancelado' },
-        }, '-created_date', 10000),
-      ]);
-
-      const computedPoints = txs.reduce((s, t) => s + (t.pontos || 0), 0);
-      const computedRedeemed = redemptions.reduce((s, r) => s + (r.pontos_debitados || 0), 0);
+      // Ledger sums are paginated (skip+limit, BATCH_SIZE=500) — no truncation.
+      const computedPoints = await sumParticipantLedger(
+        svc, 'PointTransaction', participantId, {}, 'pontos'
+      );
+      const computedRedeemed = await sumParticipantLedger(
+        svc, 'StoreRedemption', participantId,
+        { is_deleted: false, status: { $ne: 'cancelado' } }, 'pontos_debitados'
+      );
 
       const before = { points_total: participant.points_total || 0, redeemed_total: participant.redeemed_total || 0 };
       const drift = {
@@ -74,7 +124,7 @@ Deno.serve(async (req) => {
 
       const hasDrift = drift.points !== 0 || drift.redeemed !== 0;
       if (!dryRun && hasDrift) {
-        await base44.asServiceRole.entities.Participant.update(participantId, {
+        await svc.entities.Participant.update(participantId, {
           points_total: computedPoints,
           redeemed_total: computedRedeemed,
         });
@@ -96,53 +146,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    // === Event-wide — batched: page through participants in bounded batches ===
-    // P0.2 validation: never load all participants + ledgers at once. Each batch
-    // loads ≤500 participants + their ledgers (filtered by participant_id $in),
-    // keeping memory bounded regardless of event size. Cursor pagination on 'id'
-    // (descending) — deterministic, single-field sort supported by the SDK.
-    const BATCH_SIZE = 500;
-    const LEDGER_LIMIT = 10000; // generous per-batch limit for txs/redemptions
-
-    let cursor = null;
+    // === Event-wide — skip-based pagination (BATCH_SIZE=500, sort '-id') ===
+    // Memory is O(batch): each participant batch loads ≤500 participants, then
+    // pages through their ledgers (participant_id $in batch) in pages of 500.
+    // No cursor on 'id' (unsupported by SDK). No arbitrary ledger limit.
     let totalReconciled = 0;
     let totalDrifted = 0;
     let totalApplied = 0;
     const allDetails = [];
+    let skipPart = 0;
 
     while (true) {
-      const partQuery = { event_id: eventId, is_deleted: false };
-      if (cursor) partQuery.id = { $lt: cursor };
-      const partBatch = await base44.asServiceRole.entities.Participant.filter(partQuery, '-id', BATCH_SIZE);
+      const partBatch = await svc.entities.Participant.filter(
+        { event_id: eventId, is_deleted: false }, '-id', BATCH_SIZE, skipPart
+      );
       if (partBatch.length === 0) break;
-
-      cursor = partBatch[partBatch.length - 1].id;
+      skipPart += BATCH_SIZE;
       totalReconciled += partBatch.length;
 
       const batchIds = partBatch.map((p) => p.id);
 
-      // Query ledgers for THIS batch only (bounded)
-      const [batchTxs, batchRedemptions] = await Promise.all([
-        base44.asServiceRole.entities.PointTransaction.filter(
-          { event_id: eventId, participant_id: { $in: batchIds } }, '-id', LEDGER_LIMIT
-        ),
-        base44.asServiceRole.entities.StoreRedemption.filter(
-          { event_id: eventId, participant_id: { $in: batchIds }, is_deleted: false, status: { $ne: 'cancelado' } },
-          '-id', LEDGER_LIMIT
-        ),
-      ]);
-
-      // Group ledgers by participant_id within this batch
-      const pointsMap = new Map();
-      batchTxs.forEach((t) => {
-        if (!t.participant_id) return;
-        pointsMap.set(t.participant_id, (pointsMap.get(t.participant_id) || 0) + (t.pontos || 0));
-      });
-      const redeemedMap = new Map();
-      batchRedemptions.forEach((r) => {
-        if (!r.participant_id) return;
-        redeemedMap.set(r.participant_id, (redeemedMap.get(r.participant_id) || 0) + (r.pontos_debitados || 0));
-      });
+      // Paginated ledger sums for THIS participant batch only — O(batch) memory.
+      const pointsMap = await sumBatchLedger(
+        svc, 'PointTransaction', eventId, batchIds, {}, 'pontos'
+      );
+      const redeemedMap = await sumBatchLedger(
+        svc, 'StoreRedemption', eventId, batchIds,
+        { is_deleted: false, status: { $ne: 'cancelado' } }, 'pontos_debitados'
+      );
 
       // Compute drift + collect updates for this batch
       const toUpdate = [];
@@ -170,9 +201,11 @@ Deno.serve(async (req) => {
 
       // Apply updates for this batch (≤500, within bulkUpdate limit)
       if (!dryRun && toUpdate.length > 0) {
-        await base44.asServiceRole.entities.Participant.bulkUpdate(toUpdate);
+        await svc.entities.Participant.bulkUpdate(toUpdate);
         totalApplied += toUpdate.length;
       }
+
+      if (partBatch.length < BATCH_SIZE) break;
     }
 
     return Response.json({
