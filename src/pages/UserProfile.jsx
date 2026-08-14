@@ -225,13 +225,11 @@ export default function UserProfile() {
                   <h1 className="text-xl font-display font-bold truncate">{displayName}</h1>
                   <Badge variant="outline" className="mt-1 text-xs">{roleLabel}</Badge>
                 </div>
-                <Link
-                  to="/profile/edit"
-                  aria-label="Editar perfil"
-                  className="shrink-0 inline-flex min-h-12 sm:min-h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 sm:px-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Pencil className="w-4 h-4 shrink-0" />
-                  <span>Editar</span>
+                <Link to="/profile/edit" className="shrink-0">
+                  <Button variant="outline" className="h-11 sm:h-9 gap-1.5 shrink-0 touch-manipulation" aria-label="Editar perfil">
+                    <Pencil className="w-4 h-4" />
+                    <span className="text-sm font-medium">Editar</span>
+                  </Button>
                 </Link>
               </div>
 
