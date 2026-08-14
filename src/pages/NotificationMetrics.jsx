@@ -112,14 +112,30 @@ function MetricsContent({
     },
   });
 
-  // Buscar recipients para calcular cliques
+  // Buscar recipients para calcular cliques — paginação em batches (BATCH_SIZE=500,
+  // skip+limit, sort "id") para evitar truncamento em campanhas com >1000 recipients.
+  // Filtra por campaign_ids relevantes no banco (não carrega recipients globais).
+  // Retorna um mapa { campaign_id: click_count } — memória O(batch), não O(total).
   const campaignIds = campaigns.map((c) => c.id);
-  const { data: allRecipients = [] } = useQuery({
-    queryKey: ["notification_recipients_metrics", campaignIds.join(",")],
+  const { data: clickCounts = {} } = useQuery({
+    queryKey: ["notification_recipient_clicks", campaignIds.join(",")],
     queryFn: async () => {
-      if (!campaignIds.length) return [];
-      const all = await base44.entities.NotificationRecipient.list("-created_date", 1000);
-      return all.filter((r) => campaignIds.includes(r.campaign_id));
+      if (!campaignIds.length) return {};
+      const counts = {};
+      let skip = 0;
+      while (true) {
+        const batch = await base44.entities.NotificationRecipient.filter(
+          { campaign_id: { $in: campaignIds } }, "id", 500, skip
+        );
+        if (batch.length === 0) break;
+        for (const r of batch) {
+          if (!r.clicked_at) continue;
+          counts[r.campaign_id] = (counts[r.campaign_id] || 0) + 1;
+        }
+        skip += 500;
+        if (batch.length < 500) break;
+      }
+      return counts;
     },
     enabled: campaignIds.length > 0,
   });
@@ -146,8 +162,7 @@ function MetricsContent({
   const totalDelivered = filteredCampaigns.reduce((s, c) => s + (c.delivered_count || 0), 0);
   const totalRead = filteredCampaigns.reduce((s, c) => s + (c.read_count || 0), 0);
   const readRate = totalDelivered > 0 ? ((totalRead / totalDelivered) * 100).toFixed(1) : "0.0";
-  const relevantCampaignIds = new Set(filteredCampaigns.map((c) => c.id));
-  const totalClicks = allRecipients.filter((r) => r.clicked_at && relevantCampaignIds.has(r.campaign_id)).length;
+  const totalClicks = filteredCampaigns.reduce((s, c) => s + (clickCounts[c.id] || 0), 0);
 
   // Série temporal por dia (apenas enviadas)
   const dayMap = {};
