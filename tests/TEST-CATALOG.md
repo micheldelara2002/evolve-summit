@@ -191,3 +191,24 @@ Status values: `NOT_RUN | PASS | FAIL | BLOCKED | SKIPPED`
 - UX-010 Notification sheet opens/closes correctly.
 - UX-011 Touch target smoke for critical controls.
 - UX-012 Dark mode does not lose contrast/functionality.
+
+## Automation coverage — 2026-08-17
+
+The catalog above remains the business scenario inventory. Automated coverage is intentionally not 1:1 with catalog rows: scenarios that require backend concurrency, destructive data setup, or infrastructure-level assertions may be classified as backend/manual instead of being forced into UI automation.
+
+Current Playwright suites:
+
+| Suite | Purpose | Primary tags |
+|---|---|---|
+| `role-access.spec.js` | Baseline persona access | `@regression` |
+| `manager-regression.spec.js` | Manager modules, scope and critical admin paths | `@manager @regression` |
+| `staff-regression.spec.js` | Staff access and negative authorization | `@staff @regression` |
+| `participant-regression.spec.js` | Participant journey and protected actions | `@participant @regression` |
+| `speaker-regression.spec.js` | Speaker dashboard, engagement and isolation | `@speaker @regression` |
+| `partner-regression.spec.js` | Partner scope and partner-admin boundaries | `@partner @regression` |
+| `security-regression.spec.js` | Cross-cutting URL/authorization regression | `@security @regression` |
+| `bulk-import.spec.js` | CSV validation and scale preview | `@bulk @regression` |
+| `participant-mobile.spec.js` | Mobile UX/overflow/touch regression | `@mobile @regression` |
+| `smoke.spec.js` | Fast release gate, one smoke path per persona | `@smoke` |
+
+The Playwright inventory is generated with `npm run test:e2e -- --list`. A test is considered **PASS** only after execution; listing a test file is not evidence of a passing scenario.
