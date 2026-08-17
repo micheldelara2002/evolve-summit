@@ -106,6 +106,7 @@ export default async function(req) {
       youtube: null,
       website: null,
       bio: null,
+      is_eligible: false,
     });
 
     const pageParticipants = async (query) => {

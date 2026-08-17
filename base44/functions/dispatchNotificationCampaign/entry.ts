@@ -84,6 +84,7 @@
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 const BATCH_SIZE = 500;
 
@@ -122,7 +123,7 @@ async function* resolveAudienceBatches(
       let skip = 0;
       while (true) {
         const parts = await svc.entities.Participant.filter(
-          { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+          { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } }, "id", BATCH_SIZE, skip
         );
         if (parts.length === 0) break;
         // Per-batch email dedup Set — O(batch), replaces former global emailSeen
@@ -146,7 +147,7 @@ async function* resolveAudienceBatches(
     // --- All Users (paginated, O(batch) memory, no email dedup) ---
     let skip = 0;
     while (true) {
-      const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
+      const users = await svc.entities.User.filter({ account_status: { $ne: "deleted" } }, "id", BATCH_SIZE, skip);
       if (users.length === 0) break;
       yield {
         recipients: users.map((u: any) => ({
@@ -170,7 +171,7 @@ async function* resolveAudienceBatches(
     if (userRoles.length > 0) {
       let skip = 0;
       while (true) {
-        const users = await svc.entities.User.filter({}, "id", BATCH_SIZE, skip);
+        const users = await svc.entities.User.filter({ account_status: { $ne: "deleted" } }, "id", BATCH_SIZE, skip);
         if (users.length === 0) break;
         const batch: Recipient[] = users
           .filter((u: any) => userRoles.includes(u.role))
@@ -208,7 +209,7 @@ async function* resolveAudienceBatches(
       let skip = 0;
       while (true) {
         const parts = await svc.entities.Participant.filter(
-          { event_id: scopeEventId, role_in_event: roleInEvent, is_deleted: false },
+          { event_id: scopeEventId, role_in_event: roleInEvent, is_deleted: false, is_eligible: { $ne: false } },
           "id", BATCH_SIZE, skip
         );
         if (parts.length === 0) break;
@@ -230,13 +231,22 @@ async function* resolveAudienceBatches(
         "id", BATCH_SIZE, skip
       );
       if (leads.length === 0) break;
-      yield {
-        recipients: leads.map((l: any) => ({
+      // Exclude leads pointing to ineligible (deleted) participants
+      const leadPartIds = leads.map((l: any) => l.participant_id).filter(Boolean);
+      let eligibleLeadPartIds = new Set<string>(leadPartIds);
+      if (leadPartIds.length > 0) {
+        const eligible = await svc.entities.Participant.filter(
+          { id: { $in: leadPartIds }, is_eligible: { $ne: false } }, "id", leadPartIds.length, 0
+        );
+        eligibleLeadPartIds = new Set(eligible.map((p: any) => p.id));
+      }
+      const leadBatch = leads
+        .filter((l: any) => l.participant_id && eligibleLeadPartIds.has(l.participant_id))
+        .map((l: any) => ({
           user_id: l.participant_id, name: l.participant_name || "",
           email: l.participant_email || "", role: "attendee",
-        })),
-        dedupByEmail: false,
-      };
+        }));
+      if (leadBatch.length > 0) yield { recipients: leadBatch, dedupByEmail: false };
       skip += BATCH_SIZE;
       if (leads.length < BATCH_SIZE) break;
     }
@@ -244,7 +254,7 @@ async function* resolveAudienceBatches(
     let skip = 0;
     while (true) {
       const parts = await svc.entities.Participant.filter(
-        { event_id: scopeEventId, is_deleted: false }, "id", BATCH_SIZE, skip
+        { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } }, "id", BATCH_SIZE, skip
       );
       if (parts.length === 0) break;
       yield {
@@ -265,13 +275,22 @@ async function* resolveAudienceBatches(
         "id", BATCH_SIZE, skip
       );
       if (leads.length === 0) break;
-      yield {
-        recipients: leads.map((l: any) => ({
+      // Exclude leads pointing to ineligible (deleted) participants
+      const leadPartIds = leads.map((l: any) => l.participant_id).filter(Boolean);
+      let eligibleLeadPartIds = new Set<string>(leadPartIds);
+      if (leadPartIds.length > 0) {
+        const eligible = await svc.entities.Participant.filter(
+          { id: { $in: leadPartIds }, is_eligible: { $ne: false } }, "id", leadPartIds.length, 0
+        );
+        eligibleLeadPartIds = new Set(eligible.map((p: any) => p.id));
+      }
+      const leadBatch = leads
+        .filter((l: any) => l.participant_id && eligibleLeadPartIds.has(l.participant_id))
+        .map((l: any) => ({
           user_id: l.participant_id, name: l.participant_name || "",
           email: l.participant_email || "", role: "attendee",
-        })),
-        dedupByEmail: false,
-      };
+        }));
+      if (leadBatch.length > 0) yield { recipients: leadBatch, dedupByEmail: false };
       skip += BATCH_SIZE;
       if (leads.length < BATCH_SIZE) break;
     }
@@ -339,7 +358,7 @@ async function* resolveAudienceBatches(
             if (batchPartIds.size > 0) {
               // Query Participants for these IDs (O(batch) result)
               const parts = await svc.entities.Participant.filter(
-                { id: { $in: Array.from(batchPartIds) }, is_deleted: false },
+                { id: { $in: Array.from(batchPartIds) }, is_deleted: false, is_eligible: { $ne: false } },
                 "id", BATCH_SIZE, 0
               );
               const batch: Recipient[] = parts.map((p: any) => ({
@@ -489,8 +508,9 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const { campaign: campaignInput, senderPartnerId } = await req.json();
     if (!campaignInput?.id) return Response.json({ error: 'Campaign obrigatória.' }, { status: 400 });

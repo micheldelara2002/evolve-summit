@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }) {
   switch (limiteTipo) {
@@ -17,8 +18,9 @@ function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const { eventId, participantId, personId, acao, refId = "" } = await req.json();
     if (!eventId || !participantId || !acao) {

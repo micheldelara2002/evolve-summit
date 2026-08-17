@@ -35,8 +35,8 @@ export default function AudienceSelector({ userRole, scopeType, scopeEventId, va
   const { data: participants = [] } = useQuery({
     queryKey: ["participants_est", scopeEventId],
     queryFn: () => scopeEventId
-      ? base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false })
-      : base44.entities.User.list(),
+      ? base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } })
+      : base44.entities.User.list().then((users) => users.filter((u) => u.account_status !== "deleted")),
     enabled: true,
   });
 
