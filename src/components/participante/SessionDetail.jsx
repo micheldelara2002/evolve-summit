@@ -653,7 +653,7 @@ export default function SessionDetail({ session, track, room, participant, isRea
                   )}
                 </div>
               </div>
-              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0 mt-0.5">
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0 mt-0.5 inline-flex items-center justify-center min-h-[44px] min-w-[44px]">
                 <X className="w-5 h-5" />
               </button>
             </div>

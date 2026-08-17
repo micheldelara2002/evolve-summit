@@ -50,7 +50,7 @@ function ItemCard({ item, pontosDisponiveis, isReadOnly, onRedeem }) {
         {!isReadOnly && (
           <Button
             size="sm"
-            className="w-full mt-auto"
+            className="w-full mt-auto h-11 sm:h-8"
             disabled={bloqueado || semSaldo}
             variant={semSaldo && !esgotado ? "outline" : "default"}
             onClick={() => !bloqueado && !semSaldo && onRedeem(item)}

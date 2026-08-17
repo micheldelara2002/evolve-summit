@@ -170,7 +170,7 @@ export default function EventoParticipante() {
       >
         {/* Back + read-only badge */}
         <div className="flex items-center justify-between mb-3 max-w-4xl mx-auto">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/meus-eventos")} className="gap-1.5 -ml-2">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/meus-eventos")} className="gap-1.5 -ml-2 h-11 sm:h-8">
             <ArrowLeft className="w-4 h-4" /> Meus Eventos
           </Button>
           {isFinished ? (

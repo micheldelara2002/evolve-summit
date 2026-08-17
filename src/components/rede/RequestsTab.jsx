@@ -116,11 +116,11 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
                 <PersonAvatar person={person} />
                 <span className="font-medium text-sm flex-1 truncate">{req.requester_name}</span>
                 <div className="flex gap-1.5">
-                  <Button size="sm" disabled={isReadOnly || isActioning} onClick={() => handleAccept(req)}>
+                  <Button size="sm" className="h-11 sm:h-8" disabled={isReadOnly || isActioning} onClick={() => handleAccept(req)}>
                     {isActioning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                     Aceitar
                   </Button>
-                  <Button size="sm" variant="outline" disabled={isReadOnly || isActioning} onClick={() => handleRefuse(req)}>
+                  <Button size="sm" variant="outline" className="h-11 sm:h-8" disabled={isReadOnly || isActioning} onClick={() => handleRefuse(req)}>
                     <X className="w-3.5 h-3.5" />
                     Recusar
                   </Button>
@@ -149,7 +149,7 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
                 <PersonAvatar person={person} />
                 <span className="font-medium text-sm flex-1 truncate">{req.receiver_name}</span>
                 {req.status === "pending" ? (
-                  <Button size="sm" variant="ghost" disabled={isReadOnly || isActioning} onClick={() => handleCancel(req)}>
+                  <Button size="sm" variant="ghost" className="h-11 sm:h-8" disabled={isReadOnly || isActioning} onClick={() => handleCancel(req)}>
                     {isActioning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                     Cancelar
                   </Button>
