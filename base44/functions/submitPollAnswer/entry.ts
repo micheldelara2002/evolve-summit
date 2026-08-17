@@ -24,6 +24,19 @@ Deno.serve(async (req) => {
     }
     const poll = polls[0];
 
+    // Event isolation: a voter must actually belong to the event that owns this poll.
+    // The person-id/email ownership check below is not enough by itself because the
+    // same Person may participate in multiple events.
+    const eventParticipants = await base44.asServiceRole.entities.Participant.filter({
+      event_id: poll.event_id,
+      person_id: personId,
+      is_deleted: false,
+      registration_status: { $ne: 'cancelled' },
+    });
+    if (eventParticipants.length === 0 && user.role !== 'admin') {
+      return Response.json({ error: 'Você não está inscrito neste evento.' }, { status: 403 });
+    }
+
     // Validate poll is live
     if (poll.status !== 'live') {
       return Response.json({ error: 'Esta enquete não está mais aberta para votação.' }, { status: 400 });
@@ -65,7 +78,7 @@ Deno.serve(async (req) => {
       is_deleted: false,
     });
     const validOptionIds = new Set(pollOptions.map(o => o.id));
-    const validSelections = selectedOptionIds.filter(id => validOptionIds.has(id));
+    const validSelections = [...new Set(selectedOptionIds.filter(id => validOptionIds.has(id)))];
 
     if (validSelections.length === 0) {
       return Response.json({ error: 'Nenhuma opção válida selecionada.' }, { status: 400 });
