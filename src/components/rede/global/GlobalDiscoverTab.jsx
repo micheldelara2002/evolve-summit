@@ -165,7 +165,7 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
                     variant="outline"
                     disabled={isPending}
                     onClick={() => handleConnect(person, sharedEventIds)}
-                    className="shrink-0"
+                    className="shrink-0 h-11 sm:h-8 min-w-[44px] touch-manipulation"
                   >
                     {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
                     {t("rede.connect")}

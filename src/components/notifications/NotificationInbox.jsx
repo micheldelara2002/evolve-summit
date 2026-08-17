@@ -91,7 +91,7 @@ export default function NotificationInbox({ onClose }) {
 
   return (
     <>
-      <div className="flex flex-col max-h-96">
+      <div className="flex flex-col max-h-[80vh] md:max-h-96">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4" />
@@ -101,13 +101,19 @@ export default function NotificationInbox({ onClose }) {
             )}
           </div>
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-              <X className="w-3 h-3" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 sm:h-6 sm:w-6 shrink-0"
+              onClick={onClose}
+              aria-label="Fechar notificações"
+            >
+              <X className="w-4 h-4 sm:w-3 sm:h-3" />
             </Button>
           )}
         </div>
 
-        <div className="overflow-y-auto flex-1">
+        <div className="overflow-y-auto flex-1 pb-safe">
           {isLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Carregando...</div>
           ) : sorted.length === 0 ? (

@@ -5,7 +5,9 @@ import { isAdmin, isPartnerManager } from "@/lib/access";
 import { LayoutDashboard, Calendar, Shield, Bell, Handshake, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useUnreadCount } from "@/components/notifications/NotificationInbox";
 import NotificationInbox from "@/components/notifications/NotificationInbox";
 import BottomNav from "@/components/layout/BottomNav";
@@ -115,24 +117,42 @@ function UserChip({ user }) {
 function InboxBell() {
   const [open, setOpen] = useState(false);
   const unread = useUnreadCount();
+  const isMobile = useIsMobile();
+
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="relative h-11 w-11 shrink-0 touch-manipulation active:bg-muted rounded-lg"
+      aria-label="Notificações"
+    >
+      <Bell className="w-5 h-5" />
+      {unread > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-destructive text-[10px] text-destructive-foreground flex items-center justify-center font-bold">
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </Button>
+  );
+
+  // Mobile: bottom Sheet (full-width, no fixed 384px overflow). Desktop: keep Popover.
+  if (isMobile) {
+    return (
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>{trigger}</SheetTrigger>
+        <SheetContent
+          side="bottom"
+          className="h-[80vh] p-0 rounded-t-2xl [&>button:first-child]:hidden"
+        >
+          <NotificationInbox onClose={() => setOpen(false)} />
+        </SheetContent>
+      </Sheet>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative h-11 w-11 shrink-0 touch-manipulation active:bg-muted rounded-lg"
-          aria-label="Notificações"
-        >
-          <Bell className="w-5 h-5" />
-          {unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-destructive text-[10px] text-destructive-foreground flex items-center justify-center font-bold">
-              {unread > 9 ? "9+" : unread}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="w-96 p-0" align="end">
         <NotificationInbox onClose={() => setOpen(false)} />
       </PopoverContent>

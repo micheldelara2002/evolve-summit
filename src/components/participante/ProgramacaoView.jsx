@@ -44,11 +44,13 @@ function formatDateLabel(dateStr) {
 function FavoriteBtn({ isFav, onToggle, size = "sm" }) {
   return (
     <button
+      type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      className={`shrink-0 transition-colors ${
-        size === "sm" ? "p-1 rounded-lg" : "p-1.5 rounded-xl"
+      className={`shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] transition-colors ${
+        size === "sm" ? "rounded-lg" : "rounded-xl"
       } ${isFav ? "text-amber-500 hover:text-amber-600" : "text-muted-foreground/40 hover:text-amber-400"}`}
       title={isFav ? "Remover favorito" : "Favoritar"}
+      aria-label={isFav ? "Remover favorito" : "Favoritar sessão"}
     >
       <Star className={`${size === "sm" ? "w-4 h-4" : "w-5 h-5"} ${isFav ? "fill-current" : ""}`} />
     </button>
@@ -330,14 +332,14 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
         {/* Date nav (lista mode only) */}
         {viewMode === "lista" && (
           <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={safeDateIdx === 0} onClick={() => setSelectedDateIdx((i) => Math.max(0, i - 1))}>
+            <Button variant="outline" size="icon" className="h-11 w-11 sm:h-8 sm:w-8" disabled={safeDateIdx === 0} onClick={() => setSelectedDateIdx((i) => Math.max(0, i - 1))} aria-label="Data anterior">
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div className="min-w-[130px] text-center">
               <p className="text-sm font-medium capitalize">{dates[safeDateIdx] ? formatDateLabel(dates[safeDateIdx]) : "—"}</p>
               {dates.length > 1 && <p className="text-xs text-muted-foreground">{safeDateIdx + 1}/{dates.length}</p>}
             </div>
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={safeDateIdx >= dates.length - 1} onClick={() => setSelectedDateIdx((i) => Math.min(dates.length - 1, i + 1))}>
+            <Button variant="outline" size="icon" className="h-11 w-11 sm:h-8 sm:w-8" disabled={safeDateIdx >= dates.length - 1} onClick={() => setSelectedDateIdx((i) => Math.min(dates.length - 1, i + 1))} aria-label="Próxima data">
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
