@@ -32,7 +32,7 @@ async function uploadCsv(page, rows) {
   return dir;
 }
 
-test.describe('Bulk CSV import — manager @manager @bulk', () => {
+test.describe('Bulk CSV import — manager @manager @bulk @regression', () => {
   test('valid CSV is classified in dry-run without creating records @P0', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
     await page.goto(`/events/${eventId}/people`);
@@ -76,6 +76,19 @@ test.describe('Bulk CSV import — manager @manager @bulk', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  test('500-row CSV reaches preview without browser-side failure @P1 @scale', async ({ page }) => {
+    test.skip(!eventId, 'E2E_EVENT_ID not configured');
+    test.setTimeout(75_000);
+    await page.goto(`/events/${eventId}/people`);
+
+    const rows = fakeRows(500, `e2e-scale-500-${Date.now()}`);
+    const dir = await uploadCsv(page, rows);
+
+    await expect(page.getByText('Pré-visualização da importação')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Confirmar/ })).toBeVisible();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
   test('1001-row CSV reaches preview without browser-side failure @P1 @scale', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
     test.setTimeout(90_000);
@@ -87,5 +100,25 @@ test.describe('Bulk CSV import — manager @manager @bulk', () => {
     await expect(page.getByText('Pré-visualização da importação')).toBeVisible();
     await expect(page.getByRole('button', { name: /Confirmar/ })).toBeVisible();
     await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  test('same CSV can be previewed twice without silent mutation @P1', async ({ page }) => {
+    test.skip(!eventId, 'E2E_EVENT_ID not configured');
+    await page.goto(`/events/${eventId}/people`);
+    const rows = fakeRows(5, `e2e-replay-${Date.now()}`);
+    const dir = await uploadCsv(page, rows);
+    await expect(page.getByText('Pré-visualização da importação')).toBeVisible();
+    const firstPreview = await page.locator('body').innerText();
+
+    await page.reload();
+    const dir2 = await uploadCsv(page, rows);
+    await expect(page.getByText('Pré-visualização da importação')).toBeVisible();
+    const secondPreview = await page.locator('body').innerText();
+
+    expect(secondPreview).toContain('Pré-visualização da importação');
+    expect(secondPreview.length).toBeGreaterThan(0);
+    expect(firstPreview.length).toBeGreaterThan(0);
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(dir2, { recursive: true, force: true });
   });
 });
