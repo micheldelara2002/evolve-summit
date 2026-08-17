@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { t } from "@/lib/i18n";
@@ -328,17 +328,31 @@ export default function PartnersTab({ eventId, hasAccess }) {
   const [associating, setAssociating] = useState(false);
   const [editingEP, setEditingEP] = useState(null);
 
-  const { data: eventPartners = [], isLoading } = useQuery({
+  const { data: eventPartners = [], isLoading: isLoadingEP } = useQuery({
     queryKey: ["event_partners", eventId],
     queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, is_deleted: false }),
   });
 
-  const { data: allPartners = [] } = useQuery({
-    queryKey: ["global_partners_for_assoc"],
-    queryFn: () => base44.entities.Partner.list("-created_date", 500),
+  // P0 — Scoped fetch: only partners referenced by this event's associations
+  // (O(eventPartners) memory). Replaces the global Partner.list(500) scan that
+  // silently truncated at 500 and loaded the whole Partner catalog per tab open.
+  const partnerIds = useMemo(
+    () => [...new Set(eventPartners.map((ep) => ep.partner_id))],
+    [eventPartners]
+  );
+  const { data: partners = [], isLoading: isLoadingPartners } = useQuery({
+    queryKey: ["partners_by_ids", partnerIds.join(",")],
+    queryFn: () =>
+      partnerIds.length
+        ? base44.entities.Partner.filter({ id: { $in: partnerIds } })
+        : Promise.resolve([]),
+    enabled: partnerIds.length > 0,
   });
-
-  const partnerMap = Object.fromEntries(allPartners.map((p) => [p.id, p]));
+  const partnerMap = useMemo(
+    () => Object.fromEntries(partners.map((p) => [p.id, p])),
+    [partners]
+  );
+  const isLoading = isLoadingEP || (partnerIds.length > 0 && isLoadingPartners);
 
   const handleRemove = async (ep) => {
     await base44.entities.EventPartner.update(ep.id, { is_deleted: true });

@@ -12,21 +12,55 @@ import { sendConnectionRequest } from "@/lib/redeService";
 import { toast } from "sonner";
 import { t } from "@/lib/i18n";
 
+const PARTICIPANT_BATCH = 500;
+
 export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myParticipantRecords, selectedEventId }) {
   const [search, setSearch] = useState("");
   const [pendingIds, setPendingIds] = useState(new Set());
   const queryClient = useQueryClient();
 
-  const { data: participants = [], isLoading } = useQuery({
+  // P1 — Batched, deduplicated participant scan (skip-based, sort 'id', BATCH=500).
+  // Builds person_id -> sharedEventIds incrementally; never holds all participants in
+  // memory (O(BATCH) per request + O(unique people) for the map). No silent truncation.
+  const { data: dedupEntries = [], isLoading } = useQuery({
     queryKey: ["rede_global_participants", eventIds.join(",")],
     queryFn: async () => {
       if (!eventIds.length) return [];
-      return base44.entities.Participant.filter({ event_id: { $in: eventIds }, is_deleted: false });
+      const byPerson = new Map();
+      const seenIds = new Set();
+      const myId = myPerson?.id;
+      let skip = 0;
+      while (true) {
+        const page = await base44.entities.Participant.filter(
+          { event_id: { $in: eventIds }, is_deleted: false },
+          "id",
+          PARTICIPANT_BATCH,
+          skip
+        );
+        if (page.length === 0) break;
+        let added = 0;
+        for (const p of page) {
+          if (seenIds.has(p.id)) continue;
+          seenIds.add(p.id);
+          added++;
+          if (!p.person_id || p.person_id === myId) continue;
+          let entry = byPerson.get(p.person_id);
+          if (!entry) {
+            entry = { person_id: p.person_id, sharedEventIds: [] };
+            byPerson.set(p.person_id, entry);
+          }
+          entry.sharedEventIds.push(p.event_id);
+        }
+        if (page.length < PARTICIPANT_BATCH) break;
+        if (added === 0) break; // safety: skip not advancing
+        skip += PARTICIPANT_BATCH;
+      }
+      return [...byPerson.values()];
     },
-    enabled: eventIds.length > 0,
+    enabled: eventIds.length > 0 && !!myPerson?.id,
   });
 
-  const participantPersonIds = [...new Set(participants.map((p) => p.person_id).filter(Boolean))];
+  const participantPersonIds = useMemo(() => dedupEntries.map((e) => e.person_id), [dedupEntries]);
   const { data: persons = [] } = useQuery({
     queryKey: ["rede_persons_by_participants", participantPersonIds.join(",")],
     queryFn: async () => {
@@ -67,19 +101,15 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
   const sentIds = new Set(mySentRequests.filter((r) => r.status === "pending").map((r) => r.receiver_person_id));
   const personMap = new Map(persons.map((p) => [p.id, p]));
 
-  // Deduplicate by person_id, track shared events
-  const eligible = useMemo(() => {
-    const byPersonId = new Map();
-    participants
-      .filter((p) => p.person_id && p.person_id !== myPerson.id)
-      .forEach((p) => {
-        if (!byPersonId.has(p.person_id)) {
-          byPersonId.set(p.person_id, { person: personMap.get(p.person_id), sharedEventIds: [] });
-        }
-        byPersonId.get(p.person_id).sharedEventIds.push(p.event_id);
-      });
-    return [...byPersonId.values()].filter((e) => e.person);
-  }, [participants, personMap, myPerson.id]);
+  // Resolve deduped entries to active persons (preserves prior semantics:
+  // exclude self, exclude no-person_id, exclude persons not active/not found).
+  const eligible = useMemo(
+    () =>
+      dedupEntries
+        .filter((e) => personMap.has(e.person_id))
+        .map((e) => ({ person: personMap.get(e.person_id), sharedEventIds: e.sharedEventIds })),
+    [dedupEntries, personMap]
+  );
 
   const filtered = eligible.filter((e) => !search || e.person.full_name?.toLowerCase().includes(search.toLowerCase()));
 
