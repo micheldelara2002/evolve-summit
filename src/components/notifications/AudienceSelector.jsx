@@ -24,8 +24,8 @@ const SEGMENT_LABELS = {
   partner_leads: "Leads do Parceiro",
 };
 
-export default function AudienceSelector({ userRole, scopeType, scopeEventId, value, onChange }) {
-  const allowed = getAllowedSegments(userRole, scopeType);
+export default function AudienceSelector({ user, scopeType, scopeEventId, value, onChange }) {
+  const allowed = getAllowedSegments(user, scopeType);
 
   // Simple modes that don't need multi-select
   const simpleModes = allowed.filter((s) => s === "my_leads" || s === "my_attendees" || s === "partner_all_event" || s === "partner_leads");

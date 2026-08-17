@@ -4,6 +4,7 @@
  */
 import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { isAdmin, isPartnerManager } from "@/lib/access";
 
 // Mapa de roles de sistema para roles de participante
 const SYSTEM_ROLE_TO_PARTICIPANT = {
@@ -19,23 +20,21 @@ const SYSTEM_ROLE_TO_PARTICIPANT = {
  * Retorna os perfis (audience_segments) que um usuário pode selecionar,
  * dado o escopo (global vs event).
  */
-export function getAllowedSegments(userRole, scopeType) {
-  if (userRole === "admin") {
+/**
+ * Retorna os perfis (audience_segments) que um usuário pode selecionar.
+ * User.role só é admin|user. Papel de parceiro vem de PartnerRepresentative
+ * (via isPartnerManager/user.partner_reps); papéis de evento (gerente/staff/
+ * palestrante/representante) são resolvidos via Participant.role_in_event /
+ * EventMembership.role no dispatch, não aqui.
+ */
+export function getAllowedSegments(user, scopeType) {
+  if (isAdmin(user)) {
     if (scopeType === "global") {
       return ["all", "admin", "gerente", "staff", "palestrante", "representante", "attendee"];
     }
     return ["all", "gerente", "staff", "palestrante", "representante", "attendee"];
   }
-  if (userRole === "gerente" || userRole === "staff") {
-    return ["all", "staff", "palestrante", "representante", "attendee"];
-  }
-  if (userRole === "representante") {
-    return ["my_leads"];
-  }
-  if (userRole === "palestrante") {
-    return ["my_attendees"];
-  }
-  if (userRole === "partner_manager") {
+  if (isPartnerManager(user)) {
     return ["partner_all_event", "partner_leads"];
   }
   return [];
@@ -93,8 +92,8 @@ export async function resolveRecipients({ scopeType, scopeEventId, audienceType,
         users.filter((u) => u.role === "admin").forEach((u) => addRecipient(u.id, u.full_name, u.email, "admin"));
       },
       gerente: async () => {
-        const users = await getAllUsers();
-        users.filter((u) => u.role === "gerente" || u.role === "manager").forEach((u) => addRecipient(u.id, u.full_name, u.email, u.role));
+        // Gerentes do evento são resolvidos via Participant.role_in_event
+        // (User.role nunca é "gerente"/"manager").
         if (scopeEventId) {
           const parts = await base44.entities.Participant.filter({ event_id: scopeEventId, role_in_event: "manager", is_deleted: false });
           parts.forEach((p) => addRecipient(p.id, p.full_name, p.email, "manager"));
