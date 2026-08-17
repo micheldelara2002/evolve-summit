@@ -38,7 +38,7 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
-      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
+      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border pt-safe">
         <div className="flex items-center justify-between px-4 h-14">
           <Link to="/" className="flex items-center gap-2 min-w-0 rounded-lg px-1 touch-manipulation" style={{ minHeight: 44 }}>
             <img
@@ -78,7 +78,7 @@ export default function AdminLayout() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full pb-24 md:pb-6">
+      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-6">
         <Outlet />
       </main>
 

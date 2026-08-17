@@ -99,6 +99,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground font-body antialiased;
   }
@@ -119,5 +123,8 @@
   /* Safe area padding for bottom nav on notched devices */
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
   }
 }

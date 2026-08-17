@@ -15,7 +15,7 @@ export default function TopAppBar({ title, subtitle, onBack, actions, search }) 
   const navigate = useNavigate();
 
   return (
-    <div className="sticky top-14 z-30 bg-background/80 backdrop-blur-xl border-b border-border">
+    <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-30 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="flex items-center gap-3 px-4 py-3">
         {onBack && (
           <Button
