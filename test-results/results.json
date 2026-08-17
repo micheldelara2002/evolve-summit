@@ -4,6 +4,8 @@
       "/usr/bin/node",
       "/app/node_modules/.bin/playwright",
       "test",
+      "--grep",
+      "@regression",
       "--list"
     ],
     "configFile": "/app/playwright.config.js",
@@ -833,7 +835,7 @@
       "specs": [],
       "suites": [
         {
-          "title": "Gerente — event operations @manager",
+          "title": "Gerente — event operations @manager @regression",
           "file": "role-access.spec.js",
           "line": 5,
           "column": 6,
@@ -843,6 +845,7 @@
               "ok": true,
               "tags": [
                 "manager",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -856,7 +859,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-b3ee4bb4ae1416cf5f13",
+              "id": "2b5104c77555b2b63d2d-04951a7fd17e0b91f527",
               "file": "role-access.spec.js",
               "line": 6,
               "column": 3
@@ -866,6 +869,7 @@
               "ok": true,
               "tags": [
                 "manager",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -879,7 +883,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-66a74d2a51198a8c9c39",
+              "id": "2b5104c77555b2b63d2d-01ff39abe11412c2e79b",
               "file": "role-access.spec.js",
               "line": 14,
               "column": 3
@@ -889,6 +893,7 @@
               "ok": true,
               "tags": [
                 "manager",
+                "regression",
                 "P0",
                 "security"
               ],
@@ -903,7 +908,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-28eac4842f185d8f0e78",
+              "id": "2b5104c77555b2b63d2d-05334b3f4f47ccd99fc6",
               "file": "role-access.spec.js",
               "line": 24,
               "column": 3
@@ -911,7 +916,7 @@
           ]
         },
         {
-          "title": "Staff — event operations @staff",
+          "title": "Staff — event operations @staff @regression",
           "file": "role-access.spec.js",
           "line": 30,
           "column": 6,
@@ -921,6 +926,7 @@
               "ok": true,
               "tags": [
                 "staff",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -934,7 +940,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-35164ffa077bc0219eb7",
+              "id": "2b5104c77555b2b63d2d-963bb40530e4afd4dfd8",
               "file": "role-access.spec.js",
               "line": 31,
               "column": 3
@@ -944,6 +950,7 @@
               "ok": true,
               "tags": [
                 "staff",
+                "regression",
                 "P0",
                 "security"
               ],
@@ -958,7 +965,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-35cdfcd8036e313974bd",
+              "id": "2b5104c77555b2b63d2d-f241409d4b72f89bb4a3",
               "file": "role-access.spec.js",
               "line": 37,
               "column": 3
@@ -966,7 +973,7 @@
           ]
         },
         {
-          "title": "Participant — event experience @participant",
+          "title": "Participant — event experience @participant @regression",
           "file": "role-access.spec.js",
           "line": 45,
           "column": 6,
@@ -976,6 +983,7 @@
               "ok": true,
               "tags": [
                 "participant",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -989,7 +997,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-e7625a8b1a61da4b1140",
+              "id": "2b5104c77555b2b63d2d-18680fb39531319df75f",
               "file": "role-access.spec.js",
               "line": 46,
               "column": 3
@@ -999,6 +1007,7 @@
               "ok": true,
               "tags": [
                 "participant",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -1012,7 +1021,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-f9a92bc2115e6b8356c8",
+              "id": "2b5104c77555b2b63d2d-10e33cfb24b953e0dff3",
               "file": "role-access.spec.js",
               "line": 51,
               "column": 3
@@ -1022,6 +1031,7 @@
               "ok": true,
               "tags": [
                 "participant",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -1035,7 +1045,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-777d840310d5e2aa348f",
+              "id": "2b5104c77555b2b63d2d-42df11ad88c58bf715ba",
               "file": "role-access.spec.js",
               "line": 57,
               "column": 3
@@ -1043,7 +1053,7 @@
           ]
         },
         {
-          "title": "Speaker — speaker dashboard @speaker",
+          "title": "Speaker — speaker dashboard @speaker @regression",
           "file": "role-access.spec.js",
           "line": 64,
           "column": 6,
@@ -1053,6 +1063,7 @@
               "ok": true,
               "tags": [
                 "speaker",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -1066,7 +1077,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-de98e3ffef85c85d19a7",
+              "id": "2b5104c77555b2b63d2d-ebed6033da7ebf47000e",
               "file": "role-access.spec.js",
               "line": 65,
               "column": 3
@@ -1076,6 +1087,7 @@
               "ok": true,
               "tags": [
                 "speaker",
+                "regression",
                 "P0",
                 "security"
               ],
@@ -1090,7 +1102,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-acbd7902ba57dc02fb28",
+              "id": "2b5104c77555b2b63d2d-2ace94457e1728e0da86",
               "file": "role-access.spec.js",
               "line": 70,
               "column": 3
@@ -1098,7 +1110,7 @@
           ]
         },
         {
-          "title": "Partner — partner dashboard @partner",
+          "title": "Partner — partner dashboard @partner @regression",
           "file": "role-access.spec.js",
           "line": 79,
           "column": 6,
@@ -1108,6 +1120,7 @@
               "ok": true,
               "tags": [
                 "partner",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -1121,7 +1134,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-a989f3ccb24dbe38bf6f",
+              "id": "2b5104c77555b2b63d2d-cadd03ad9c0ec61acdd9",
               "file": "role-access.spec.js",
               "line": 80,
               "column": 3
@@ -1131,6 +1144,7 @@
               "ok": true,
               "tags": [
                 "partner",
+                "regression",
                 "P0"
               ],
               "tests": [
@@ -1144,7 +1158,7 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-dea96b915a7ef1afc18b",
+              "id": "2b5104c77555b2b63d2d-ec8c079899f2e8cbb278",
               "file": "role-access.spec.js",
               "line": 85,
               "column": 3
@@ -1163,21 +1177,17 @@
         {
           "title": "Release smoke @regression @smoke",
           "file": "smoke.spec.js",
-          "line": 5,
+          "line": 11,
           "column": 6,
           "specs": [
             {
-              "title": "authenticated shell loads @P0 @manager @staff @participant @speaker @partner",
+              "title": "manager smoke: authenticated shell and event management @manager @P0",
               "ok": true,
               "tags": [
                 "regression",
                 "smoke",
-                "P0",
                 "manager",
-                "staff",
-                "participant",
-                "speaker",
-                "partner"
+                "P0"
               ],
               "tests": [
                 {
@@ -1190,23 +1200,19 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-4d99c1886d6bda7420ab",
+              "id": "2c14808d47b386fba9eb-bda5e00f2a80bd875c51",
               "file": "smoke.spec.js",
-              "line": 6,
+              "line": 12,
               "column": 3
             },
             {
-              "title": "authenticated shell loads @P0 @manager @staff @participant @speaker @partner",
+              "title": "staff smoke: authenticated shell and event @staff @P0",
               "ok": true,
               "tags": [
                 "regression",
                 "smoke",
-                "P0",
-                "manager",
                 "staff",
-                "participant",
-                "speaker",
-                "partner"
+                "P0"
               ],
               "tests": [
                 {
@@ -1219,23 +1225,19 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-b100740bbff295f9c5cd",
+              "id": "2c14808d47b386fba9eb-5e7af107b64d30973906",
               "file": "smoke.spec.js",
-              "line": 6,
+              "line": 20,
               "column": 3
             },
             {
-              "title": "authenticated shell loads @P0 @manager @staff @participant @speaker @partner",
+              "title": "participant smoke: home, events and profile @participant @P0",
               "ok": true,
               "tags": [
                 "regression",
                 "smoke",
-                "P0",
-                "manager",
-                "staff",
                 "participant",
-                "speaker",
-                "partner"
+                "P0"
               ],
               "tests": [
                 {
@@ -1248,23 +1250,19 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-97e5f7018611209d412b",
+              "id": "2c14808d47b386fba9eb-00c12256730af22503dd",
               "file": "smoke.spec.js",
-              "line": 6,
+              "line": 28,
               "column": 3
             },
             {
-              "title": "authenticated shell loads @P0 @manager @staff @participant @speaker @partner",
+              "title": "speaker smoke: dashboard @speaker @P0",
               "ok": true,
               "tags": [
                 "regression",
                 "smoke",
-                "P0",
-                "manager",
-                "staff",
-                "participant",
                 "speaker",
-                "partner"
+                "P0"
               ],
               "tests": [
                 {
@@ -1277,23 +1275,19 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-b65bcdf08579f13d2f30",
+              "id": "2c14808d47b386fba9eb-b231b6f5237e65db3bcf",
               "file": "smoke.spec.js",
-              "line": 6,
+              "line": 37,
               "column": 3
             },
             {
-              "title": "authenticated shell loads @P0 @manager @staff @participant @speaker @partner",
+              "title": "partner smoke: dashboard @partner @P0",
               "ok": true,
               "tags": [
                 "regression",
                 "smoke",
-                "P0",
-                "manager",
-                "staff",
-                "participant",
-                "speaker",
-                "partner"
+                "partner",
+                "P0"
               ],
               "tests": [
                 {
@@ -1306,9 +1300,9 @@
                   "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-8207da7f3250223965c1",
+              "id": "2c14808d47b386fba9eb-6d7e5aa8dbe837f6d90d",
               "file": "smoke.spec.js",
-              "line": 6,
+              "line": 42,
               "column": 3
             }
           ]
@@ -2901,8 +2895,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-17T23:32:05.422Z",
-    "duration": 169.6350000000001,
+    "startTime": "2026-08-17T23:34:12.853Z",
+    "duration": 172.67899999999997,
     "expected": 0,
     "skipped": 100,
     "unexpected": 0,
