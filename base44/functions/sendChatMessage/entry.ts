@@ -30,6 +30,22 @@ Deno.serve(async (req) => {
     const thread = threads?.[0];
     if (!thread) return Response.json({ error: 'Thread não encontrada.' }, { status: 404 });
 
+    if (eventId && eventId !== thread.event_id) {
+      return Response.json({ error: 'Evento da mensagem não corresponde ao evento da conversa.' }, { status: 403 });
+    }
+    const effectiveEventId = thread.event_id;
+
+    const threadParticipants = await base44.asServiceRole.entities.Participant.filter({
+      event_id: effectiveEventId,
+      is_deleted: false,
+      person_id: { $in: [thread.person_a_id, thread.person_b_id] },
+      registration_status: { $ne: 'cancelled' },
+    });
+    const eventPersonIds = new Set(threadParticipants.map((p) => p.person_id).filter(Boolean));
+    if (!eventPersonIds.has(thread.person_a_id) || !eventPersonIds.has(thread.person_b_id)) {
+      return Response.json({ error: 'Conversa inválida para este evento.' }, { status: 403 });
+    }
+
     const isParticipant = thread.person_a_id === senderPersonId || thread.person_b_id === senderPersonId;
     const isOwner = senderPersonId === userPersonId || user.role === 'admin';
     if (!isParticipant || !isOwner) {
@@ -45,7 +61,7 @@ Deno.serve(async (req) => {
     // Create message
     const msg = await base44.asServiceRole.entities.ChatMessage.create({
       thread_id: threadId,
-      event_id: eventId,
+      event_id: effectiveEventId,
       sender_person_id: senderPersonId,
       sender_name: safeSenderName,
       message_text: safeText,
@@ -69,7 +85,7 @@ Deno.serve(async (req) => {
           if (recipient) {
             const campaign = await base44.asServiceRole.entities.NotificationCampaign.create({
               scope_type: "event",
-              scope_event_id: eventId,
+              scope_event_id: effectiveEventId,
               title: `Nova mensagem de ${safeSenderName}`,
               message: safeText.substring(0, 100),
               type: "informativa",
@@ -80,7 +96,7 @@ Deno.serve(async (req) => {
               recipients_count: 1,
               delivered_count: 1,
               cta_label: "Ver conversa",
-              cta_target: `/event/${eventId}`,
+              cta_target: `/event/${effectiveEventId}`,
             });
             await base44.asServiceRole.entities.NotificationRecipient.create({
               campaign_id: campaign.id,
