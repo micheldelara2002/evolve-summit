@@ -33,6 +33,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Sem permissão.' }, { status: 403 });
     }
 
+    // Event isolation: both people must belong to the requested event. This prevents
+    // creating a thread for arbitrary Person IDs from another event.
+    const participants = await base44.asServiceRole.entities.Participant.filter({
+      event_id: eventId,
+      is_deleted: false,
+      person_id: { $in: [myPersonId, otherPersonId] },
+      registration_status: { $ne: 'cancelled' },
+    });
+    const participantPersonIds = new Set(participants.map((p) => p.person_id).filter(Boolean));
+    if (!participantPersonIds.has(myPersonId) || !participantPersonIds.has(otherPersonId)) {
+      return Response.json({ error: 'As pessoas precisam pertencer ao mesmo evento.' }, { status: 403 });
+    }
+
+    if (myPersonId === otherPersonId) {
+      return Response.json({ error: 'Não é possível criar uma conversa consigo mesmo.' }, { status: 400 });
+    }
+
     const [aId, bId] = sortPersonIds(myPersonId, otherPersonId);
     const safeMyName = sanitizeText(myPersonName);
     const safeOtherName = sanitizeText(otherPersonName);
