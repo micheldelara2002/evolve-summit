@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const eventId = process.env.E2E_EVENT_ID;
 
-test.describe('Gerente — event operations @manager', () => {
+test.describe('Gerente — event operations @manager @regression', () => {
   test('opens home and event context @P0', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
     await page.goto('/');
@@ -27,7 +27,7 @@ test.describe('Gerente — event operations @manager', () => {
   });
 });
 
-test.describe('Staff — event operations @staff', () => {
+test.describe('Staff — event operations @staff @regression', () => {
   test('opens event and sees event experience @P0', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
     await page.goto(`/event/${eventId}`);
@@ -42,7 +42,7 @@ test.describe('Staff — event operations @staff', () => {
   });
 });
 
-test.describe('Participant — event experience @participant', () => {
+test.describe('Participant — event experience @participant @regression', () => {
   test('opens my events @P0', async ({ page }) => {
     await page.goto('/my-events');
     await expect(page.getByRole('heading').first()).toBeVisible();
@@ -61,7 +61,7 @@ test.describe('Participant — event experience @participant', () => {
   });
 });
 
-test.describe('Speaker — speaker dashboard @speaker', () => {
+test.describe('Speaker — speaker dashboard @speaker @regression', () => {
   test('opens speaker dashboard @P0', async ({ page }) => {
     await page.goto('/speaker-dashboard');
     await expect(page.getByRole('heading').first()).toBeVisible();
@@ -76,7 +76,7 @@ test.describe('Speaker — speaker dashboard @speaker', () => {
   });
 });
 
-test.describe('Partner — partner dashboard @partner', () => {
+test.describe('Partner — partner dashboard @partner @regression', () => {
   test('opens partner dashboard @P0', async ({ page }) => {
     await page.goto('/partner-dashboard');
     await expect(page.getByRole('heading').first()).toBeVisible();
