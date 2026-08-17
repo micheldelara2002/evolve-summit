@@ -58,7 +58,7 @@ const MANAGEMENT_CARDS = [
   { key: "partners", icon: Building2, tone: "warning", href: "/partner", label: "Gestão de Parceiros" },
 ];
 
-const ROLE_LABELS = { admin: "Admin Global", member: "Membro" };
+const ROLE_LABELS = { admin: "Admin Global", user: "Membro" };
 
 export default function AdminHome() {
   const { user } = useAuth();

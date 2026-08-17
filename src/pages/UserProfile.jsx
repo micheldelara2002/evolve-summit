@@ -39,7 +39,7 @@ function UserAvatar({ src, name, size = "lg" }) {
 
 const ROLE_LABELS = {
   admin: "Admin Global",
-  member: "Membro",
+  user: "Membro",
   partner_manager: "Gestor Parceiro",
 };
 
