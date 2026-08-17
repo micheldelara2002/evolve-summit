@@ -90,6 +90,14 @@ Deno.serve(async (req) => {
     if (action === 'incUsers') {
       const { createdDateISO } = body;
       if (!createdDateISO) return Response.json({ error: 'createdDateISO obrigatório' }, { status: 400 });
+      if (user.role !== 'admin') {
+        const records = await svc.entities.User.filter({ id: user.id });
+        const dbUser = records?.[0];
+        if (!dbUser) return Response.json({ error: 'Usuário não encontrado.' }, { status: 401 });
+        const requestedDay = new Date(createdDateISO).toISOString().slice(0, 10);
+        const userDay = new Date(dbUser.created_date).toISOString().slice(0, 10);
+        if (requestedDay !== userDay) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
+      }
       await incUsers(svc, createdDateISO);
       // P0.3 — popula created_day no User para correção de borda do dashboard (equality query).
       // User é criado pelo auth (platform-owned); este handler (chamado pelo workflow de signup)
