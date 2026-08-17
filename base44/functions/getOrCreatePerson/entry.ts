@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { incPersons } from "../../shared/businessMetrics.ts";
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 // P0.4 + P0 residual — Hardened identity resolution.
 //
@@ -25,12 +26,17 @@ export default async function(req) {
     let resolvedName = null;
 
     // 1. Authenticated path — identity from auth.me(), never from client body.
+    //    P1: requireActiveUser blocks account_status='deleted' from mutating.
     try {
-      const authUser = await base44.auth.me();
-      if (authUser && authUser.email) {
-        resolvedEmail = authUser.email;
-        resolvedName = authUser.full_name || "Novo Usuário";
+      const guard = await requireActiveUser(base44);
+      if (guard.ok) {
+        resolvedEmail = guard.user.email;
+        resolvedName = guard.user.full_name || "Novo Usuário";
+      } else if (guard.status === 403) {
+        // Deleted account — block authenticated mutation.
+        return Response.json({ error: guard.error }, { status: guard.status });
       }
+      // 401 → no auth context — fall through to workflow/system path.
     } catch {
       // No user auth context — fall through to workflow/system path.
     }
@@ -71,7 +77,8 @@ export default async function(req) {
       full_name: resolvedName,
       contact_email: resolvedEmail,
       is_active: true,
-      created_day: new Date().toISOString().slice(0, 10)
+      created_day: new Date().toISOString().slice(0, 10),
+      metrics_inc: true, // P1 — direct incPersons below is the single count for this Person
     });
     // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
     try { await incPersons(base44.asServiceRole, person.created_date); } catch {}

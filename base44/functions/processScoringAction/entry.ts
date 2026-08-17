@@ -33,6 +33,10 @@ Deno.serve(async (req) => {
     const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId, is_deleted: false });
     const targetPart = targetParts[0];
     if (!targetPart) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
+    // P1 — personId consistency: when provided, must match the Participant's person_id.
+    if (personId && targetPart.person_id !== personId) {
+      return Response.json({ error: 'personId não corresponde ao Participant informado.' }, { status: 400 });
+    }
     const isOwner = targetPart.email?.toLowerCase() === user.email?.toLowerCase();
     const isAdminUser = user.role === 'admin';
     if (!isOwner && !isAdminUser) {

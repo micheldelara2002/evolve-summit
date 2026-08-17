@@ -97,6 +97,8 @@ Deno.serve(async (req) => {
         const requestedDay = new Date(createdDateISO).toISOString().slice(0, 10);
         const userDay = new Date(dbUser.created_date).toISOString().slice(0, 10);
         if (requestedDay !== userDay) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
+        // P1 — idempotency: created_day is set by this handler on first count; replays no-op.
+        if (dbUser.created_day) return Response.json({ ok: true, reason: "already_counted" });
       }
       await incUsers(svc, createdDateISO);
       // P0.3 — popula created_day no User para correção de borda do dashboard (equality query).
@@ -120,6 +122,11 @@ Deno.serve(async (req) => {
         const requestedDay = new Date(createdDateISO).toISOString().slice(0, 10);
         const personDay = new Date(ownPerson.created_date).toISOString().slice(0, 10);
         if (requestedDay !== personDay) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
+        // P1 — idempotency: metrics_inc marks this Person already counted; replays no-op.
+        if (ownPerson.metrics_inc) return Response.json({ ok: true, reason: "already_counted" });
+        await incPersons(svc, createdDateISO);
+        try { await svc.entities.Person.update(ownPerson.id, { metrics_inc: true }); } catch {}
+        return Response.json({ ok: true });
       }
       await incPersons(svc, createdDateISO);
       return Response.json({ ok: true });
