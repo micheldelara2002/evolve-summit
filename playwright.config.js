@@ -10,6 +10,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
+  outputDir: 'test-results/raw',
   reporter: [['list'], ['html', { outputFolder: 'test-results/html', open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]],
   use: {
     baseURL,
