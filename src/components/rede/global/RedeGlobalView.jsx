@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { UserPlus, Inbox, Users, MessageSquare } from "lucide-react";
@@ -13,6 +13,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { t } from "@/lib/i18n";
 import SectionSwitcher from "@/components/ui/SectionSwitcher";
 import { useSectionParam } from "@/lib/useSectionParam";
+import PullToRefresh from "@/components/ui/PullToRefresh";
 
 const SECTIONS = [
   { id: "discover", labelKey: "rede.discover", icon: UserPlus },
@@ -30,9 +31,20 @@ const LEGACY_TAB_MAP = {
 
 export default function RedeGlobalView() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useSectionParam({ defaultSection: "discover", legacyTabMap: LEGACY_TAB_MAP });
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState("all");
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["my_person_rede_global"] }),
+      queryClient.invalidateQueries({ queryKey: ["my_participants_rede_global"] }),
+      queryClient.invalidateQueries({ queryKey: ["my_events_rede_global"] }),
+      queryClient.invalidateQueries({ queryKey: ["rede_global"] }),
+      queryClient.invalidateQueries({ queryKey: ["rede_persons_by_participants"] }),
+    ]);
+  };
 
   const { data: myPerson, isLoading: loadingPerson } = useQuery({
     queryKey: ["my_person_rede_global", user?.person_id, user?.email],
@@ -132,41 +144,43 @@ export default function RedeGlobalView() {
         onSectionChange={setActiveTab}
       />
 
-      {activeTab === "discover" && (
-        <GlobalDiscoverTab
-          eventIds={effectiveEventIds}
-          eventMap={eventMap}
-          myPerson={myPerson}
-          myParticipantRecords={myParticipantRecords}
-          selectedEventId={selectedEventId}
-        />
-      )}
-      {activeTab === "requests" && (
-        <GlobalRequestsTab
-          eventIds={effectiveEventIds}
-          eventMap={eventMap}
-          myPerson={myPerson}
-          myParticipantRecords={myParticipantRecords}
-        />
-      )}
-      {activeTab === "connections" && (
-        <GlobalConnectionsTab
-          eventIds={effectiveEventIds}
-          eventMap={eventMap}
-          myPerson={myPerson}
-          myParticipantRecords={myParticipantRecords}
-          onStartChat={handleStartChat}
-        />
-      )}
-      {activeTab === "conversations" && (
-        <GlobalConversationsTab
-          eventIds={effectiveEventIds}
-          eventMap={eventMap}
-          myPerson={myPerson}
-          activeThreadId={activeThreadId}
-          onClearActiveThread={() => setActiveThreadId(null)}
-        />
-      )}
+      <PullToRefresh onRefresh={handleRefresh} disabled={activeTab === "conversations"}>
+        {activeTab === "discover" && (
+          <GlobalDiscoverTab
+            eventIds={effectiveEventIds}
+            eventMap={eventMap}
+            myPerson={myPerson}
+            myParticipantRecords={myParticipantRecords}
+            selectedEventId={selectedEventId}
+          />
+        )}
+        {activeTab === "requests" && (
+          <GlobalRequestsTab
+            eventIds={effectiveEventIds}
+            eventMap={eventMap}
+            myPerson={myPerson}
+            myParticipantRecords={myParticipantRecords}
+          />
+        )}
+        {activeTab === "connections" && (
+          <GlobalConnectionsTab
+            eventIds={effectiveEventIds}
+            eventMap={eventMap}
+            myPerson={myPerson}
+            myParticipantRecords={myParticipantRecords}
+            onStartChat={handleStartChat}
+          />
+        )}
+        {activeTab === "conversations" && (
+          <GlobalConversationsTab
+            eventIds={effectiveEventIds}
+            eventMap={eventMap}
+            myPerson={myPerson}
+            activeThreadId={activeThreadId}
+            onClearActiveThread={() => setActiveThreadId(null)}
+          />
+        )}
+      </PullToRefresh>
     </div>
   );
 }

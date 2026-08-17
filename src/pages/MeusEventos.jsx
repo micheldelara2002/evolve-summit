@@ -2,7 +2,7 @@
  * Página "Meus Eventos" para usuários não-admin.
  * Mostra apenas eventos active/finished em que o usuário tem Participant vinculado.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { base44 } from "@/api/base44Client";
@@ -13,6 +13,7 @@ import StatusBadge from "@/components/admin/StatusBadge";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/layout/PageHeader";
+import PullToRefresh from "@/components/ui/PullToRefresh";
 
 function isValidHex(color) {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
@@ -78,6 +79,16 @@ function EventCard({ event, index, isFinished }) {
 export default function MeusEventos() {
   const { user } = useAuth();
   const admin = isAdmin(user);
+  const queryClient = useQueryClient();
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["my_person"] }),
+      queryClient.invalidateQueries({ queryKey: ["my_participants_email"] }),
+      queryClient.invalidateQueries({ queryKey: ["my_participants_person"] }),
+      queryClient.invalidateQueries({ queryKey: ["my_events_scoped"] }),
+    ]);
+  };
 
   // 1. Buscar Person vinculada ao user (não-admin) — scoped por email
   const { data: persons = [], isLoading: loadingPersons } = useQuery({
@@ -131,6 +142,7 @@ export default function MeusEventos() {
   }
 
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-8 max-w-2xl mx-auto">
       <PageHeader icon={Calendar} title="Meus Eventos" subtitle="Eventos em que você está cadastrado como participante." tone="primary" />
 
@@ -164,5 +176,6 @@ export default function MeusEventos() {
         </section>
       )}
     </div>
+    </PullToRefresh>
   );
 }

@@ -1,8 +1,9 @@
 import { t } from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
 import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award } from "lucide-react";
 
@@ -62,6 +63,11 @@ const ROLE_LABELS = { admin: "Admin Global", member: "Membro" };
 export default function AdminHome() {
   const { user } = useAuth();
   const admin = isAdmin(user);
+  const queryClient = useQueryClient();
+
+  const handleRefresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["home-role-check"] });
+  };
 
   const { data: participantRoles, isLoading: isLoadingRoles } = useQuery({
     queryKey: ["home-role-check", user?.id, user?.person_id, user?.email],
@@ -114,6 +120,7 @@ export default function AdminHome() {
   const greeting = admin ? "Bem-vindo de volta" : "Olá";
 
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -154,5 +161,6 @@ export default function AdminHome() {
         </div>
       ))}
     </div>
+    </PullToRefresh>
   );
 }
