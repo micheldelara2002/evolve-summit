@@ -1,10 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const body = await req.json();
     const action = typeof body.action === 'string' ? body.action.trim() : '';
