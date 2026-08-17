@@ -56,6 +56,12 @@ Smoke:
 npm run test:e2e:smoke
 ```
 
+Regression:
+
+```bash
+npm run test:e2e:regression
+```
+
 Security:
 
 ```bash
@@ -101,6 +107,16 @@ O mesmo usuário não deve ser reutilizado entre personas, porque isso mascara f
 ## Evidências
 
 Em falha, Playwright mantém screenshot/trace/vídeo conforme configuração. O JSON em `test-results/results.json` permite integração futura com CI/CD.
+
+## Estado atual da suíte
+
+A suíte foi expandida para cobrir os cinco papéis prioritários, segurança E2E, bulk preview/scale, mobile regression, smoke e regression. A lista executável deve ser verificada com:
+
+```bash
+npm run test:e2e -- --list
+```
+
+A quantidade de testes listados é evidência de inventário, não de aprovação. Para aprovação, executar a suíte no ambiente de teste com as credenciais e `E2E_EVENT_ID` configurados.
 
 ## Próxima evolução
 
