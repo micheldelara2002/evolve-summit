@@ -30,26 +30,31 @@ export default function PartnerDashboard({ partnerId }) {
 
   const repPersonIds = [...new Set(reps.map((r) => r.person_id).filter(Boolean))];
 
-  // Participants que são speakers e vinculados a esses person_ids
+  // Participants que são speakers e vinculados a esses person_ids — query direcionada por person_id ($in)
   const { data: speakerParticipants = [] } = useQuery({
     queryKey: ["dash_speaker_participants", repPersonIds.join(",")],
     queryFn: async () => {
       if (!repPersonIds.length) return [];
-      const all = await base44.entities.Participant.filter({ role_in_event: "speaker", is_deleted: false });
-      return all.filter((p) => repPersonIds.includes(p.person_id));
+      return base44.entities.Participant.filter({
+        role_in_event: "speaker",
+        person_id: { $in: repPersonIds },
+        is_deleted: false,
+      });
     },
     enabled: repPersonIds.length > 0,
   });
 
   const speakerParticipantIds = [...new Set(speakerParticipants.map((p) => p.id))];
 
-  // Sessions desses speakers
+  // Sessions desses speakers — query direcionada por speaker_id ($in)
   const { data: sessions = [] } = useQuery({
     queryKey: ["dash_sessions", speakerParticipantIds.join(",")],
     queryFn: async () => {
       if (!speakerParticipantIds.length) return [];
-      const all = await base44.entities.Session.filter({ is_deleted: false });
-      return all.filter((s) => speakerParticipantIds.includes(s.speaker_id));
+      return base44.entities.Session.filter({
+        speaker_id: { $in: speakerParticipantIds },
+        is_deleted: false,
+      });
     },
     enabled: speakerParticipantIds.length > 0,
   });

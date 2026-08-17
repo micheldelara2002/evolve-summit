@@ -86,27 +86,39 @@ export default function PainelParceiro() {
 
   const eventIdsFromPartner = eventPartners.map((ep) => ep.event_id);
 
-  // Eventos do partner
+  // Eventos do partner — query direcionada por id ($in)
   const { data: events = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["partner_events", eventIdsFromPartner.join(",")],
     queryFn: async () => {
       if (!eventIdsFromPartner.length) return [];
-      const all = await base44.entities.Event.filter({ is_deleted: false });
-      return all.filter((e) => eventIdsFromPartner.includes(e.id));
+      return base44.entities.Event.filter({
+        id: { $in: eventIdsFromPartner },
+        is_deleted: false,
+      });
     },
     enabled: eventIdsFromPartner.length > 0,
   });
 
-  // Para representante: participações como partner_rep
+  // Para representante: participações como partner_rep — queries direcionadas por person_id e email
   const { data: myPartnerships = [], isLoading: loadingPartnerships } = useQuery({
     queryKey: ["my_partner_participations", user?.person_id, user?.email],
     queryFn: async () => {
-      const all = await base44.entities.Participant.filter({ is_deleted: false });
-      return all.filter(
-        (p) =>
-          p.role_in_event === "partner_rep" &&
-          (p.person_id === user?.person_id || p.person_id === myPerson?.id || p.email === user?.email)
-      );
+      const queries = [];
+      if (user?.person_id) {
+        queries.push(base44.entities.Participant.filter({ person_id: user.person_id, is_deleted: false }));
+      }
+      if (user?.email) {
+        queries.push(base44.entities.Participant.filter({ email: user.email, is_deleted: false }));
+      }
+      if (!queries.length) return [];
+      const [byPerson, byEmail] = await Promise.all(queries);
+      const merged = [...(byPerson ?? []), ...(byEmail ?? [])];
+      // Deduplica por Participant.id (mesmo registro pode aparecer nas duas queries)
+      const seen = new Map();
+      for (const p of merged) {
+        if (!seen.has(p.id)) seen.set(p.id, p);
+      }
+      return Array.from(seen.values()).filter((p) => p.role_in_event === "partner_rep");
     },
     enabled: !!user && !isPartnerManager(user) && !isAdmin(user),
   });

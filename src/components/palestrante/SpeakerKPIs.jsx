@@ -22,45 +22,56 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
   const participantIds = speakerParticipants.map((p) => p.id);
   const eventIds = speakerParticipants.map((p) => p.event_id);
 
-  // Sessões de que é palestrante
+  // Sessões de que é palestrante — query direcionada por speaker_id ($in)
   const { data: sessions = [] } = useQuery({
     queryKey: ["speaker-sessions-kpi", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      const all = await base44.entities.Session.filter({ is_deleted: false });
-      return all.filter((s) => participantIds.includes(s.speaker_id) && eventIds.includes(s.event_id));
+      const all = await base44.entities.Session.filter({
+        speaker_id: { $in: participantIds },
+        is_deleted: false,
+      });
+      // Preserva semântica original: session deve pertencer a um dos eventos do palestrante
+      return all.filter((s) => eventIds.includes(s.event_id));
     },
     enabled: participantIds.length > 0,
   });
 
   const sessionIds = sessions.map((s) => s.id);
 
+  // Reviews das sessões do palestrante — query direcionada por session_id ($in)
   const { data: reviews = [] } = useQuery({
     queryKey: ["speaker-reviews-kpi", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionReview.filter({});
-      return all.filter((r) => sessionIds.includes(r.session_id));
+      return base44.entities.SessionReview.filter({
+        session_id: { $in: sessionIds },
+      });
     },
     enabled: sessionIds.length > 0,
   });
 
+  // Mentorias do palestrante — query direcionada por mentor_participant_id ($in)
   const { data: mentorships = [] } = useQuery({
     queryKey: ["speaker-mentorships-kpi", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      const all = await base44.entities.MentorshipRequest.filter({});
-      return all.filter((m) => participantIds.includes(m.mentor_participant_id));
+      return base44.entities.MentorshipRequest.filter({
+        mentor_participant_id: { $in: participantIds },
+      });
     },
     enabled: participantIds.length > 0,
   });
 
+  // Perguntas das sessões do palestrante — query direcionada por session_id ($in)
   const { data: questions = [] } = useQuery({
     queryKey: ["speaker-questions-kpi", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionQuestion.filter({ is_deleted: false });
-      return all.filter((q) => sessionIds.includes(q.session_id));
+      return base44.entities.SessionQuestion.filter({
+        session_id: { $in: sessionIds },
+        is_deleted: false,
+      });
     },
     enabled: sessionIds.length > 0,
   });

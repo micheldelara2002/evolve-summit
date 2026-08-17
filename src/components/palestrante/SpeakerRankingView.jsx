@@ -26,44 +26,54 @@ export default function SpeakerRankingView({ speakerParticipants }) {
   const participantIds = speakerParticipants.map((p) => p.id);
   const eventIds = [...new Set(speakerParticipants.map((p) => p.event_id))];
 
+  // Sessões do palestrante — query direcionada por speaker_id ($in)
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["speaker-ranking-sessions", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      const all = await base44.entities.Session.filter({ is_deleted: false });
-      return all.filter((s) => participantIds.includes(s.speaker_id));
+      return base44.entities.Session.filter({
+        speaker_id: { $in: participantIds },
+        is_deleted: false,
+      });
     },
     enabled: participantIds.length > 0,
   });
 
   const sessionIds = sessions.map((s) => s.id);
 
+  // Reviews das sessões — query direcionada por session_id ($in)
   const { data: reviews = [] } = useQuery({
     queryKey: ["speaker-ranking-reviews", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionReview.filter({});
-      return all.filter((r) => sessionIds.includes(r.session_id));
+      return base44.entities.SessionReview.filter({
+        session_id: { $in: sessionIds },
+      });
     },
     enabled: sessionIds.length > 0,
   });
 
+  // Presenças das sessões — query direcionada por session_id ($in)
   const { data: attendances = [] } = useQuery({
     queryKey: ["speaker-ranking-attendances", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionAttendance.filter({});
-      return all.filter((a) => sessionIds.includes(a.session_id));
+      return base44.entities.SessionAttendance.filter({
+        session_id: { $in: sessionIds },
+      });
     },
     enabled: sessionIds.length > 0,
   });
 
+  // Eventos do palestrante — query direcionada por id ($in)
   const { data: events = [] } = useQuery({
     queryKey: ["speaker-ranking-events", eventIds.join(",")],
     queryFn: async () => {
       if (!eventIds.length) return [];
-      const all = await base44.entities.Event.filter({ is_deleted: false });
-      return all.filter((e) => eventIds.includes(e.id));
+      return base44.entities.Event.filter({
+        id: { $in: eventIds },
+        is_deleted: false,
+      });
     },
     enabled: eventIds.length > 0,
   });
