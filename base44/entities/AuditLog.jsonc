@@ -15,7 +15,8 @@
         "status_change",
         "role_change",
         "import",
-        "export"
+        "export",
+        "account_deletion"
       ],
       "description": "Tipo de a\u00e7\u00e3o"
     },

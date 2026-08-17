@@ -29,6 +29,15 @@
       "default": "dark",
       "description": "Prefer\u00eancia de tema visual do usu\u00e1rio"
     },
+    "account_status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "deleted"
+      ],
+      "default": "active",
+      "description": "Estado da conta. 'deleted' = conta exclu\u00edda pelo pr\u00f3prio usu\u00e1rio (PII anonimizada, acesso bloqueado). O registro de autentica\u00e7\u00e3o permanece pois a plataforma n\u00e3o exp\u00f5e hard-delete de User via SDK."
+    },
     "created_day": {
       "type": "string",
       "description": "P0.3 \u2014 Chave do dia (YYYY-MM-DD) derivada do created_date. Usada para corre\u00e7\u00e3o de borda no Business Dashboard (equality query). Populado no signup via workflow (maintainBusinessCounter incUsers); backfill via reconcileGlobalMetrics."

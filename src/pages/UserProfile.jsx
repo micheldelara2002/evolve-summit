@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import PointsModal from "@/components/profile/PointsModal";
 import ResgatesModal from "@/components/profile/ResgatesModal";
+import DeleteAccountDialog from "@/components/profile/DeleteAccountDialog";
 
 function UserAvatar({ src, name, size = "lg" }) {
   const initials = name
@@ -93,6 +94,7 @@ export default function UserProfile() {
   const [showResgates, setShowResgates] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   // Participações do usuário (para badges por evento)
   // Queries direcionadas por person_id e/ou email — sem scan global de Participant.
@@ -363,6 +365,17 @@ export default function UserProfile() {
       >
         <LogOut className="w-4 h-4" /> {t("nav.logout")}
       </Button>
+
+      {/* Excluir conta */}
+      <button
+        type="button"
+        onClick={() => setShowDeleteAccount(true)}
+        className="w-full text-xs text-muted-foreground hover:text-destructive transition-colors pt-2"
+      >
+        Excluir minha conta
+      </button>
+
+      <DeleteAccountDialog open={showDeleteAccount} onOpenChange={setShowDeleteAccount} />
     </div>
   );
 }

@@ -95,6 +95,15 @@ export const AuthProvider = ({ children }) => {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
+      if (currentUser.account_status === 'deleted') {
+        // Conta excluída pelo próprio usuário — bloqueia acesso e invalida a sessão.
+        await base44.auth.logout();
+        setAuthError({ type: 'account_deleted', message: 'Esta conta foi excluída.' });
+        setIsAuthenticated(false);
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
+        return;
+      }
       currentUser.partner_reps = await loadPartnerReps(currentUser).catch(() => []);
       setUser(currentUser);
       setIsAuthenticated(true);
