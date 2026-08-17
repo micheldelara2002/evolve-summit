@@ -159,11 +159,14 @@ async function* resolveAudienceBatches(
       if (users.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "segment") {
-    // --- Segment: collect User-role filters for single scan ---
+    // --- Segment: User.role GLOBAL filters only ---
+    // Apenas "admin" (User.role=admin) e "attendee" global (User.role=user) são
+    // resolvidos via User.role. Demais segmentos (gerente/staff/palestrante/
+    // representante) são resolvidos via Participant.role_in_event abaixo
+    // (participantSegMap) — NÃO via User.role, que só é admin|user.
     const userRoleMap: Record<string, string> = {};
     for (const seg of audienceSegments) {
       if (seg === "admin") userRoleMap["admin"] = "admin";
-      if (seg === "gerente") { userRoleMap["gerente"] = "gerente"; userRoleMap["manager"] = "gerente"; }
       if (seg === "attendee" && !scopeEventId) userRoleMap["user"] = "user";
     }
 

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Send } from "lucide-react";
 import AudienceSelector from "./AudienceSelector";
 import { dispatchCampaign } from "@/lib/notificationService";
-import { isPartnerManager } from "@/lib/access";
+import { isAdmin, isPartnerManager } from "@/lib/access";
 import { sanitizeText } from "@/utils/sanitize";
 import { toast } from "sonner";
 
@@ -80,7 +80,11 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     scope_type: scopeType,
     scope_event_id: scopeEventId || undefined,
     sender_user_id: currentUser?.id,
-    sender_role: isPartnerManager(currentUser) ? "representante" : currentUser?.role,
+    sender_role: isAdmin(currentUser)
+      ? "admin"
+      : isPartnerManager(currentUser)
+        ? "representante"
+        : undefined,
     status,
     audience_type: audience.type === "segment" ? "segment" : audience.type,
     audience_payload: audience.type === "segment" ? JSON.stringify(audience.segments) : null,

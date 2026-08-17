@@ -16,28 +16,51 @@ const SYSTEM_ROLE_TO_PARTICIPANT = {
   attendee: "attendee",
 };
 
+// EventMembership.role → audience segments oferecidos àquele papel no evento.
+// Espelha a autorização do backend (eventAuth EVENT_MANAGER_ROLES = manager/team).
+const EVENT_ROLE_SEGMENTS = {
+  manager: ["all", "gerente", "staff", "palestrante", "representante", "attendee"],
+  team: ["all", "gerente", "staff", "palestrante", "representante", "attendee"],
+  speaker: ["my_attendees"],
+  partner_rep: ["my_leads"],
+};
+
 /**
- * Retorna os perfis (audience_segments) que um usuário pode selecionar,
- * dado o escopo (global vs event).
+ * Retorna os audience_segments que um usuário pode selecionar.
+ *
+ * User.role só é admin|user. Papéis de evento vêm de EventMembership.role
+ * (resolvidos para scopeEventId); papéis de parceiro vêm de
+ * PartnerRepresentative (via isPartnerManager). Escopo global não-admin
+ * retorna [] (apenas admin envia campanhas globais — enforce no backend).
+ * Fail-safe: sem contexto suficiente → [].
  */
-/**
- * Retorna os perfis (audience_segments) que um usuário pode selecionar.
- * User.role só é admin|user. Papel de parceiro vem de PartnerRepresentative
- * (via isPartnerManager/user.partner_reps); papéis de evento (gerente/staff/
- * palestrante/representante) são resolvidos via Participant.role_in_event /
- * EventMembership.role no dispatch, não aqui.
- */
-export function getAllowedSegments(user, scopeType) {
+export function getAllowedSegments(user, scopeType, scopeEventId, memberships = []) {
   if (isAdmin(user)) {
     if (scopeType === "global") {
       return ["all", "admin", "gerente", "staff", "palestrante", "representante", "attendee"];
     }
     return ["all", "gerente", "staff", "palestrante", "representante", "attendee"];
   }
-  if (isPartnerManager(user)) {
-    return ["partner_all_event", "partner_leads"];
+  // Não-admin no escopo global: sem permissão (backend: apenas admin).
+  if (scopeType === "global") return [];
+  // Escopo de evento: requer scopeEventId + papéis contextuais nele.
+  if (!scopeEventId) return [];
+  const rolesInEvent = new Set(
+    (memberships || [])
+      .filter((m) => m.event_id === scopeEventId && m.is_active !== false && m.is_deleted !== false)
+      .map((m) => m.role)
+  );
+  const segments = new Set();
+  for (const role of rolesInEvent) {
+    const segs = EVENT_ROLE_SEGMENTS[role];
+    if (segs) segs.forEach((s) => segments.add(s));
   }
-  return [];
+  // Gestor de parceiro — determinado por PartnerRepresentative (não User.role)
+  if (isPartnerManager(user)) {
+    segments.add("partner_all_event");
+    segments.add("partner_leads");
+  }
+  return [...segments];
 }
 
 /**

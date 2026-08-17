@@ -4,6 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { getAllowedSegments } from "@/lib/notificationService";
+import { getMyMemberships } from "@/lib/roleEngine";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -25,7 +26,15 @@ const SEGMENT_LABELS = {
 };
 
 export default function AudienceSelector({ user, scopeType, scopeEventId, value, onChange }) {
-  const allowed = getAllowedSegments(user, scopeType);
+  // Papéis contextuais de evento (EventMembership) do usuário — carregados apenas
+  // para escopo de evento, onde papéis não-admin são resolvidos contextualmente.
+  const { data: memberships = [] } = useQuery({
+    queryKey: ["my_memberships", user?.id],
+    queryFn: () => getMyMemberships(user.id),
+    enabled: !!user?.id && scopeType === "event" && !!scopeEventId,
+  });
+
+  const allowed = getAllowedSegments(user, scopeType, scopeEventId, memberships);
 
   // Simple modes that don't need multi-select
   const simpleModes = allowed.filter((s) => s === "my_leads" || s === "my_attendees" || s === "partner_all_event" || s === "partner_leads");
