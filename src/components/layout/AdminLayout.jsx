@@ -11,6 +11,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useUnreadCount } from "@/components/notifications/NotificationInbox";
 import NotificationInbox from "@/components/notifications/NotificationInbox";
 import BottomNav from "@/components/layout/BottomNav";
+import ScrollRestoration from "@/components/layout/ScrollRestoration";
 
 const ADMIN_NAV = [
   { path: "/", icon: LayoutDashboard, label: "nav.home" },
@@ -84,6 +85,7 @@ export default function AdminLayout() {
 
       {/* Mobile bottom navigation */}
       <BottomNav />
+      <ScrollRestoration />
     </div>
   );
 }
