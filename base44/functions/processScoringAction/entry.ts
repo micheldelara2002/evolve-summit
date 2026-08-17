@@ -33,18 +33,34 @@ Deno.serve(async (req) => {
     const targetParts = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId, is_deleted: false });
     const targetPart = targetParts[0];
     if (!targetPart) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
-    const isOwner = targetPart.email === user.email;
+    const isOwner = targetPart.email?.toLowerCase() === user.email?.toLowerCase();
     const isAdminUser = user.role === 'admin';
     if (!isOwner && !isAdminUser) {
       if (acao !== 'conexao_aceita') {
         return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
       }
-      // conexao_aceita only: verify caller is a participant in the same event
+
+      // conexao_aceita: caller must be a participant in the same event AND there
+      // must be an actual accepted Connection between caller and target. Merely
+      // being in the same event is not enough to manufacture points.
       const callerParts = await base44.asServiceRole.entities.Participant.filter({
         event_id: targetPart.event_id, email: user.email, is_deleted: false,
       });
-      if (callerParts.length === 0) {
+      const callerPart = callerParts[0];
+      if (!callerPart || !callerPart.person_id || !targetPart.person_id) {
         return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
+      }
+      const [personA, personB] = callerPart.person_id < targetPart.person_id
+        ? [callerPart.person_id, targetPart.person_id]
+        : [targetPart.person_id, callerPart.person_id];
+      const connections = await base44.asServiceRole.entities.Connection.filter({
+        event_id: targetPart.event_id,
+        person_a_id: personA,
+        person_b_id: personB,
+        is_deleted: false,
+      });
+      if (connections.length === 0) {
+        return Response.json({ error: 'Conexão aceita não encontrada para esta pontuação.' }, { status: 403 });
       }
     }
 
