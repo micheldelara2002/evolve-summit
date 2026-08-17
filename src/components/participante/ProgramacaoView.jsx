@@ -46,7 +46,7 @@ function FavoriteBtn({ isFav, onToggle, size = "sm" }) {
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      className={`shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] transition-colors ${
+      className={`shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] transition-colors select-none touch-manipulation ${
         size === "sm" ? "rounded-lg" : "rounded-xl"
       } ${isFav ? "text-amber-500 hover:text-amber-600" : "text-muted-foreground/40 hover:text-amber-400"}`}
       title={isFav ? "Remover favorito" : "Favoritar"}
@@ -246,6 +246,8 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
 
   const favSet = useMemo(() => new Set(favorites.map((f) => f.session_id)), [favorites]);
 
+  const FAV_KEY = ["session-favorites", eventId, participant?.id];
+
   const toggleFavMut = useMutation({
     mutationFn: async (sessionId) => {
       const existing = favorites.find((f) => f.session_id === sessionId);
@@ -260,8 +262,43 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
         });
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session-favorites", eventId, participant?.id] }),
+    // Optimistic update: flip the favorite in the cache before the backend responds.
+    onMutate: async (sessionId) => {
+      await queryClient.cancelQueries({ queryKey: FAV_KEY });
+      const previousFavorites = queryClient.getQueryData(FAV_KEY) || [];
+      const existing = previousFavorites.find((f) => f.session_id === sessionId);
+      const optimisticFavorites = existing
+        ? previousFavorites.filter((f) => f.session_id !== sessionId)
+        : [
+            ...previousFavorites,
+            {
+              id: `optimistic-${sessionId}`,
+              session_id: sessionId,
+              event_id: eventId,
+              participant_id: participant?.id,
+              person_id: participant?.person_id,
+            },
+          ];
+      queryClient.setQueryData(FAV_KEY, optimisticFavorites);
+      return { previousFavorites };
+    },
+    onError: (_err, _sessionId, context) => {
+      // Rollback to the snapshot taken before the optimistic update.
+      if (context?.previousFavorites) {
+        queryClient.setQueryData(FAV_KEY, context.previousFavorites);
+      }
+    },
+    onSettled: () => {
+      // Re-sync with the server (source of truth) after success or rollback.
+      queryClient.invalidateQueries({ queryKey: FAV_KEY });
+    },
   });
+
+  // Prevent double-fire on the same session while a mutation is already in flight.
+  const handleToggleFav = (sessionId) => {
+    if (toggleFavMut.isPending && toggleFavMut.variables === sessionId) return;
+    toggleFavMut.mutate(sessionId);
+  };
 
   const trackMap = useMemo(() => Object.fromEntries(tracks.map((t) => [t.id, t])), [tracks]);
   const roomMap = useMemo(() => Object.fromEntries(rooms.map((r) => [r.id, r])), [rooms]);
@@ -363,11 +400,11 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
           </Button>
           <div className="flex rounded-lg border border-border overflow-hidden">
             <button onClick={() => setViewMode("lista")}
-              className={`px-2.5 py-1.5 transition-colors ${viewMode === "lista" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+              className={`px-2.5 py-1.5 transition-colors select-none touch-manipulation ${viewMode === "lista" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
               <LayoutList className="w-4 h-4" />
             </button>
             <button onClick={() => setViewMode("grid")}
-              className={`px-2.5 py-1.5 border-l border-border transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+              className={`px-2.5 py-1.5 border-l border-border transition-colors select-none touch-manipulation ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
@@ -433,7 +470,7 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
               track={trackMap[s.track_id]}
               room={roomMap[s.room_id]}
               isFav={favSet.has(s.id)}
-              onToggleFav={() => toggleFavMut.mutate(s.id)}
+              onToggleFav={() => handleToggleFav(s.id)}
               onClick={() => setOpenSession(s)}
             />
           ))}
@@ -445,7 +482,7 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
           roomMap={roomMap}
           dates={dates}
           favSet={favSet}
-          onToggleFav={(id) => toggleFavMut.mutate(id)}
+          onToggleFav={handleToggleFav}
           onOpen={setOpenSession}
         />
       )}

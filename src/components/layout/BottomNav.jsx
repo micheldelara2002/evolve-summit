@@ -14,7 +14,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border pb-safe"
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border pb-safe select-none"
       aria-label="Navegação principal"
     >
       <div className="flex items-stretch justify-around h-16">
@@ -24,7 +24,7 @@ export default function BottomNav() {
             <Link
               key={path}
               to={path}
-              className="flex flex-col items-center justify-center gap-1 flex-1 min-w-0 text-muted-foreground transition-colors focus-visible:outline-none focus-visible:text-primary"
+              className="flex flex-col items-center justify-center gap-1 flex-1 min-w-0 text-muted-foreground transition-colors select-none touch-manipulation focus-visible:outline-none focus-visible:text-primary"
               aria-current={isActive ? "page" : undefined}
             >
               <span

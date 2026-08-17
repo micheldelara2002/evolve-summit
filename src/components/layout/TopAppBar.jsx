@@ -21,7 +21,7 @@ export default function TopAppBar({ title, subtitle, onBack, actions, search }) 
           <Button
             variant="ghost"
             size="icon"
-            className="shrink-0 -ml-2"
+            className="shrink-0 -ml-2 h-11 w-11 sm:h-9 sm:w-9"
             onClick={() => (typeof onBack === "function" ? onBack() : navigate(-1))}
             aria-label="Voltar"
           >
