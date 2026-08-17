@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import {
   incUniqueParticipant, decUniqueParticipant,
   incParticipantsByRole, decParticipantsByRole, moveParticipantsByRole,
@@ -24,15 +26,25 @@ import {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
     const svc = base44.asServiceRole;
     const body = await req.json();
     const { action } = body;
 
+    const requireEventManager = async (eventId) => {
+      const auth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      if (!auth.authorized) {
+        return Response.json({ error: 'Sem permissão para manter métricas deste evento.' }, { status: 403 });
+      }
+      return null;
+    };
+
     if (action === 'incParticipant') {
       const { eventId, createdDateISO, role } = body;
       if (!eventId || !createdDateISO) return Response.json({ error: 'eventId e createdDateISO obrigatórios' }, { status: 400 });
+      const forbidden = await requireEventManager(eventId); if (forbidden) return forbidden;
       await incUniqueParticipant(svc, eventId, createdDateISO);
       if (role) await incParticipantsByRole(svc, eventId, role, createdDateISO);
       return Response.json({ ok: true });
@@ -40,6 +52,7 @@ Deno.serve(async (req) => {
     if (action === 'decParticipant') {
       const { eventId, createdDateISO, role } = body;
       if (!eventId || !createdDateISO) return Response.json({ error: 'eventId e createdDateISO obrigatórios' }, { status: 400 });
+      const forbidden = await requireEventManager(eventId); if (forbidden) return forbidden;
       await decUniqueParticipant(svc, eventId, createdDateISO);
       if (role) await decParticipantsByRole(svc, eventId, role, createdDateISO);
       return Response.json({ ok: true });
@@ -47,6 +60,8 @@ Deno.serve(async (req) => {
     if (action === 'bulkIncParticipants') {
       const { eventId, createdDates, roles } = body;
       if (!eventId || !Array.isArray(createdDates)) return Response.json({ error: 'eventId e createdDates[] obrigatórios' }, { status: 400 });
+      if (createdDates.length > 500) return Response.json({ error: 'createdDates excede o limite de 500 itens.' }, { status: 400 });
+      const forbidden = await requireEventManager(eventId); if (forbidden) return forbidden;
       for (let i = 0; i < createdDates.length; i++) {
         const iso = createdDates[i];
         if (!iso) continue;
@@ -59,12 +74,16 @@ Deno.serve(async (req) => {
     if (action === 'moveParticipantRole') {
       const { eventId, createdDateISO, oldRole, newRole } = body;
       if (!eventId || !createdDateISO) return Response.json({ error: 'eventId e createdDateISO obrigatórios' }, { status: 400 });
+      const forbidden = await requireEventManager(eventId); if (forbidden) return forbidden;
+      if (!oldRole || !newRole || oldRole === newRole) return Response.json({ error: 'oldRole e newRole válidos e diferentes são obrigatórios' }, { status: 400 });
       await moveParticipantsByRole(svc, eventId, oldRole, newRole, createdDateISO);
       return Response.json({ ok: true });
     }
     if (action === 'incLeads') {
       const { eventId, partnerId, createdDateISO, count } = body;
       if (!eventId || !createdDateISO) return Response.json({ error: 'eventId e createdDateISO obrigatórios' }, { status: 400 });
+      const forbidden = await requireEventManager(eventId); if (forbidden) return forbidden;
+      if (count !== undefined && (!Number.isInteger(Number(count)) || Number(count) < 1 || Number(count) > 500)) return Response.json({ error: 'count deve ser um inteiro entre 1 e 500.' }, { status: 400 });
       await incLeads(svc, eventId, partnerId || '', createdDateISO, count || 1);
       return Response.json({ ok: true });
     }
@@ -84,18 +103,30 @@ Deno.serve(async (req) => {
     if (action === 'incPersons') {
       const { createdDateISO } = body;
       if (!createdDateISO) return Response.json({ error: 'createdDateISO obrigatório' }, { status: 400 });
+      // Normal users may only maintain the counter for their own Person, created recently.
+      // Global/admin imports remain restricted to admins.
+      if (user.role !== 'admin') {
+        const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
+        const ownPerson = persons[0];
+        if (!ownPerson) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
+        const requestedDay = new Date(createdDateISO).toISOString().slice(0, 10);
+        const personDay = new Date(ownPerson.created_date).toISOString().slice(0, 10);
+        if (requestedDay !== personDay) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
+      }
       await incPersons(svc, createdDateISO);
       return Response.json({ ok: true });
     }
     if (action === 'incPartners') {
       const { createdDateISO } = body;
       if (!createdDateISO) return Response.json({ error: 'createdDateISO obrigatório' }, { status: 400 });
+      if (user.role !== 'admin') return Response.json({ error: 'Apenas administradores podem manter o contador global de parceiros.' }, { status: 403 });
       await incPartners(svc, createdDateISO);
       return Response.json({ ok: true });
     }
     if (action === 'decPartners') {
       const { createdDateISO } = body;
       if (!createdDateISO) return Response.json({ error: 'createdDateISO obrigatório' }, { status: 400 });
+      if (user.role !== 'admin') return Response.json({ error: 'Apenas administradores podem manter o contador global de parceiros.' }, { status: 403 });
       await decPartners(svc, createdDateISO);
       return Response.json({ ok: true });
     }
