@@ -11,8 +11,8 @@ import { base44 } from "@/api/base44Client";
  * @param {string} params.eventId
  * @param {string} params.participantId
  * @param {string} [params.personId]
- * @param {string} params.acao — valor de ACAO_EVENTO_KEYS
- * @param {string} [params.refId] — ID de referência (session_id, etc.)
+ * @param {string} params.acao valor de ACAO_EVENTO_KEYS
+ * @param {string} [params.refId] ID de referência (session_id, etc.)
  * @returns {Promise<{ credited: boolean, pontos: number, reason?: string }>}
  */
 export async function processAction({ eventId, participantId, personId, acao, refId = "" }) {
