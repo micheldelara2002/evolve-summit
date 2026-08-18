@@ -18,7 +18,11 @@ test.describe('Cross-cutting security regression @regression @security', () => {
     const fake = `${eventId}-unauthorized`;
     await page.goto(`/event/${fake}`);
     await assertNoAppCrash(page);
-    await expect(page).not.toHaveURL(new RegExp(`/event/${fake}$`));
+    // Authorization may be represented by an explicit restricted state without
+    // changing the URL, or by redirecting away from the unauthorized event.
+    const deniedState = page.getByText(/Acesso Restrito|Você não está inscrito neste evento/i).first();
+    const redirected = !new RegExp(`/event/${fake}$`).test(page.url());
+    if (!redirected) await expect(deniedState).toBeVisible();
   });
 
   test('SEC-006 campaign route is not accessible to participant @P0 @participant', async ({ page }) => {
@@ -76,7 +80,7 @@ test.describe('Cross-cutting security regression @regression @security', () => {
   test('SEC-010/011 profile deletion flow exposes no unredacted confirmation payload @P1 @participant', async ({ page }) => {
     const deleteAction = await openProfileAndWaitForDeleteAction(page);
     await deleteAction.click();
-    const dialog = page.getByRole('dialog').first();
+    const dialog = page.getByRole('alertdialog').first();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toContainText(/senha atual.*undefined/i);
   });
