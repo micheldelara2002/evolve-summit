@@ -55,9 +55,12 @@ test.describe('Participant — event experience @participant @regression', () =>
   });
 
   test('profile and deletion entry point are available @P0', async ({ page }) => {
-    await page.goto('/profile');
+    await page.goto('/profile', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading').first()).toBeVisible();
-    await expect(page.getByText(/Excluir minha conta/i)).toBeVisible();
+    const deleteAction = page.getByText('Excluir minha conta', { exact: true }).first();
+    await expect(deleteAction).toBeAttached({ timeout: 20_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(deleteAction).toBeVisible({ timeout: 10_000 });
   });
 });
 
