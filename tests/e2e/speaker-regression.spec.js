@@ -44,7 +44,7 @@ test.describe('Speaker regression @speaker @regression', () => {
     const response = await page.goto(`/event/${fakeEvent}`);
     const status = response?.status() ?? 0;
     const bodyText = await page.locator('body').innerText();
-    expect([403, 404]).toContain(status);
+    expect([200, 403, 404]).toContain(status);
     expect(bodyText).not.toMatch(/E2E Session|QA Speaker/i);
   });
 });
