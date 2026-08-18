@@ -1,0 +1,106 @@
+# GitHub Actions workflow for the Evolve Summit E2E suite.
+# The Base44 builder cannot write to .github/workflows/ directly, so this file
+# ships as a reference. To enable CI, copy it manually:
+#
+#   mkdir -p .github/workflows && cp tests/qa-e2e.workflow.yml .github/workflows/qa-e2e.yml
+#
+# Then configure the repository secrets listed under `env:` below.
+name: QA E2E
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+      BASE44_APP_ID: ${{ secrets.BASE44_APP_ID }}
+      BASE44_API_URL: ${{ secrets.BASE44_API_URL }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_MANAGER_EMAIL: ${{ secrets.E2E_MANAGER_EMAIL }}
+      E2E_MANAGER_PASSWORD: ${{ secrets.E2E_MANAGER_PASSWORD }}
+      E2E_STAFF_EMAIL: ${{ secrets.E2E_STAFF_EMAIL }}
+      E2E_STAFF_PASSWORD: ${{ secrets.E2E_STAFF_PASSWORD }}
+      E2E_PARTICIPANT_EMAIL: ${{ secrets.E2E_PARTICIPANT_EMAIL }}
+      E2E_PARTICIPANT_PASSWORD: ${{ secrets.E2E_PARTICIPANT_PASSWORD }}
+      E2E_SPEAKER_EMAIL: ${{ secrets.E2E_SPEAKER_EMAIL }}
+      E2E_SPEAKER_PASSWORD: ${{ secrets.E2E_SPEAKER_PASSWORD }}
+      E2E_PARTNER_EMAIL: ${{ secrets.E2E_PARTNER_EMAIL }}
+      E2E_PARTNER_PASSWORD: ${{ secrets.E2E_PARTNER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium + system deps
+        run: npx playwright install --with-deps chromium
+
+      - name: QA Doctor
+        run: npm run test:e2e:doctor
+
+      - name: Bootstrap E2E dataset (TEST app)
+        run: |
+          npm run test:e2e:bootstrap | tee bootstrap.log
+          EVENT_ID=$(grep -E '^E2E_EVENT_ID=' bootstrap.log | tail -n1 | cut -d= -f2)
+          echo "E2E_EVENT_ID=$EVENT_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke (gate)
+        run: npm run test:e2e:smoke
+
+      - name: Security (gate)
+        if: success()
+        run: npm run test:e2e:security
+
+      - name: Bulk
+        if: success()
+        run: npm run test:e2e:bulk
+
+      - name: Mobile
+        if: success()
+        run: npm run test:e2e:mobile
+
+      - name: Regression
+        if: success()
+        run: npm run test:e2e:regression
+
+      - name: Cleanup E2E dataset
+        if: always()
+        run: npm run test:e2e:cleanup
+        env:
+          E2E_EVENT_ID: ${{ env.E2E_EVENT_ID }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: test-results/html
+          retention-days: 14
+
+      - name: Upload JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json
+          path: test-results/results.json
+          retention-days: 14
+
+      - name: Upload raw artifacts (traces, screenshots, videos)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-raw
+          path: test-results/raw
+          retention-days: 14

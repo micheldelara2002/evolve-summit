@@ -30,3 +30,9 @@ dist-ssr
 .env
 .vite
 base44/.app.jsonc
+
+# E2E QA artifacts and local secrets
+tests/.env.e2e
+tests/.e2e-env.json
+tests/.auth/
+test-results/
