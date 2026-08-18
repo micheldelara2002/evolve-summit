@@ -12,23 +12,37 @@
 # Error details
 
 ```
-Error: browserType.launch: Target page, context or browser has been closed
-Browser logs:
+Error: Missing E2E_STAFF_EMAIL or E2E_STAFF_PASSWORD. Configure the staff test account in the test environment.
+```
 
-<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window
-<launched> pid=771
-[pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory
-Call log:
-  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window
-  - <launched> pid=771
-  - [pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory
-  - [pid=771] <gracefully close start>
-  - [pid=771] <kill>
-  - [pid=771] <will force kill>
-  - [pid=771] exception while trying to kill process: Error: kill ESRCH
-  - [pid=771] <process did exit: exitCode=127, signal=null>
-  - [pid=771] starting temporary directories cleanup
-  - [pid=771] finished temporary directories cleanup
-  - [pid=771] <gracefully close end>
+# Test source
 
+```ts
+  1  | import { expect } from '@playwright/test';
+  2  | import fs from 'node:fs/promises';
+  3  | import path from 'node:path';
+  4  | 
+  5  | export function createAuthSetup(role, emailKey, passwordKey) {
+  6  |   return async ({ page }) => {
+  7  |     const email = process.env[emailKey];
+  8  |     const password = process.env[passwordKey];
+  9  | 
+  10 |     if (!email || !password) {
+> 11 |       throw new Error(`Missing ${emailKey} or ${passwordKey}. Configure the ${role} test account in the test environment.`);
+     |             ^ Error: Missing E2E_STAFF_EMAIL or E2E_STAFF_PASSWORD. Configure the staff test account in the test environment.
+  12 |     }
+  13 | 
+  14 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  15 |     await page.getByLabel('E-mail').fill(email);
+  16 |     await page.getByLabel('Senha').fill(password);
+  17 |     await page.getByRole('button', { name: 'Entrar' }).click();
+  18 | 
+  19 |     await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 });
+  20 | 
+  21 |     const authDir = path.resolve('tests/.auth');
+  22 |     await fs.mkdir(authDir, { recursive: true });
+  23 |     await page.context().storageState({ path: path.join(authDir, `${role}.json`) });
+  24 |   };
+  25 | }
+  26 | 
 ```
