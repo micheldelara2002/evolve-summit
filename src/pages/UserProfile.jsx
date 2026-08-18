@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -122,14 +122,28 @@ export default function UserProfile() {
   });
 
   const { data: person, isLoading } = useQuery({
-    queryKey: ["my_person", user?.person_id],
+    queryKey: ["my_person", user?.person_id, user?.email],
     queryFn: async () => {
-      if (!user?.person_id) return null;
-      const list = await base44.entities.Person.filter({ id: user.person_id });
-      return list[0] ?? null;
+      if (user?.person_id) {
+        const list = await base44.entities.Person.filter({ id: user.person_id });
+        return list[0] ?? null;
+      }
+      if (user?.email) {
+        // Legacy/manual accounts may have a Person record but no User.person_id.
+        // Resolve by the authenticated user's own email and repair the identity link.
+        const list = await base44.entities.Person.filter({ contact_email: user.email });
+        return list[0] ?? null;
+      }
+      return null;
     },
-    enabled: !!user?.person_id,
+    enabled: !!user,
   });
+
+  useEffect(() => {
+    if (!user?.person_id && person?.id) {
+      base44.auth.updateMe({ person_id: person.id }).then(() => refreshUser()).catch(() => {});
+    }
+  }, [person?.id, user?.person_id, refreshUser]);
 
   const completeness = calcCompleteness(person);
   const displayAvatar = avatarUrl ?? person?.photo_url ?? user?.photo_url;
