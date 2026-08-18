@@ -20,7 +20,11 @@ test.describe('Participant regression @participant @regression', () => {
     await eventShell(page);
     const fakeEvent = `${eventId}-not-associated`;
     await page.goto(`/event/${fakeEvent}`);
-    await expect(page).not.toHaveURL(new RegExp(`/event/${fakeEvent}$`));
+    // The app may either redirect or keep the URL while rendering the explicit
+    // access-denied state. Both satisfy the authorization contract.
+    const deniedState = page.getByText(/Acesso Restrito|Você não está inscrito neste evento/i).first();
+    const redirected = !new RegExp(`/event/${fakeEvent}$`).test(page.url());
+    if (!redirected) await expect(deniedState).toBeVisible();
   });
 
   test('PA-007/008 schedule and navigation controls are usable @P0', async ({ page }) => {
@@ -103,8 +107,9 @@ test.describe('Participant regression @participant @regression', () => {
     const deleteAction = page.getByText('Excluir minha conta', { exact: true }).first();
     await expect(deleteAction).toBeVisible({ timeout: 10_000 });
     await deleteAction.click();
-    await expect(page.getByRole('dialog').first()).toBeVisible();
-    await expect(page.getByRole('dialog').getByRole('button', { name: /cancelar|voltar/i }).first()).toBeVisible();
+    const dialog = page.getByRole('alertdialog').first();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /cancelar|voltar/i }).first()).toBeVisible();
   });
 
   test('PA-037 deleted-account behavior remains a backend security responsibility @P0 @security', async ({ page }) => {
