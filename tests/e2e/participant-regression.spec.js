@@ -84,24 +84,32 @@ test.describe('Participant regression @participant @regression', () => {
     }
   });
 
-  test('PA-034 profile edit entry point is available @P1', async ({ page }) => {
-    await page.goto('/profile');
+  async function openProfileAndWaitForActions(page) {
+    await page.goto('/profile', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading').first()).toBeVisible();
-    await expect(page.getByText(/Editar/i).first()).toBeVisible();
+    // Profile actions are rendered after the profile data resolves and the
+    // delete action is intentionally at the bottom of the page.
+    await expect(page.getByText('Excluir minha conta', { exact: true }).first()).toBeAttached({ timeout: 20_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  }
+
+  test('PA-034 profile edit entry point is available @P1', async ({ page }) => {
+    await openProfileAndWaitForActions(page);
+    await expect(page.getByText('Editar', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('PA-035 deletion requires explicit confirmation @P0', async ({ page }) => {
-    await page.goto('/profile');
-    const deleteAction = page.getByText(/Excluir minha conta/i).first();
-    await expect(deleteAction).toBeVisible();
+    await openProfileAndWaitForActions(page);
+    const deleteAction = page.getByText('Excluir minha conta', { exact: true }).first();
+    await expect(deleteAction).toBeVisible({ timeout: 10_000 });
     await deleteAction.click();
     await expect(page.getByRole('dialog').first()).toBeVisible();
     await expect(page.getByRole('dialog').getByRole('button', { name: /cancelar|voltar/i }).first()).toBeVisible();
   });
 
   test('PA-037 deleted-account behavior remains a backend security responsibility @P0 @security', async ({ page }) => {
-    await page.goto('/profile');
-    await expect(page.getByText(/Excluir minha conta/i)).toBeVisible();
+    await openProfileAndWaitForActions(page);
+    await expect(page.getByText('Excluir minha conta', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
     test.info().annotations.push({ type: 'backend-covered', description: 'Old-session mutation blocking is covered by backend security audit; this E2E does not mutate the regression account.' });
   });
 });
