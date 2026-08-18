@@ -129,8 +129,15 @@ export default function UserProfile() {
         return list[0] ?? null;
       }
       if (user?.email) {
-        // Legacy/manual accounts may have a Person record but no User.person_id.
-        // Resolve by the authenticated user's own email and repair the identity link.
+        // Legacy/manual accounts may have a Person/Participant record but no
+        // User.person_id. Resolve through the user's own participant first,
+        // then fall back to the Person email index, and repair the identity link.
+        const participants = await base44.entities.Participant.filter({ email: user.email, is_deleted: false });
+        const participantPersonId = participants.find((p) => p.person_id)?.person_id;
+        if (participantPersonId) {
+          const list = await base44.entities.Person.filter({ id: participantPersonId });
+          if (list[0]) return list[0];
+        }
         const list = await base44.entities.Person.filter({ contact_email: user.email });
         return list[0] ?? null;
       }
