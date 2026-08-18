@@ -68,7 +68,7 @@ async function sendDirectNotification({ eventId, recipientPerson, title, message
 /**
  * Envia pedido de conexão.
  * Regras: não para si, não duplica, auto-aceita se há pedido reverso pendente.
- * @returns {{ ok: boolean, reason: string }}
+ * @returns {Promise<{ ok: boolean, reason: string }>}
  */
 export async function sendConnectionRequest({ eventId, requesterPerson, receiverPerson, requesterParticipantId }) {
   const response = await base44.functions.invoke('manageConnection', {
@@ -137,7 +137,7 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
   return result;
 }
 
-export async function refuseConnectionRequest({ requestId, myPersonId }) {
+export async function refuseConnectionRequest({ requestId, myPersonId = null }) {
   const response = await base44.functions.invoke('manageConnection', {
     action: "refuse",
     requestId,
@@ -152,7 +152,7 @@ export async function refuseConnectionRequest({ requestId, myPersonId }) {
   return { ok: true };
 }
 
-export async function cancelConnectionRequest({ requestId, myPersonId }) {
+export async function cancelConnectionRequest({ requestId, myPersonId = null }) {
   const response = await base44.functions.invoke('manageConnection', {
     action: "cancel",
     requestId,
