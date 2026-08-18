@@ -37,7 +37,6 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
         id: { $lt: cur.id },
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [baseQueryKey]
   );
 
@@ -63,7 +62,6 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, depsKey, buildQuery]);
 
   useEffect(() => {
@@ -86,7 +84,6 @@ export function useCursorPagination({ fetchPage, baseQuery, depsKey, pageSize = 
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loading, cursor, buildQuery]);
 
   return { items, loading, hasMore, loadMore };
