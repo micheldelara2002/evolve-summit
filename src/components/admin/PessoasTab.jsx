@@ -10,7 +10,6 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
-import { isAdmin } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { incParticipantCounter, decParticipantCounter, moveParticipantRoleCounter } from "@/lib/businessCounters";
 import { t } from "@/lib/i18n";
@@ -20,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -152,7 +151,7 @@ export default function PessoasTab({
     if (p.role_in_event && p.role_in_event !== "attendee") roles.push(p.role_in_event);
     if (roles.length === 0) roles.push("attendee");
     return { ...p, derivedRoles: roles, partnerName: getPartnerName(p) };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }), [participants, globalReps, eventPartners, allPartners, reviewerPersonIds]);
 
   // Unique partners in this event (for filter dropdown)

@@ -5,8 +5,7 @@
  * - Configuração de fonte, cor, tamanho por campo
  * - Preview em tempo real
  */
-import { useState, useRef, useCallback, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useRef, useEffect } from "react";
 import { uploadFile } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

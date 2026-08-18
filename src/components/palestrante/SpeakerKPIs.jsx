@@ -3,7 +3,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { Mic, Star, BookUser, MessageCircleQuestion, CheckCircle2 } from "lucide-react";
+import { Mic, Star, BookUser, CheckCircle2 } from "lucide-react";
 import { normalizeRating } from "@/lib/rankingUtils";
 
 function KpiCard({ icon: Icon, label, value, color = "text-primary" }) {

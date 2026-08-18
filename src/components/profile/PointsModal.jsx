@@ -4,7 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Star, ChevronRight, Loader2 } from "lucide-react";
+import { Star, Loader2 } from "lucide-react";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 
 const ACAO_LABELS = {

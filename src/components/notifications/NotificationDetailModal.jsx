@@ -6,11 +6,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ExternalLink } from "lucide-react";
-import { TypeIcon, PriorityBadge, TYPE_CONFIG, PRIORITY_CONFIG } from "./NotificationIcons";
+import { TypeIcon, PriorityBadge, TYPE_CONFIG } from "./NotificationIcons";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 

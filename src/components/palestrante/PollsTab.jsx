@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, Radio, Square, CheckCircle2, BarChart3, XCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Radio, BarChart3, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import PollFormDialog from "@/components/palestrante/PollFormDialog";
 

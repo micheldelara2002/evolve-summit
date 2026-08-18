@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Pencil, Copy, Trash2, FileText, Calendar } from "lucide-react";
+import { Pencil, Copy, Trash2, FileText } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 const STATUS_LABEL = {

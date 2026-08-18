@@ -95,7 +95,7 @@ export default function UserProfileEdit() {
     if (!loadingPerson && form === null) {
       setForm(buildForm(person));
     }
-  }, [loadingPerson]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadingPerson]);  
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
