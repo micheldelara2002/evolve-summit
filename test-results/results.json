@@ -2,7 +2,7 @@
   "config": {
     "argv": [
       "/usr/bin/node",
-      "/app/node_modules/@playwright/test/cli.js",
+      "/app/node_modules/.bin/playwright",
       "test",
       "--project=speaker"
     ],
@@ -240,7 +240,7 @@
       "specs": [
         {
           "title": "authenticate speaker",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -253,63 +253,18 @@
                 {
                   "workerIndex": 0,
                   "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 12343,
-                  "error": {
-                    "message": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n",
-                    "stack": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n\n    at /app/tests/support/auth-setup.js:15:37",
-                    "location": {
-                      "file": "/app/tests/support/auth-setup.js",
-                      "column": 37,
-                      "line": 15
-                    },
-                    "snippet": "\u001b[90m   at \u001b[39m../support/auth-setup.js:15\n\n  13 |\n  14 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });\n> 15 |     await page.getByLabel('E-mail').fill(email);\n     |                                     ^\n  16 |     await page.getByLabel('Senha').fill(password);\n  17 |     await page.getByRole('button', { name: 'Entrar' }).click();\n  18 |"
-                  },
-                  "errors": [
-                    {
-                      "location": {
-                        "file": "/app/tests/support/auth-setup.js",
-                        "column": 37,
-                        "line": 15
-                      },
-                      "message": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n\n\n   at ../support/auth-setup.js:15\n\n  13 |\n  14 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });\n> 15 |     await page.getByLabel('E-mail').fill(email);\n     |                                     ^\n  16 |     await page.getByLabel('Senha').fill(password);\n  17 |     await page.getByRole('button', { name: 'Entrar' }).click();\n  18 |\n    at /app/tests/support/auth-setup.js:15:37"
-                    }
-                  ],
+                  "status": "passed",
+                  "duration": 3440,
+                  "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-08-18T19:39:50.717Z",
+                  "startTime": "2026-08-18T19:54:40.046Z",
                   "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "screenshot",
-                      "contentType": "image/png",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/test-failed-1.png"
-                    },
-                    {
-                      "name": "video",
-                      "contentType": "video/webm",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/video.webm"
-                    },
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/trace.zip"
-                    }
-                  ],
-                  "errorLocation": {
-                    "file": "/app/tests/support/auth-setup.js",
-                    "column": 37,
-                    "line": 15
-                  }
+                  "attachments": []
                 }
               ],
-              "status": "unexpected"
+              "status": "expected"
             }
           ],
           "id": "b270085ede20b8c01f0a-e535993f1718f46e3a36",
@@ -347,8 +302,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2405,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:44.513Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "2b5104c77555b2b63d2d-ebed6033da7ebf47000e",
@@ -372,8 +341,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2351,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:47.200Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "2b5104c77555b2b63d2d-2ace94457e1728e0da86",
@@ -414,8 +397,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2307,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:49.573Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "2c14808d47b386fba9eb-b231b6f5237e65db3bcf",
@@ -456,8 +453,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2374,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:51.902Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-c8d88e8dd3abe5a421c5",
@@ -480,8 +491,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 993,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:54.284Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-d4ed98ea9d65ebe436d2",
@@ -504,8 +529,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2349,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:55.286Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-0383200710a952dfe388",
@@ -528,8 +567,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2276,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:57.647Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-6d61dc337a78cbd7b642",
@@ -549,11 +602,45 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "No speaker event configured",
+                      "location": {
+                        "file": "/app/tests/e2e/speaker-regression.spec.js",
+                        "line": 30,
+                        "column": 24
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 332,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:54:59.932Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "No speaker event configured",
+                          "location": {
+                            "file": "/app/tests/e2e/speaker-regression.spec.js",
+                            "line": 30,
+                            "column": 24
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
                   "status": "skipped"
                 }
               ],
@@ -577,8 +664,22 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1097,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:55:00.273Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-83294ce75582b63d51a1",
@@ -598,11 +699,45 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "No speaker event configured",
+                      "location": {
+                        "file": "/app/tests/e2e/speaker-regression.spec.js",
+                        "line": 42,
+                        "column": 24
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [],
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 318,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T19:55:01.380Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "No speaker event configured",
+                          "location": {
+                            "file": "/app/tests/e2e/speaker-regression.spec.js",
+                            "line": 42,
+                            "column": 24
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
                   "status": "skipped"
                 }
               ],
@@ -618,11 +753,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-18T19:39:49.978Z",
-    "duration": 13471.878,
-    "expected": 0,
-    "skipped": 10,
-    "unexpected": 1,
+    "startTime": "2026-08-18T19:54:39.346Z",
+    "duration": 22424.46,
+    "expected": 9,
+    "skipped": 2,
+    "unexpected": 0,
     "flaky": 0
   }
 }
