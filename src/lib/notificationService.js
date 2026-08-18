@@ -73,6 +73,7 @@ export function getAllowedSegments(user, scopeType, scopeEventId, memberships = 
  * @param {string} params.audienceType - "all" | "segment" | "my_leads" | "my_attendees"
  * @param {string[]} params.audienceSegments - perfis selecionados quando audienceType="segment"
  * @param {object} params.senderUser - { id, full_name, email, role }
+ * @param {string|null} [params.senderPartnerId] - parceiro do remetente, quando aplicável
  */
 export async function resolveRecipients({ scopeType, scopeEventId, audienceType, audienceSegments = [], senderUser, senderPartnerId }) {
   const recipients = [];
@@ -244,7 +245,6 @@ export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
         sent_at: new Date().toISOString(),
         partner_id: senderPartnerId || null,
       },
-      user: senderUser,
     });
   } catch (e) {
     console.error("audit log failed:", e);
