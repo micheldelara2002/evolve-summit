@@ -4,8 +4,7 @@
       "/usr/bin/node",
       "/app/node_modules/.bin/playwright",
       "test",
-      "--grep",
-      "@smoke"
+      "--list"
     ],
     "configFile": "/app/playwright.config.js",
     "rootDir": "/app/tests/e2e",
@@ -18,18 +17,14 @@
     "grep": {},
     "grepInvert": null,
     "maxFailures": 0,
-    "metadata": {
-      "actualWorkers": 1
-    },
+    "metadata": {},
     "preserveOutput": "always",
     "projects": [
       {
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-manager",
         "name": "setup-manager",
         "testDir": "/app/tests/e2e",
@@ -43,9 +38,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-staff",
         "name": "setup-staff",
         "testDir": "/app/tests/e2e",
@@ -59,9 +52,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-participant",
         "name": "setup-participant",
         "testDir": "/app/tests/e2e",
@@ -75,9 +66,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-speaker",
         "name": "setup-speaker",
         "testDir": "/app/tests/e2e",
@@ -91,9 +80,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-partner",
         "name": "setup-partner",
         "testDir": "/app/tests/e2e",
@@ -107,9 +94,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "manager",
         "name": "manager",
         "testDir": "/app/tests/e2e",
@@ -123,9 +108,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "staff",
         "name": "staff",
         "testDir": "/app/tests/e2e",
@@ -139,9 +122,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "participant",
         "name": "participant",
         "testDir": "/app/tests/e2e",
@@ -155,9 +136,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "speaker",
         "name": "speaker",
         "testDir": "/app/tests/e2e",
@@ -171,9 +150,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "partner",
         "name": "partner",
         "testDir": "/app/tests/e2e",
@@ -187,9 +164,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "mobile-participant",
         "name": "mobile-participant",
         "testDir": "/app/tests/e2e",
@@ -241,7 +216,7 @@
       "specs": [
         {
           "title": "authenticate manager",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -250,41 +225,8 @@
               "expectedStatus": "passed",
               "projectId": "setup-manager",
               "projectName": "setup-manager",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 3,
-                  "error": {
-                    "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\n<launched> pid=757\n[pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=757\u001b[22m\n\u001b[2m  - [pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=757] <kill>\u001b[22m\n\u001b[2m  - [pid=757] <will force kill>\u001b[22m\n\u001b[2m  - [pid=757] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=757] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=757] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close end>\u001b[22m\n",
-                    "stack": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\n<launched> pid=757\n[pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=757\u001b[22m\n\u001b[2m  - [pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=757] <kill>\u001b[22m\n\u001b[2m  - [pid=757] <will force kill>\u001b[22m\n\u001b[2m  - [pid=757] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=757] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=757] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close end>\u001b[22m\n"
-                  },
-                  "errors": [
-                    {
-                      "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\n<launched> pid=757\n[pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-0buCu8 --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=757\u001b[22m\n\u001b[2m  - [pid=757][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=757] <kill>\u001b[22m\n\u001b[2m  - [pid=757] <will force kill>\u001b[22m\n\u001b[2m  - [pid=757] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=757] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=757] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=757] <gracefully close end>\u001b[22m\n"
-                    }
-                  ],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T12:24:48.632Z",
-                  "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-manager.setup.js-authenticate-manager-setup-manager/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-manager.setup.js-authenticate-manager-setup-manager/trace.zip"
-                    }
-                  ]
-                }
-              ],
-              "status": "unexpected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "43a172c2e703c58250d1-183828fbcc1b721e9cb2",
@@ -302,7 +244,7 @@
       "specs": [
         {
           "title": "authenticate staff",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -311,41 +253,8 @@
               "expectedStatus": "passed",
               "projectId": "setup-staff",
               "projectName": "setup-staff",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 3,
-                  "error": {
-                    "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\n<launched> pid=771\n[pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=771\u001b[22m\n\u001b[2m  - [pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=771] <kill>\u001b[22m\n\u001b[2m  - [pid=771] <will force kill>\u001b[22m\n\u001b[2m  - [pid=771] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=771] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=771] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close end>\u001b[22m\n",
-                    "stack": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\n<launched> pid=771\n[pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=771\u001b[22m\n\u001b[2m  - [pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=771] <kill>\u001b[22m\n\u001b[2m  - [pid=771] <will force kill>\u001b[22m\n\u001b[2m  - [pid=771] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=771] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=771] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close end>\u001b[22m\n"
-                  },
-                  "errors": [
-                    {
-                      "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\n<launched> pid=771\n[pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-L0xKgE --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=771\u001b[22m\n\u001b[2m  - [pid=771][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=771] <kill>\u001b[22m\n\u001b[2m  - [pid=771] <will force kill>\u001b[22m\n\u001b[2m  - [pid=771] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=771] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=771] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=771] <gracefully close end>\u001b[22m\n"
-                    }
-                  ],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T12:24:49.304Z",
-                  "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-staff.setup.js-authenticate-staff-setup-staff/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-staff.setup.js-authenticate-staff-setup-staff/trace.zip"
-                    }
-                  ]
-                }
-              ],
-              "status": "unexpected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "8880a463d100b9106ef8-fd61a97040fdcf31c6bf",
@@ -363,7 +272,7 @@
       "specs": [
         {
           "title": "authenticate participant",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -372,41 +281,8 @@
               "expectedStatus": "passed",
               "projectId": "setup-participant",
               "projectName": "setup-participant",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 3,
-                  "error": {
-                    "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\n<launched> pid=785\n[pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=785\u001b[22m\n\u001b[2m  - [pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=785] <kill>\u001b[22m\n\u001b[2m  - [pid=785] <will force kill>\u001b[22m\n\u001b[2m  - [pid=785] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=785] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=785] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close end>\u001b[22m\n",
-                    "stack": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\n<launched> pid=785\n[pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=785\u001b[22m\n\u001b[2m  - [pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=785] <kill>\u001b[22m\n\u001b[2m  - [pid=785] <will force kill>\u001b[22m\n\u001b[2m  - [pid=785] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=785] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=785] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close end>\u001b[22m\n"
-                  },
-                  "errors": [
-                    {
-                      "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\n<launched> pid=785\n[pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-UqHYnK --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=785\u001b[22m\n\u001b[2m  - [pid=785][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=785] <kill>\u001b[22m\n\u001b[2m  - [pid=785] <will force kill>\u001b[22m\n\u001b[2m  - [pid=785] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=785] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=785] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=785] <gracefully close end>\u001b[22m\n"
-                    }
-                  ],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T12:24:49.986Z",
-                  "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-participant.setup.js-authenticate-participant-setup-participant/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-participant.setup.js-authenticate-participant-setup-participant/trace.zip"
-                    }
-                  ]
-                }
-              ],
-              "status": "unexpected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "cb5f134e84ef3fc3dd9f-36ffea064adc5eec5701",
@@ -424,7 +300,7 @@
       "specs": [
         {
           "title": "authenticate speaker",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -433,41 +309,8 @@
               "expectedStatus": "passed",
               "projectId": "setup-speaker",
               "projectName": "setup-speaker",
-              "results": [
-                {
-                  "workerIndex": 3,
-                  "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 3,
-                  "error": {
-                    "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\n<launched> pid=798\n[pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=798\u001b[22m\n\u001b[2m  - [pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=798] <kill>\u001b[22m\n\u001b[2m  - [pid=798] <will force kill>\u001b[22m\n\u001b[2m  - [pid=798] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=798] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=798] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close end>\u001b[22m\n",
-                    "stack": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\n<launched> pid=798\n[pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=798\u001b[22m\n\u001b[2m  - [pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=798] <kill>\u001b[22m\n\u001b[2m  - [pid=798] <will force kill>\u001b[22m\n\u001b[2m  - [pid=798] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=798] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=798] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close end>\u001b[22m\n"
-                  },
-                  "errors": [
-                    {
-                      "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\n<launched> pid=798\n[pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-uIuukW --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=798\u001b[22m\n\u001b[2m  - [pid=798][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=798] <kill>\u001b[22m\n\u001b[2m  - [pid=798] <will force kill>\u001b[22m\n\u001b[2m  - [pid=798] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=798] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=798] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=798] <gracefully close end>\u001b[22m\n"
-                    }
-                  ],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T12:24:50.677Z",
-                  "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-speaker.setup.js-authenticate-speaker-setup-speaker/trace.zip"
-                    }
-                  ]
-                }
-              ],
-              "status": "unexpected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "b270085ede20b8c01f0a-e535993f1718f46e3a36",
@@ -485,7 +328,7 @@
       "specs": [
         {
           "title": "authenticate partner",
-          "ok": false,
+          "ok": true,
           "tags": [],
           "tests": [
             {
@@ -494,47 +337,183 @@
               "expectedStatus": "passed",
               "projectId": "setup-partner",
               "projectName": "setup-partner",
-              "results": [
-                {
-                  "workerIndex": 4,
-                  "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 3,
-                  "error": {
-                    "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\n<launched> pid=812\n[pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=812\u001b[22m\n\u001b[2m  - [pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=812] <kill>\u001b[22m\n\u001b[2m  - [pid=812] <will force kill>\u001b[22m\n\u001b[2m  - [pid=812] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=812] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=812] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close end>\u001b[22m\n",
-                    "stack": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\n<launched> pid=812\n[pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=812\u001b[22m\n\u001b[2m  - [pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=812] <kill>\u001b[22m\n\u001b[2m  - [pid=812] <will force kill>\u001b[22m\n\u001b[2m  - [pid=812] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=812] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=812] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close end>\u001b[22m\n"
-                  },
-                  "errors": [
-                    {
-                      "message": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\n<launched> pid=812\n[pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\nCall log:\n\u001b[2m  - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kOpvmL --remote-debugging-pipe --no-startup-window\u001b[22m\n\u001b[2m  - <launched> pid=812\u001b[22m\n\u001b[2m  - [pid=812][err] /root/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file: No such file or directory\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=812] <kill>\u001b[22m\n\u001b[2m  - [pid=812] <will force kill>\u001b[22m\n\u001b[2m  - [pid=812] exception while trying to kill process: Error: kill ESRCH\u001b[22m\n\u001b[2m  - [pid=812] <process did exit: exitCode=127, signal=null>\u001b[22m\n\u001b[2m  - [pid=812] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=812] <gracefully close end>\u001b[22m\n"
-                    }
-                  ],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T12:24:51.365Z",
-                  "annotations": [],
-                  "attachments": [
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "/app/test-results/raw/auth-partner.setup.js-authenticate-partner-setup-partner/error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "/app/test-results/raw/auth-partner.setup.js-authenticate-partner-setup-partner/trace.zip"
-                    }
-                  ]
-                }
-              ],
-              "status": "unexpected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "b3c73d6c69fa28ff29de-9df338712d8996834fa4",
           "file": "auth-partner.setup.js",
           "line": 3,
           "column": 1
+        }
+      ]
+    },
+    {
+      "title": "bulk-import.spec.js",
+      "file": "bulk-import.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Bulk CSV import — manager @manager @bulk @regression",
+          "file": "bulk-import.spec.js",
+          "line": 35,
+          "column": 6,
+          "specs": [
+            {
+              "title": "valid CSV is classified in dry-run without creating records @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-8485909765d8734c8567",
+              "file": "bulk-import.spec.js",
+              "line": 36,
+              "column": 3
+            },
+            {
+              "title": "duplicate CPF/email inside CSV is rejected @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-8017cdec669e8fed3a6f",
+              "file": "bulk-import.spec.js",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "invalid required fields are excluded from import @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-447930ac504fad649f0a",
+              "file": "bulk-import.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "500-row CSV reaches preview without browser-side failure @P1 @scale",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P1",
+                "scale"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-c2c2ac0ef4453f50f84c",
+              "file": "bulk-import.spec.js",
+              "line": 79,
+              "column": 3
+            },
+            {
+              "title": "1001-row CSV reaches preview without browser-side failure @P1 @scale",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P1",
+                "scale"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-7837d518161134fdd08d",
+              "file": "bulk-import.spec.js",
+              "line": 92,
+              "column": 3
+            },
+            {
+              "title": "same CSV can be previewed twice without silent mutation @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "bulk",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9114fb5619b596ace649-1b6cd44f685e9d96003c",
+              "file": "bulk-import.spec.js",
+              "line": 105,
+              "column": 3
+            }
+          ]
         }
       ]
     },
@@ -574,6 +553,612 @@
               "id": "2a63d470a7348f3d010c-71182e95348ee59cd06c",
               "file": "manager-regression.spec.js",
               "line": 11,
+              "column": 3
+            },
+            {
+              "title": "GM-007 event modules do not crash @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-819397ad97e37b789e49",
+              "file": "manager-regression.spec.js",
+              "line": 17,
+              "column": 3
+            },
+            {
+              "title": "GM-008 returning from module retains event context @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-d0b8800d74f92e1c2bc8",
+              "file": "manager-regression.spec.js",
+              "line": 27,
+              "column": 3
+            },
+            {
+              "title": "GM-030/031 tracks and rooms are reachable @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-b93c2d3f0969c5358723",
+              "file": "manager-regression.spec.js",
+              "line": 35,
+              "column": 3
+            },
+            {
+              "title": "GM-032/033 sessions and speaker assignment surface load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-721c9443816e1b18e848",
+              "file": "manager-regression.spec.js",
+              "line": 43,
+              "column": 3
+            },
+            {
+              "title": "GM-035/036 scoring and badges surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-2e9d3430597febcf2e4f",
+              "file": "manager-regression.spec.js",
+              "line": 50,
+              "column": 3
+            },
+            {
+              "title": "GM-037/038/039 store raffle certificates surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-eb0c6486887446f774b7",
+              "file": "manager-regression.spec.js",
+              "line": 58,
+              "column": 3
+            },
+            {
+              "title": "GM-040/041 CFP and awards surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-f49c8976e3bfa2608da0",
+              "file": "manager-regression.spec.js",
+              "line": 66,
+              "column": 3
+            },
+            {
+              "title": "GM-050/051 notification campaign surface is reachable @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-176991d0f2cf94aa2756",
+              "file": "manager-regression.spec.js",
+              "line": 74,
+              "column": 3
+            },
+            {
+              "title": "GM-055 notification metrics surface loads @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-397f9d9274d7555480d4",
+              "file": "manager-regression.spec.js",
+              "line": 80,
+              "column": 3
+            },
+            {
+              "title": "GM-060 arbitrary event ID does not silently expose another event @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-36647fae2ac980317db3",
+              "file": "manager-regression.spec.js",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "GM-061/062/063/064/065 sensitive modules remain manager-scoped @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-801576b0711286767e69",
+              "file": "manager-regression.spec.js",
+              "line": 94,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "role-access.spec.js",
+      "file": "role-access.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Gerente — event operations @manager @regression",
+          "file": "role-access.spec.js",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opens home and event context @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-04951a7fd17e0b91f527",
+              "file": "role-access.spec.js",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "management route exposes intended event-management capability @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-01ff39abe11412c2e79b",
+              "file": "role-access.spec.js",
+              "line": 14,
+              "column": 3
+            },
+            {
+              "title": "cannot access global admin people route @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-05334b3f4f47ccd99fc6",
+              "file": "role-access.spec.js",
+              "line": 24,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Staff — event operations @staff @regression",
+          "file": "role-access.spec.js",
+          "line": 30,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opens event and sees event experience @P0",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-963bb40530e4afd4dfd8",
+              "file": "role-access.spec.js",
+              "line": 31,
+              "column": 3
+            },
+            {
+              "title": "cannot access global admin routes @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-f241409d4b72f89bb4a3",
+              "file": "role-access.spec.js",
+              "line": 37,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Participant — event experience @participant @regression",
+          "file": "role-access.spec.js",
+          "line": 45,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opens my events @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-18680fb39531319df75f",
+              "file": "role-access.spec.js",
+              "line": 46,
+              "column": 3
+            },
+            {
+              "title": "opens event schedule @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-10e33cfb24b953e0dff3",
+              "file": "role-access.spec.js",
+              "line": 51,
+              "column": 3
+            },
+            {
+              "title": "profile and deletion entry point are available @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-42df11ad88c58bf715ba",
+              "file": "role-access.spec.js",
+              "line": 57,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Speaker — speaker dashboard @speaker @regression",
+          "file": "role-access.spec.js",
+          "line": 64,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opens speaker dashboard @P0",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-ebed6033da7ebf47000e",
+              "file": "role-access.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "does not expose another speaker identity through URL-only navigation @P0 @security",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-2ace94457e1728e0da86",
+              "file": "role-access.spec.js",
+              "line": 70,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Partner — partner dashboard @partner @regression",
+          "file": "role-access.spec.js",
+          "line": 79,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opens partner dashboard @P0",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-cadd03ad9c0ec61acdd9",
+              "file": "role-access.spec.js",
+              "line": 80,
+              "column": 3
+            },
+            {
+              "title": "opens partner company management for partner manager @P0",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-ec8c079899f2e8cbb278",
+              "file": "role-access.spec.js",
+              "line": 85,
               "column": 3
             }
           ]
@@ -723,6 +1308,248 @@
       ]
     },
     {
+      "title": "security-regression.spec.js",
+      "file": "security-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Cross-cutting security regression @regression @security",
+          "file": "security-regression.spec.js",
+          "line": 15,
+          "column": 6,
+          "specs": [
+            {
+              "title": "SEC-009 staff cannot cross into another event by URL @P0 @staff",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "staff"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-2c0da1addc301917e555",
+              "file": "security-regression.spec.js",
+              "line": 39,
+              "column": 3
+            },
+            {
+              "title": "SEC-002 event ID substitution is rejected for participant @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-526c03012e02dafcb577",
+              "file": "security-regression.spec.js",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "SEC-006 campaign route is not accessible to participant @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-2645d84b4780585c69ae",
+              "file": "security-regression.spec.js",
+              "line": 24,
+              "column": 3
+            },
+            {
+              "title": "SEC-007 participant cannot escalate into admin People via URL @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-b46e7673a9e0c906afaa",
+              "file": "security-regression.spec.js",
+              "line": 28,
+              "column": 3
+            },
+            {
+              "title": "SEC-009 participant cannot cross into admin event-management URL @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-a2ed9fe92f5b59a5cc09",
+              "file": "security-regression.spec.js",
+              "line": 32,
+              "column": 3
+            },
+            {
+              "title": "SEC-001/003 arbitrary resource IDs do not crash or expose raw data @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-cb58a8b260b865326c47",
+              "file": "security-regression.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "SEC-005 arbitrary store/participant query parameters do not create a privileged context @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-237427bda41a219ab217",
+              "file": "security-regression.spec.js",
+              "line": 55,
+              "column": 3
+            },
+            {
+              "title": "SEC-008 deleted-account protection remains represented by non-destructive E2E coverage @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-af525d7fb9b7af20c791",
+              "file": "security-regression.spec.js",
+              "line": 61,
+              "column": 3
+            },
+            {
+              "title": "SEC-010/011 profile deletion flow exposes no unredacted confirmation payload @P1 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P1",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-d6a9aca02c81ab860747",
+              "file": "security-regression.spec.js",
+              "line": 67,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "staff-regression.spec.js",
       "file": "staff-regression.spec.js",
       "column": 0,
@@ -758,6 +1585,597 @@
               "id": "8b481708feafc19b21d7-6b8cfb2a952dc6fb5a10",
               "file": "staff-regression.spec.js",
               "line": 11,
+              "column": 3
+            },
+            {
+              "title": "ST-003 staff remains inside assigned event scope @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-81430f998de417838fcf",
+              "file": "staff-regression.spec.js",
+              "line": 17,
+              "column": 3
+            },
+            {
+              "title": "ST-004/008 participants and schedule surfaces are reachable @P1",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-625e940eb2d97fddb3b1",
+              "file": "staff-regression.spec.js",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "ST-010/011 staff cannot enter global admin routes @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-f96c839bafa723d3a0fc",
+              "file": "staff-regression.spec.js",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "ST-013 staff cannot use global campaign administration @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-debbaf8f4043bbb87087",
+              "file": "staff-regression.spec.js",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "ST-014 staff cannot mutate points through a route-only shortcut @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-8a40fbf2cfc8b006528f",
+              "file": "staff-regression.spec.js",
+              "line": 44,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "participant-mobile.spec.js",
+      "file": "participant-mobile.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Participant mobile regression @mobile @participant @regression",
+          "file": "participant-mobile.spec.js",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "bottom navigation remains usable @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-ba3348a28969e43935cc",
+              "file": "participant-mobile.spec.js",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "profile actions have usable touch targets @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-8680cbd2c48664255e57",
+              "file": "participant-mobile.spec.js",
+              "line": 13,
+              "column": 3
+            },
+            {
+              "title": "event experience does not overflow horizontally @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-cc88f2d7df2b0b75f74a",
+              "file": "participant-mobile.spec.js",
+              "line": 19,
+              "column": 3
+            },
+            {
+              "title": "320px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-7e65fc94350619d698dc",
+              "file": "participant-mobile.spec.js",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "375px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-0029e1bc926a2d9f9a30",
+              "file": "participant-mobile.spec.js",
+              "line": 33,
+              "column": 3
+            },
+            {
+              "title": "430px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-c4ef41d1c2fc043ecc74",
+              "file": "participant-mobile.spec.js",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "critical navigation buttons have at least 44px hit area when present @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-197353c4a5b95cd1cc18",
+              "file": "participant-mobile.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "back navigation does not crash @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-e2fc42074e05f0b25a89",
+              "file": "participant-mobile.spec.js",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "schedule navigation and favorite controls are present @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-2a70d4c7ad546fddd301",
+              "file": "participant-mobile.spec.js",
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "bottom navigation remains usable @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-c670cae05426c2a2b5c7",
+              "file": "participant-mobile.spec.js",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "profile actions have usable touch targets @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-39b9b8fdd8d750966560",
+              "file": "participant-mobile.spec.js",
+              "line": 13,
+              "column": 3
+            },
+            {
+              "title": "event experience does not overflow horizontally @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-f921a3d06b384fdd3787",
+              "file": "participant-mobile.spec.js",
+              "line": 19,
+              "column": 3
+            },
+            {
+              "title": "320px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-e8599348828675eb258e",
+              "file": "participant-mobile.spec.js",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "375px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-20316f790ca2d9b07894",
+              "file": "participant-mobile.spec.js",
+              "line": 33,
+              "column": 3
+            },
+            {
+              "title": "430px viewport has no horizontal overflow @P0",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-40db13f398e422d82aa2",
+              "file": "participant-mobile.spec.js",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "critical navigation buttons have at least 44px hit area when present @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-32ffd077f5e15e1243a2",
+              "file": "participant-mobile.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "back navigation does not crash @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-eb0172f889c505bbbc1f",
+              "file": "participant-mobile.spec.js",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "schedule navigation and favorite controls are present @P1",
+              "ok": true,
+              "tags": [
+                "mobile",
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-participant",
+                  "projectName": "mobile-participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "75cdb7e00c1949aa2953-ffb7a18041ae0a9b8fb1",
+              "file": "participant-mobile.spec.js",
+              "line": 67,
               "column": 3
             }
           ]
@@ -801,6 +2219,272 @@
               "file": "participant-regression.spec.js",
               "line": 12,
               "column": 3
+            },
+            {
+              "title": "PA-003/004 event access is tied to participant association @P0 @security",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-a8ec173f35c4c8cb17a1",
+              "file": "participant-regression.spec.js",
+              "line": 19,
+              "column": 3
+            },
+            {
+              "title": "PA-007/008 schedule and navigation controls are usable @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-ddfb73d3ea3ded9fe085",
+              "file": "participant-regression.spec.js",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "PA-009/010 favorite controls, when sessions exist, are interactive @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-4a697690463a45d28fc6",
+              "file": "participant-regression.spec.js",
+              "line": 31,
+              "column": 3
+            },
+            {
+              "title": "PA-011 session detail can open and close when sessions exist @P1",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-029001c546a446ebdece",
+              "file": "participant-regression.spec.js",
+              "line": 42,
+              "column": 3
+            },
+            {
+              "title": "PA-020 ranking is event scoped @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-28b79d7a1f076dbf4fc9",
+              "file": "participant-regression.spec.js",
+              "line": 56,
+              "column": 3
+            },
+            {
+              "title": "PA-022 store exposes participant balance context @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-3a35cb24a34156716099",
+              "file": "participant-regression.spec.js",
+              "line": 62,
+              "column": 3
+            },
+            {
+              "title": "PA-028/029 networking is reachable @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-830eea248107950aadb1",
+              "file": "participant-regression.spec.js",
+              "line": 73,
+              "column": 3
+            },
+            {
+              "title": "PA-032/033 notification inbox loads @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-38fca8334060bfa493f1",
+              "file": "participant-regression.spec.js",
+              "line": 78,
+              "column": 3
+            },
+            {
+              "title": "PA-034 profile edit entry point is available @P1",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-0b8c3b78fc4785928cfe",
+              "file": "participant-regression.spec.js",
+              "line": 87,
+              "column": 3
+            },
+            {
+              "title": "PA-035 deletion requires explicit confirmation @P0",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-a2a4464c37d19d69f338",
+              "file": "participant-regression.spec.js",
+              "line": 93,
+              "column": 3
+            },
+            {
+              "title": "PA-037 deleted-account behavior remains a backend security responsibility @P0 @security",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-e8b64575d66b3ed626d9",
+              "file": "participant-regression.spec.js",
+              "line": 102,
+              "column": 3
             }
           ]
         }
@@ -842,6 +2526,152 @@
               "id": "9a796f8072cefbf5a12a-c8d88e8dd3abe5a421c5",
               "file": "speaker-regression.spec.js",
               "line": 6,
+              "column": 3
+            },
+            {
+              "title": "SP-002/003 own sessions are visible without application errors @P0",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-d4ed98ea9d65ebe436d2",
+              "file": "speaker-regression.spec.js",
+              "line": 11,
+              "column": 3
+            },
+            {
+              "title": "SP-004/005/006 speaker KPI areas load @P1",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-0383200710a952dfe388",
+              "file": "speaker-regression.spec.js",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "SP-007/008 engagement UI is available when own sessions exist @P1",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-6d61dc337a78cbd7b642",
+              "file": "speaker-regression.spec.js",
+              "line": 23,
+              "column": 3
+            },
+            {
+              "title": "SP-009/012 speaker cannot rely on arbitrary participant mutation routes @P0 @security",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-e7e565dc1fce9b275492",
+              "file": "speaker-regression.spec.js",
+              "line": 29,
+              "column": 3
+            },
+            {
+              "title": "SP-013 notifications do not crash speaker experience @P1",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-83294ce75582b63d51a1",
+              "file": "speaker-regression.spec.js",
+              "line": 36,
+              "column": 3
+            },
+            {
+              "title": "SP-014 cross-event speaker URL does not expose arbitrary event data @P0 @security",
+              "ok": true,
+              "tags": [
+                "speaker",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "speaker",
+                  "projectName": "speaker",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9a796f8072cefbf5a12a-e886568b489c489c921a",
+              "file": "speaker-regression.spec.js",
+              "line": 41,
               "column": 3
             }
           ]
@@ -885,6 +2715,176 @@
               "file": "partner-regression.spec.js",
               "line": 6,
               "column": 3
+            },
+            {
+              "title": "PR-002/005 partner management is scoped and reachable for manager persona @P0",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-76cbaf4da20db15c6138",
+              "file": "partner-regression.spec.js",
+              "line": 11,
+              "column": 3
+            },
+            {
+              "title": "PR-006 event selector does not expose application errors @P1",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-abf76001e474d903615d",
+              "file": "partner-regression.spec.js",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "PR-007/008 leads view is partner scoped @P0",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-d0f9e44cf061e40ecd50",
+              "file": "partner-regression.spec.js",
+              "line": 21,
+              "column": 3
+            },
+            {
+              "title": "PR-009 QR/partner flow remains available when event is configured @P1",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-dfd45303cb83f2eb12c3",
+              "file": "partner-regression.spec.js",
+              "line": 27,
+              "column": 3
+            },
+            {
+              "title": "PR-011 partner notification surface does not leak global admin UI @P0 @security",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-07fa37efc267c7ce967e",
+              "file": "partner-regression.spec.js",
+              "line": 33,
+              "column": 3
+            },
+            {
+              "title": "PR-013 partnerId tampering cannot establish another partner context @P0 @security",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-7a388a9a63c54831668c",
+              "file": "partner-regression.spec.js",
+              "line": 38,
+              "column": 3
+            },
+            {
+              "title": "PR-015 finished-event read-only behavior is not broken by route loading @P1",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-138c1753789a5c55aa2d",
+              "file": "partner-regression.spec.js",
+              "line": 46,
+              "column": 3
             }
           ]
         }
@@ -893,11 +2893,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-18T12:24:47.905Z",
-    "duration": 3570.249,
+    "startTime": "2026-08-18T12:34:50.261Z",
+    "duration": 170.07399999999996,
     "expected": 0,
-    "skipped": 10,
-    "unexpected": 5,
+    "skipped": 100,
+    "unexpected": 0,
     "flaky": 0
   }
 }
