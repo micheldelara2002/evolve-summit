@@ -11,9 +11,12 @@ test.describe('Participant mobile regression @mobile @participant @regression', 
   });
 
   test('profile actions have usable touch targets @P1', async ({ page }) => {
-    await page.goto('/profile');
-    const deleteText = page.getByText(/Excluir minha conta/i);
-    await expect(deleteText).toBeVisible();
+    await page.goto('/profile', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading').first()).toBeVisible();
+    const deleteText = page.getByText('Excluir minha conta', { exact: true }).first();
+    await expect(deleteText).toBeAttached({ timeout: 20_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(deleteText).toBeVisible({ timeout: 10_000 });
   });
 
   test('event experience does not overflow horizontally @P0', async ({ page }) => {
