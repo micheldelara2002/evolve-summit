@@ -41,7 +41,10 @@ test.describe('Speaker regression @speaker @regression', () => {
   test('SP-014 cross-event speaker URL does not expose arbitrary event data @P0 @security', async ({ page }) => {
     if (!eventId) test.skip(true, 'No speaker event configured');
     const fakeEvent = `${eventId}-unauthorized`;
-    await page.goto(`/event/${fakeEvent}`);
-    await expect(page).not.toHaveURL(new RegExp(`/event/${fakeEvent}$`));
+    const response = await page.goto(`/event/${fakeEvent}`);
+    const status = response?.status() ?? 0;
+    const bodyText = await page.locator('body').innerText();
+    expect([403, 404]).toContain(status);
+    expect(bodyText).not.toMatch(/E2E Session|QA Speaker/i);
   });
 });
