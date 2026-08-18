@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
  * useSectionParam — sincroniza a seção ativa com a URL (?section=).
  * Compatibilidade com legado: se ?tab= estiver presente, mapeia via legacyTabMap.
  *
- * @param {string} defaultSection — seção inicial caso não haja param na URL
- * @param {object} legacyTabMap — mapa { tabValue: sectionValue } para compat
+ * @param {object} params
+ * @param {string} params.defaultSection seção inicial caso não haja param na URL
+ * @param {Record<string, string>} [params.legacyTabMap] mapa { tabValue: sectionValue } para compat
  * @returns [activeSection, setActiveSection]
  */
 export function useSectionParam({ defaultSection, legacyTabMap = {} }) {
@@ -44,7 +45,6 @@ export function useSectionParam({ defaultSection, legacyTabMap = {} }) {
     const onPopState = () => setSection(readFromUrl());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return [section, handleSectionChange];
