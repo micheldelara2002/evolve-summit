@@ -58,16 +58,24 @@ test.describe('Cross-cutting security regression @regression @security', () => {
     await expect(page.getByRole('heading').first()).toBeVisible();
   });
 
+  async function openProfileAndWaitForDeleteAction(page) {
+    await page.goto('/profile', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading').first()).toBeVisible();
+    const deleteAction = page.getByText('Excluir minha conta', { exact: true }).first();
+    await expect(deleteAction).toBeAttached({ timeout: 20_000 });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(deleteAction).toBeVisible({ timeout: 10_000 });
+    return deleteAction;
+  }
+
   test('SEC-008 deleted-account protection remains represented by non-destructive E2E coverage @P0 @participant', async ({ page }) => {
-    await page.goto('/profile');
-    await expect(page.getByText(/Excluir minha conta/i)).toBeVisible();
+    await openProfileAndWaitForDeleteAction(page);
     test.info().annotations.push({ type: 'backend-covered', description: 'Deletion mutation and old-session blocking are verified by backend security audit; this E2E intentionally does not delete the stable regression account.' });
   });
 
   test('SEC-010/011 profile deletion flow exposes no unredacted confirmation payload @P1 @participant', async ({ page }) => {
-    await page.goto('/profile');
-    await expect(page.getByText(/Excluir minha conta/i)).toBeVisible();
-    await page.getByText(/Excluir minha conta/i).click();
+    const deleteAction = await openProfileAndWaitForDeleteAction(page);
+    await deleteAction.click();
     const dialog = page.getByRole('dialog').first();
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toContainText(/senha atual.*undefined/i);
