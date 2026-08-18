@@ -137,7 +137,7 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
   return result;
 }
 
-export async function refuseConnectionRequest({ requestId, myPersonId = null }) {
+export async function refuseConnectionRequest({ requestId, myPersonId: _myPersonId = null }) {
   const response = await base44.functions.invoke('manageConnection', {
     action: "refuse",
     requestId,
@@ -152,7 +152,7 @@ export async function refuseConnectionRequest({ requestId, myPersonId = null }) 
   return { ok: true };
 }
 
-export async function cancelConnectionRequest({ requestId, myPersonId = null }) {
+export async function cancelConnectionRequest({ requestId, myPersonId: _myPersonId = null }) {
   const response = await base44.functions.invoke('manageConnection', {
     action: "cancel",
     requestId,
