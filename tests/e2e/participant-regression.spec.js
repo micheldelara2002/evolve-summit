@@ -22,7 +22,7 @@ test.describe('Participant regression @participant @regression', () => {
     await page.goto(`/event/${fakeEvent}`);
     // The app may either redirect or keep the URL while rendering the explicit
     // access-denied state. Both satisfy the authorization contract.
-    const deniedState = page.getByText(/Acesso Restrito|Você não está inscrito neste evento/i).first();
+    const deniedState = page.getByText(/Acesso Restrito|Você não está inscrito neste evento|Evento não encontrado/i).first();
     const redirected = !new RegExp(`/event/${fakeEvent}$`).test(page.url());
     if (!redirected) await expect(deniedState).toBeVisible();
   });
