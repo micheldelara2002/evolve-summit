@@ -222,14 +222,22 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
     localStorage.setItem(PREF_KEY, JSON.stringify({ viewMode, filters: activeFilters }));
   }, [viewMode, activeFilters]);
 
+  // Piloto RLS Session/Track — leitura via backend function event-scoped
+  // (valida EventMembership/Participant ativa no evento; service role interno).
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["sessions", eventId],
-    queryFn: () => base44.entities.Session.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventSessions', { eventIds: [eventId] });
+      return res.data?.sessions || [];
+    },
   });
 
   const { data: tracks = [] } = useQuery({
     queryKey: ["tracks", eventId],
-    queryFn: () => base44.entities.Track.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventTracks', { eventId });
+      return res.data?.tracks || [];
+    },
   });
 
   // Piloto RLS Room — leitura via backend function event-scoped

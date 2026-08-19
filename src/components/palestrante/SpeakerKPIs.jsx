@@ -26,13 +26,11 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
   const { data: sessions = [] } = useQuery({
     queryKey: ["speaker-sessions-kpi", participantIds.join(",")],
     queryFn: async () => {
-      if (!participantIds.length) return [];
-      const all = await base44.entities.Session.filter({
-        speaker_id: { $in: participantIds },
-        is_deleted: false,
-      });
-      // Preserva semântica original: session deve pertencer a um dos eventos do palestrante
-      return all.filter((s) => eventIds.includes(s.event_id));
+      if (!participantIds.length || !eventIds.length) return [];
+      const res = await base44.functions.invoke('getEventSessions', { eventIds });
+      const all = res.data?.sessions || [];
+      // Filtro de apresentação: somente as sessões onde este palestrante é o speaker.
+      return all.filter((s) => participantIds.includes(s.speaker_id));
     },
     enabled: participantIds.length > 0,
   });

@@ -64,7 +64,8 @@ export default function PartnerSponsorshipTab({ eventId, partnerId }) {
     queryKey: ["sponsorship_sessions", eventId, speakerIds.join(",")],
     queryFn: async () => {
       if (!speakerIds.length) return [];
-      const all = await base44.entities.Session.filter({ event_id: eventId, is_deleted: false });
+      const res = await base44.functions.invoke('getEventSessions', { eventIds: [eventId] });
+      const all = res.data?.sessions || [];
       return all.filter((s) => speakerIds.includes(s.speaker_id));
     },
     enabled: !!eventId && speakerIds.length > 0,

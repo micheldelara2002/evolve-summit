@@ -17,7 +17,10 @@ export default function SpeakerRaffleSection({ event, myParticipant, user }) {
   // Sessões do speaker neste evento
   const { data: sessions = [] } = useQuery({
     queryKey: ["speaker-raffle-sessions", event.id, myParticipant?.id],
-    queryFn: () => base44.entities.Session.filter({ event_id: event.id, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventSessions', { eventIds: [event.id] });
+      return res.data?.sessions || [];
+    },
     select: (all) => all.filter((s) => s.speaker_id === myParticipant?.id),
     enabled: !!myParticipant?.id,
   });

@@ -46,17 +46,19 @@ export default function PartnerDashboard({ partnerId }) {
 
   const speakerParticipantIds = [...new Set(speakerParticipants.map((p) => p.id))];
 
-  // Sessions desses speakers — query direcionada por speaker_id ($in)
+  // Events do partner (autorização event-scoped via backend function).
+  const partnerEventIds = [...new Set(eventPartners.map((ep) => ep.event_id))];
+  // Sessions desses speakers — leitura via getEventSessions (autorização server-side)
   const { data: sessions = [] } = useQuery({
-    queryKey: ["dash_sessions", speakerParticipantIds.join(",")],
+    queryKey: ["dash_sessions", speakerParticipantIds.join(","), partnerEventIds.join(",")],
     queryFn: async () => {
-      if (!speakerParticipantIds.length) return [];
-      return base44.entities.Session.filter({
-        speaker_id: { $in: speakerParticipantIds },
-        is_deleted: false,
-      });
+      if (!speakerParticipantIds.length || !partnerEventIds.length) return [];
+      const res = await base44.functions.invoke('getEventSessions', { eventIds: partnerEventIds });
+      const all = res.data?.sessions || [];
+      // Filtro de apresentação: somente sessões dos speakers deste partner.
+      return all.filter((s) => speakerParticipantIds.includes(s.speaker_id));
     },
-    enabled: speakerParticipantIds.length > 0,
+    enabled: speakerParticipantIds.length > 0 && partnerEventIds.length > 0,
   });
 
   const cards = [

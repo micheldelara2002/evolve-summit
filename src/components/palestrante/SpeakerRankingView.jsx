@@ -30,11 +30,11 @@ export default function SpeakerRankingView({ speakerParticipants }) {
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["speaker-ranking-sessions", participantIds.join(",")],
     queryFn: async () => {
-      if (!participantIds.length) return [];
-      return base44.entities.Session.filter({
-        speaker_id: { $in: participantIds },
-        is_deleted: false,
-      });
+      if (!participantIds.length || !eventIds.length) return [];
+      const res = await base44.functions.invoke('getEventSessions', { eventIds });
+      const all = res.data?.sessions || [];
+      // Filtro de apresentação: somente as sessões onde este palestrante é o speaker.
+      return all.filter((s) => participantIds.includes(s.speaker_id));
     },
     enabled: participantIds.length > 0,
   });

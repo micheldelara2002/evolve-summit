@@ -312,7 +312,13 @@ function MaterialTab({ session }) {
   const [uploading, setUploading] = useState(false);
 
   const saveMut = useMutation({
-    mutationFn: (materialUrl) => base44.entities.Session.update(session.id, { material_url: materialUrl }),
+    mutationFn: async (materialUrl) => {
+      const res = await base44.functions.invoke('updateSessionMaterial', {
+        sessionId: session.id,
+        materialUrl,
+      });
+      return res.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["speaker-event-sessions"] });
       toast.success("Material atualizado!");

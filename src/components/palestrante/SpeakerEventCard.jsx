@@ -21,7 +21,8 @@ export default function SpeakerEventCard({ event, myParticipant, personId, userE
     queryKey: ["speaker-event-sessions", event.id, myParticipant?.id],
     queryFn: async () => {
       if (!myParticipant?.id) return [];
-      const all = await base44.entities.Session.filter({ event_id: event.id, is_deleted: false });
+      const res = await base44.functions.invoke('getEventSessions', { eventIds: [event.id] });
+      const all = res.data?.sessions || [];
       return all.filter((s) => s.speaker_id === myParticipant.id);
     },
     enabled: expanded && !!myParticipant?.id,
