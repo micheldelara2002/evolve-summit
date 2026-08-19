@@ -24,6 +24,7 @@ export default function BottomNav() {
             <Link
               key={path}
               to={path}
+              replace
               className="flex flex-col items-center justify-center gap-1 flex-1 min-w-0 text-muted-foreground transition-colors select-none touch-manipulation focus-visible:outline-none focus-visible:text-primary"
               aria-current={isActive ? "page" : undefined}
             >

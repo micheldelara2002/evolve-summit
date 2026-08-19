@@ -76,4 +76,64 @@ test.describe('Participant mobile regression @mobile @participant @regression', 
     const buttons = page.getByRole('button');
     await expect(buttons.first()).toBeVisible();
   });
+
+  // ── Bottom Tabs & Stack Preservation (PR: root tab switches replace history) ──
+  const NAV = 'nav[aria-label="Navegação principal"]';
+
+  test('root tab switches do not grow the back stack @P0', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible();
+    const len0 = await page.evaluate(() => history.length);
+
+    await page.locator(`${NAV} a[href="/my-events"]`).click();
+    await expect(page).toHaveURL(/\/my-events$/);
+    expect(await page.evaluate(() => history.length)).toBe(len0);
+
+    await page.locator(`${NAV} a[href="/network"]`).click();
+    await expect(page).toHaveURL(/\/network$/);
+    expect(await page.evaluate(() => history.length)).toBe(len0);
+
+    await page.locator(`${NAV} a[href="/"]`).click();
+    await expect(page).toHaveURL(/\/$/);
+    expect(await page.evaluate(() => history.length)).toBe(len0);
+
+    // Back must not traverse the visited tabs.
+    await page.goBack().catch(() => {});
+    const urlAfterBack = page.url();
+    expect(urlAfterBack).not.toMatch(/\/(my-events|network)$/);
+  });
+
+  test('back from a sub-page returns to the current root tab @P0', async ({ page }) => {
+    await page.goto('/');
+    await page.locator(`${NAV} a[href="/my-events"]`).click();
+    await expect(page).toHaveURL(/\/my-events$/);
+
+    // Sub-page navigation (profile via avatar chip) is a normal push.
+    await page.getByRole('button', { name: /ver meu perfil/i }).first().click();
+    await expect(page).toHaveURL(/\/profile$/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/my-events$/);
+  });
+
+  test('back from a sub-page returns to the most recent tab after a tab switch @P0', async ({ page }) => {
+    await page.goto('/');
+    await page.locator(`${NAV} a[href="/my-events"]`).click();
+    await expect(page).toHaveURL(/\/my-events$/);
+    await page.locator(`${NAV} a[href="/network"]`).click();
+    await expect(page).toHaveURL(/\/network$/);
+
+    await page.getByRole('button', { name: /ver meu perfil/i }).first().click();
+    await expect(page).toHaveURL(/\/profile$/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/network$/);
+  });
+
+  test('direct deep links to tabs and sub-routes still resolve @P1', async ({ page }) => {
+    await page.goto('/network');
+    await expect(page).toHaveURL(/\/network$/);
+    await page.goto('/profile');
+    await expect(page).toHaveURL(/\/profile$/);
+  });
 });
