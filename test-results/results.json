@@ -4,7 +4,9 @@
       "/usr/bin/node",
       "/app/node_modules/.bin/playwright",
       "test",
-      "--project=speaker"
+      "--list",
+      "--grep",
+      "@security"
     ],
     "configFile": "/app/playwright.config.js",
     "rootDir": "/app/tests/e2e",
@@ -17,18 +19,14 @@
     "grep": {},
     "grepInvert": null,
     "maxFailures": 0,
-    "metadata": {
-      "actualWorkers": 1
-    },
+    "metadata": {},
     "preserveOutput": "always",
     "projects": [
       {
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-manager",
         "name": "setup-manager",
         "testDir": "/app/tests/e2e",
@@ -42,9 +40,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-staff",
         "name": "setup-staff",
         "testDir": "/app/tests/e2e",
@@ -58,9 +54,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-participant",
         "name": "setup-participant",
         "testDir": "/app/tests/e2e",
@@ -74,9 +68,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-speaker",
         "name": "setup-speaker",
         "testDir": "/app/tests/e2e",
@@ -90,9 +82,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "setup-partner",
         "name": "setup-partner",
         "testDir": "/app/tests/e2e",
@@ -106,9 +96,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "manager",
         "name": "manager",
         "testDir": "/app/tests/e2e",
@@ -122,9 +110,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "staff",
         "name": "staff",
         "testDir": "/app/tests/e2e",
@@ -138,9 +124,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "participant",
         "name": "participant",
         "testDir": "/app/tests/e2e",
@@ -154,9 +138,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "speaker",
         "name": "speaker",
         "testDir": "/app/tests/e2e",
@@ -170,9 +152,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "partner",
         "name": "partner",
         "testDir": "/app/tests/e2e",
@@ -186,9 +166,7 @@
         "outputDir": "/app/test-results/raw",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
+        "metadata": {},
         "id": "mobile-participant",
         "name": "mobile-participant",
         "testDir": "/app/tests/e2e",
@@ -233,6 +211,90 @@
   },
   "suites": [
     {
+      "title": "auth-manager.setup.js",
+      "file": "auth-manager.setup.js",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup-manager",
+              "projectName": "setup-manager",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "43a172c2e703c58250d1-183828fbcc1b721e9cb2",
+          "file": "auth-manager.setup.js",
+          "line": 3,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "auth-staff.setup.js",
+      "file": "auth-staff.setup.js",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate staff",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup-staff",
+              "projectName": "setup-staff",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "8880a463d100b9106ef8-fd61a97040fdcf31c6bf",
+          "file": "auth-staff.setup.js",
+          "line": 3,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "auth-participant.setup.js",
+      "file": "auth-participant.setup.js",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate participant",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup-participant",
+              "projectName": "setup-participant",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb5f134e84ef3fc3dd9f-36ffea064adc5eec5701",
+          "file": "auth-participant.setup.js",
+          "line": 3,
+          "column": 1
+        }
+      ]
+    },
+    {
       "title": "auth-speaker.setup.js",
       "file": "auth-speaker.setup.js",
       "column": 0,
@@ -249,28 +311,109 @@
               "expectedStatus": "passed",
               "projectId": "setup-speaker",
               "projectName": "setup-speaker",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 3440,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-08-18T19:54:40.046Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
+              "results": [],
+              "status": "skipped"
             }
           ],
           "id": "b270085ede20b8c01f0a-e535993f1718f46e3a36",
           "file": "auth-speaker.setup.js",
           "line": 3,
           "column": 1
+        }
+      ]
+    },
+    {
+      "title": "auth-partner.setup.js",
+      "file": "auth-partner.setup.js",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate partner",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup-partner",
+              "projectName": "setup-partner",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b3c73d6c69fa28ff29de-9df338712d8996834fa4",
+          "file": "auth-partner.setup.js",
+          "line": 3,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "manager-regression.spec.js",
+      "file": "manager-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Manager regression @manager @regression",
+          "file": "manager-regression.spec.js",
+          "line": 10,
+          "column": 6,
+          "specs": [
+            {
+              "title": "GM-060 arbitrary event ID does not silently expose another event @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-36647fae2ac980317db3",
+              "file": "manager-regression.spec.js",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "GM-061/062/063/064/065 sensitive modules remain manager-scoped @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-801576b0711286767e69",
+              "file": "manager-regression.spec.js",
+              "line": 94,
+              "column": 3
+            }
+          ]
         }
       ]
     },
@@ -282,49 +425,77 @@
       "specs": [],
       "suites": [
         {
-          "title": "Speaker — speaker dashboard @speaker @regression",
+          "title": "Gerente — event operations @manager @regression",
           "file": "role-access.spec.js",
-          "line": 64,
+          "line": 5,
           "column": 6,
           "specs": [
             {
-              "title": "opens speaker dashboard @P0",
+              "title": "cannot access global admin people route @P0 @security",
               "ok": true,
               "tags": [
-                "speaker",
+                "manager",
                 "regression",
-                "P0"
+                "P0",
+                "security"
               ],
               "tests": [
                 {
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2405,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:44.513Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [],
+                  "status": "skipped"
                 }
               ],
-              "id": "2b5104c77555b2b63d2d-ebed6033da7ebf47000e",
+              "id": "2b5104c77555b2b63d2d-05334b3f4f47ccd99fc6",
               "file": "role-access.spec.js",
-              "line": 65,
+              "line": 24,
               "column": 3
-            },
+            }
+          ]
+        },
+        {
+          "title": "Staff — event operations @staff @regression",
+          "file": "role-access.spec.js",
+          "line": 30,
+          "column": 6,
+          "specs": [
+            {
+              "title": "cannot access global admin routes @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2b5104c77555b2b63d2d-f241409d4b72f89bb4a3",
+              "file": "role-access.spec.js",
+              "line": 37,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Speaker — speaker dashboard @speaker @regression",
+          "file": "role-access.spec.js",
+          "line": 67,
+          "column": 6,
+          "specs": [
             {
               "title": "does not expose another speaker identity through URL-only navigation @P0 @security",
               "ok": true,
@@ -341,27 +512,13 @@
                   "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2351,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:47.200Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
+                  "results": [],
+                  "status": "skipped"
                 }
               ],
               "id": "2b5104c77555b2b63d2d-2ace94457e1728e0da86",
               "file": "role-access.spec.js",
-              "line": 70,
+              "line": 73,
               "column": 3
             }
           ]
@@ -369,55 +526,425 @@
       ]
     },
     {
-      "title": "smoke.spec.js",
-      "file": "smoke.spec.js",
+      "title": "security-regression.spec.js",
+      "file": "security-regression.spec.js",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Release smoke @regression @smoke",
-          "file": "smoke.spec.js",
-          "line": 11,
+          "title": "Cross-cutting security regression @regression @security",
+          "file": "security-regression.spec.js",
+          "line": 15,
           "column": 6,
           "specs": [
             {
-              "title": "speaker smoke: dashboard @speaker @P0",
+              "title": "SEC-009 staff cannot cross into another event by URL @P0 @staff",
               "ok": true,
               "tags": [
                 "regression",
-                "smoke",
-                "speaker",
-                "P0"
+                "security",
+                "P0",
+                "staff"
               ],
               "tests": [
                 {
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2307,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:49.573Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
                 }
               ],
-              "id": "2c14808d47b386fba9eb-b231b6f5237e65db3bcf",
-              "file": "smoke.spec.js",
-              "line": 37,
+              "id": "fbef1b2ea80880f941bc-2c0da1addc301917e555",
+              "file": "security-regression.spec.js",
+              "line": 43,
+              "column": 3
+            },
+            {
+              "title": "SEC-002 event ID substitution is rejected for participant @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-526c03012e02dafcb577",
+              "file": "security-regression.spec.js",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "SEC-006 campaign route is not accessible to participant @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-2645d84b4780585c69ae",
+              "file": "security-regression.spec.js",
+              "line": 28,
+              "column": 3
+            },
+            {
+              "title": "SEC-007 participant cannot escalate into admin People via URL @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-b46e7673a9e0c906afaa",
+              "file": "security-regression.spec.js",
+              "line": 32,
+              "column": 3
+            },
+            {
+              "title": "SEC-009 participant cannot cross into admin event-management URL @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-a2ed9fe92f5b59a5cc09",
+              "file": "security-regression.spec.js",
+              "line": 36,
+              "column": 3
+            },
+            {
+              "title": "SEC-001/003 arbitrary resource IDs do not crash or expose raw data @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-cb58a8b260b865326c47",
+              "file": "security-regression.spec.js",
+              "line": 51,
+              "column": 3
+            },
+            {
+              "title": "SEC-005 arbitrary store/participant query parameters do not create a privileged context @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-237427bda41a219ab217",
+              "file": "security-regression.spec.js",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "SEC-008 deleted-account protection remains represented by non-destructive E2E coverage @P0 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P0",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-af525d7fb9b7af20c791",
+              "file": "security-regression.spec.js",
+              "line": 75,
+              "column": 3
+            },
+            {
+              "title": "SEC-010/011 profile deletion flow exposes no unredacted confirmation payload @P1 @participant",
+              "ok": true,
+              "tags": [
+                "regression",
+                "security",
+                "P1",
+                "participant"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fbef1b2ea80880f941bc-d6a9aca02c81ab860747",
+              "file": "security-regression.spec.js",
+              "line": 80,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "staff-regression.spec.js",
+      "file": "staff-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Staff regression @staff @regression",
+          "file": "staff-regression.spec.js",
+          "line": 10,
+          "column": 6,
+          "specs": [
+            {
+              "title": "ST-003 staff remains inside assigned event scope @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-81430f998de417838fcf",
+              "file": "staff-regression.spec.js",
+              "line": 17,
+              "column": 3
+            },
+            {
+              "title": "ST-010/011 staff cannot enter global admin routes @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-f96c839bafa723d3a0fc",
+              "file": "staff-regression.spec.js",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "ST-013 staff cannot use global campaign administration @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-debbaf8f4043bbb87087",
+              "file": "staff-regression.spec.js",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "ST-014 staff cannot mutate points through a route-only shortcut @P0 @security",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-8a40fbf2cfc8b006528f",
+              "file": "staff-regression.spec.js",
+              "line": 44,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "participant-regression.spec.js",
+      "file": "participant-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Participant regression @participant @regression",
+          "file": "participant-regression.spec.js",
+          "line": 11,
+          "column": 6,
+          "specs": [
+            {
+              "title": "PA-003/004 event access is tied to participant association @P0 @security",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-a8ec173f35c4c8cb17a1",
+              "file": "participant-regression.spec.js",
+              "line": 19,
+              "column": 3
+            },
+            {
+              "title": "PA-037 deleted-account behavior remains a backend security responsibility @P0 @security",
+              "ok": true,
+              "tags": [
+                "participant",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "participant",
+                  "projectName": "participant",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "371b54a5a3a7203949dd-e8b64575d66b3ed626d9",
+              "file": "participant-regression.spec.js",
+              "line": 115,
               "column": 3
             }
           ]
@@ -438,159 +965,6 @@
           "column": 6,
           "specs": [
             {
-              "title": "SP-001 speaker dashboard loads @P0 @smoke",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P0",
-                "smoke"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2374,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:51.902Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-c8d88e8dd3abe5a421c5",
-              "file": "speaker-regression.spec.js",
-              "line": 6,
-              "column": 3
-            },
-            {
-              "title": "SP-002/003 own sessions are visible without application errors @P0",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 993,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:54.284Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-d4ed98ea9d65ebe436d2",
-              "file": "speaker-regression.spec.js",
-              "line": 11,
-              "column": 3
-            },
-            {
-              "title": "SP-004/005/006 speaker KPI areas load @P1",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2349,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:55.286Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-0383200710a952dfe388",
-              "file": "speaker-regression.spec.js",
-              "line": 16,
-              "column": 3
-            },
-            {
-              "title": "SP-007/008 engagement UI is available when own sessions exist @P1",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2276,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:57.647Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-6d61dc337a78cbd7b642",
-              "file": "speaker-regression.spec.js",
-              "line": 23,
-              "column": 3
-            },
-            {
               "title": "SP-009/012 speaker cannot rely on arbitrary participant mutation routes @P0 @security",
               "ok": true,
               "tags": [
@@ -602,89 +976,17 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "No speaker event configured",
-                      "location": {
-                        "file": "/app/tests/e2e/speaker-regression.spec.js",
-                        "line": 30,
-                        "column": 24
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 332,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:54:59.932Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "No speaker event configured",
-                          "location": {
-                            "file": "/app/tests/e2e/speaker-regression.spec.js",
-                            "line": 30,
-                            "column": 24
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
+                  "results": [],
                   "status": "skipped"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-e7e565dc1fce9b275492",
               "file": "speaker-regression.spec.js",
               "line": 29,
-              "column": 3
-            },
-            {
-              "title": "SP-013 notifications do not crash speaker experience @P1",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1097,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:55:00.273Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-83294ce75582b63d51a1",
-              "file": "speaker-regression.spec.js",
-              "line": 36,
               "column": 3
             },
             {
@@ -699,45 +1001,11 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "No speaker event configured",
-                      "location": {
-                        "file": "/app/tests/e2e/speaker-regression.spec.js",
-                        "line": 42,
-                        "column": 24
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 318,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-18T19:55:01.380Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "No speaker event configured",
-                          "location": {
-                            "file": "/app/tests/e2e/speaker-regression.spec.js",
-                            "line": 42,
-                            "column": 24
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
+                  "results": [],
                   "status": "skipped"
                 }
               ],
@@ -749,14 +1017,81 @@
           ]
         }
       ]
+    },
+    {
+      "title": "partner-regression.spec.js",
+      "file": "partner-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Partner regression @partner @regression",
+          "file": "partner-regression.spec.js",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "PR-011 partner notification surface does not leak global admin UI @P0 @security",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-07fa37efc267c7ce967e",
+              "file": "partner-regression.spec.js",
+              "line": 33,
+              "column": 3
+            },
+            {
+              "title": "PR-013 partnerId tampering cannot establish another partner context @P0 @security",
+              "ok": true,
+              "tags": [
+                "partner",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "partner",
+                  "projectName": "partner",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c0361463b4a8c12efc3b-7a388a9a63c54831668c",
+              "file": "partner-regression.spec.js",
+              "line": 38,
+              "column": 3
+            }
+          ]
+        }
+      ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-18T19:54:39.346Z",
-    "duration": 22424.46,
-    "expected": 9,
-    "skipped": 2,
+    "startTime": "2026-08-19T02:27:15.795Z",
+    "duration": 631.3929999999999,
+    "expected": 0,
+    "skipped": 29,
     "unexpected": 0,
     "flaky": 0
   }
