@@ -6,18 +6,12 @@
       "test",
       "tests/e2e/participant-regression.spec.js",
       "tests/e2e/speaker-regression.spec.js",
-      "tests/e2e/manager-regression.spec.js",
-      "tests/e2e/staff-regression.spec.js",
       "tests/e2e/partner-regression.spec.js",
       "--no-deps",
       "--project",
       "participant",
       "--project",
       "speaker",
-      "--project",
-      "manager",
-      "--project",
-      "staff",
       "--project",
       "partner"
     ],
@@ -248,1052 +242,6 @@
   },
   "suites": [
     {
-      "title": "manager-regression.spec.js",
-      "file": "manager-regression.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Manager regression @manager @regression",
-          "file": "manager-regression.spec.js",
-          "line": 10,
-          "column": 6,
-          "specs": [
-            {
-              "title": "GM-001/003 manager home and event load @P0 @smoke",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P0",
-                "smoke"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 491,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:38.378Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-71182e95348ee59cd06c",
-              "file": "manager-regression.spec.js",
-              "line": 11,
-              "column": 3
-            },
-            {
-              "title": "GM-007 event modules do not crash @P0",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 383,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:39.360Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-819397ad97e37b789e49",
-              "file": "manager-regression.spec.js",
-              "line": 17,
-              "column": 3
-            },
-            {
-              "title": "GM-008 returning from module retains event context @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 362,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:39.754Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-d0b8800d74f92e1c2bc8",
-              "file": "manager-regression.spec.js",
-              "line": 27,
-              "column": 3
-            },
-            {
-              "title": "GM-030/031 tracks and rooms are reachable @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 370,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:40.128Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-b93c2d3f0969c5358723",
-              "file": "manager-regression.spec.js",
-              "line": 35,
-              "column": 3
-            },
-            {
-              "title": "GM-032/033 sessions and speaker assignment surface load @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 341,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:40.508Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-721c9443816e1b18e848",
-              "file": "manager-regression.spec.js",
-              "line": 43,
-              "column": 3
-            },
-            {
-              "title": "GM-035/036 scoring and badges surfaces load @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 374,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:40.860Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-2e9d3430597febcf2e4f",
-              "file": "manager-regression.spec.js",
-              "line": 50,
-              "column": 3
-            },
-            {
-              "title": "GM-037/038/039 store raffle certificates surfaces load @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 348,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:41.244Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-eb0c6486887446f774b7",
-              "file": "manager-regression.spec.js",
-              "line": 58,
-              "column": 3
-            },
-            {
-              "title": "GM-040/041 CFP and awards surfaces load @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 354,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:41.601Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-f49c8976e3bfa2608da0",
-              "file": "manager-regression.spec.js",
-              "line": 66,
-              "column": 3
-            },
-            {
-              "title": "GM-050/051 notification campaign surface is reachable @P0",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 371,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:41.966Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-176991d0f2cf94aa2756",
-              "file": "manager-regression.spec.js",
-              "line": 74,
-              "column": 3
-            },
-            {
-              "title": "GM-055 notification metrics surface loads @P1",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 400,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:42.349Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-397f9d9274d7555480d4",
-              "file": "manager-regression.spec.js",
-              "line": 80,
-              "column": 3
-            },
-            {
-              "title": "GM-060 arbitrary event ID does not silently expose another event @P0 @security",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 460,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:42.761Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-36647fae2ac980317db3",
-              "file": "manager-regression.spec.js",
-              "line": 86,
-              "column": 3
-            },
-            {
-              "title": "GM-061/062/063/064/065 sensitive modules remain manager-scoped @P0 @security",
-              "ok": true,
-              "tags": [
-                "manager",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/manager-regression.spec.js",
-                        "line": 4,
-                        "column": 26
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "manager",
-                  "projectName": "manager",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 375,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:43.232Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/manager-regression.spec.js",
-                            "line": 4,
-                            "column": 26
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "2a63d470a7348f3d010c-801576b0711286767e69",
-              "file": "manager-regression.spec.js",
-              "line": 94,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "staff-regression.spec.js",
-      "file": "staff-regression.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Staff regression @staff @regression",
-          "file": "staff-regression.spec.js",
-          "line": 10,
-          "column": 6,
-          "specs": [
-            {
-              "title": "ST-001/002 staff home and assigned event load @P0 @smoke",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P0",
-                "smoke"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/staff-regression.spec.js",
-                        "line": 12,
-                        "column": 10
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 501,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:44.389Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/staff-regression.spec.js",
-                            "line": 12,
-                            "column": 10
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-6b8cfb2a952dc6fb5a10",
-              "file": "staff-regression.spec.js",
-              "line": 11,
-              "column": 3
-            },
-            {
-              "title": "ST-003 staff remains inside assigned event scope @P0 @security",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/staff-regression.spec.js",
-                        "line": 18,
-                        "column": 10
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 444,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:45.303Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/staff-regression.spec.js",
-                            "line": 18,
-                            "column": 10
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-81430f998de417838fcf",
-              "file": "staff-regression.spec.js",
-              "line": 17,
-              "column": 3
-            },
-            {
-              "title": "ST-004/008 participants and schedule surfaces are reachable @P1",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/staff-regression.spec.js",
-                        "line": 27,
-                        "column": 10
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 398,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:45.759Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/staff-regression.spec.js",
-                            "line": 27,
-                            "column": 10
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-625e940eb2d97fddb3b1",
-              "file": "staff-regression.spec.js",
-              "line": 26,
-              "column": 3
-            },
-            {
-              "title": "ST-010/011 staff cannot enter global admin routes @P0 @security",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3142,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:46.168Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-f96c839bafa723d3a0fc",
-              "file": "staff-regression.spec.js",
-              "line": 34,
-              "column": 3
-            },
-            {
-              "title": "ST-013 staff cannot use global campaign administration @P0 @security",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2133,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:49.326Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-debbaf8f4043bbb87087",
-              "file": "staff-regression.spec.js",
-              "line": 40,
-              "column": 3
-            },
-            {
-              "title": "ST-014 staff cannot mutate points through a route-only shortcut @P0 @security",
-              "ok": true,
-              "tags": [
-                "staff",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/staff-regression.spec.js",
-                        "line": 45,
-                        "column": 10
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "staff",
-                  "projectName": "staff",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 887,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:13:51.477Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/staff-regression.spec.js",
-                            "line": 45,
-                            "column": 10
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "8b481708feafc19b21d7-8a40fbf2cfc8b006528f",
-              "file": "staff-regression.spec.js",
-              "line": 44,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
       "title": "participant-regression.spec.js",
       "file": "participant-regression.spec.js",
       "column": 0,
@@ -1324,15 +272,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2704,
+                      "duration": 3769,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:53.637Z",
+                      "startTime": "2026-08-19T05:15:32.953Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1347,7 +295,7 @@
             },
             {
               "title": "PA-003/004 event access is tied to participant association @P0 @security",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1357,46 +305,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 539,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9463,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:20:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:20:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:56.821Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:15:37.135Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-a8ec173f35c4c8cb17a1",
@@ -1406,7 +379,7 @@
             },
             {
               "title": "PA-007/008 schedule and navigation controls are usable @P0",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1415,46 +388,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 404,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9609,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:31:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:31:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:57.373Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:15:47.485Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-ddfb73d3ea3ded9fe085",
@@ -1464,7 +462,7 @@
             },
             {
               "title": "PA-009/010 favorite controls, when sessions exist, are interactive @P0",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1473,46 +471,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
                       "workerIndex": 2,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 373,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9597,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:36:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:36:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:57.787Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:15:58.403Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-4a697690463a45d28fc6",
@@ -1522,7 +545,7 @@
             },
             {
               "title": "PA-011 session detail can open and close when sessions exist @P1",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1531,46 +554,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 3,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 379,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9747,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:47:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:47:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:58.170Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:16:09.260Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-029001c546a446ebdece",
@@ -1580,7 +628,7 @@
             },
             {
               "title": "PA-020 ranking is event scoped @P0",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1589,46 +637,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 4,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 399,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9760,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:61:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:61:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:58.559Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:16:20.413Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-28b79d7a1f076dbf4fc9",
@@ -1638,7 +711,7 @@
             },
             {
               "title": "PA-022 store exposes participant balance context @P0",
-              "ok": true,
+              "ok": false,
               "tags": [
                 "participant",
                 "regression",
@@ -1647,46 +720,71 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "E2E_EVENT_ID not configured",
-                      "location": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "line": 6,
-                        "column": 8
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "participant",
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 5,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 361,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 9617,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:67:5",
+                        "location": {
+                          "file": "/app/tests/e2e/participant-regression.spec.js",
+                          "column": 51,
+                          "line": 8
+                        },
+                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/participant-regression.spec.js",
+                            "column": 51,
+                            "line": 8
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:67:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:58.971Z",
-                      "annotations": [
+                      "startTime": "2026-08-19T05:16:31.506Z",
+                      "annotations": [],
+                      "attachments": [
                         {
-                          "type": "skip",
-                          "description": "E2E_EVENT_ID not configured",
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "line": 6,
-                            "column": 8
-                          }
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/trace.zip"
                         }
                       ],
-                      "attachments": []
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/participant-regression.spec.js",
+                        "column": 51,
+                        "line": 8
+                      }
                     }
                   ],
-                  "status": "skipped"
+                  "status": "unexpected"
                 }
               ],
               "id": "371b54a5a3a7203949dd-3a35cb24a34156716099",
@@ -1711,15 +809,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1340,
+                      "duration": 1683,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:13:59.343Z",
+                      "startTime": "2026-08-19T05:16:42.367Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1749,15 +847,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1051,
+                      "duration": 1046,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:00.693Z",
+                      "startTime": "2026-08-19T05:16:44.493Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1787,15 +885,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3974,
+                      "duration": 1533,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:01.754Z",
+                      "startTime": "2026-08-19T05:16:45.549Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1825,15 +923,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2090,
+                      "duration": 2191,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:05.740Z",
+                      "startTime": "2026-08-19T05:16:47.094Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1869,15 +967,15 @@
                   "projectName": "participant",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1815,
+                      "duration": 1345,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:07.841Z",
+                      "startTime": "2026-08-19T05:16:49.297Z",
                       "annotations": [
                         {
                           "type": "backend-covered",
@@ -1930,15 +1028,15 @@
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2297,
+                      "duration": 2110,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:10.449Z",
+                      "startTime": "2026-08-19T05:16:51.418Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1968,15 +1066,15 @@
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1260,
+                      "duration": 1043,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:13.150Z",
+                      "startTime": "2026-08-19T05:16:53.931Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2006,15 +1104,15 @@
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2246,
+                      "duration": 1362,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:14.432Z",
+                      "startTime": "2026-08-19T05:16:54.988Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2044,15 +1142,15 @@
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2378,
+                      "duration": 1323,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:16.692Z",
+                      "startTime": "2026-08-19T05:16:56.362Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2077,46 +1175,26 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "No speaker event configured",
-                      "location": {
-                        "file": "/app/tests/e2e/speaker-regression.spec.js",
-                        "line": 30,
-                        "column": 24
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 559,
+                      "status": "passed",
+                      "duration": 1035,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:19.088Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "No speaker event configured",
-                          "location": {
-                            "file": "/app/tests/e2e/speaker-regression.spec.js",
-                            "line": 30,
-                            "column": 24
-                          }
-                        }
-                      ],
+                      "startTime": "2026-08-19T05:16:57.695Z",
+                      "annotations": [],
                       "attachments": []
                     }
                   ],
-                  "status": "skipped"
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-e7e565dc1fce9b275492",
@@ -2141,15 +1219,15 @@
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1588,
+                      "duration": 1044,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:19.665Z",
+                      "startTime": "2026-08-19T05:16:58.742Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2174,46 +1252,26 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "No speaker event configured",
-                      "location": {
-                        "file": "/app/tests/e2e/speaker-regression.spec.js",
-                        "line": 42,
-                        "column": 24
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "speaker",
                   "projectName": "speaker",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 7,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 868,
+                      "status": "passed",
+                      "duration": 988,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:21.271Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "No speaker event configured",
-                          "location": {
-                            "file": "/app/tests/e2e/speaker-regression.spec.js",
-                            "line": 42,
-                            "column": 24
-                          }
-                        }
-                      ],
+                      "startTime": "2026-08-19T05:16:59.800Z",
+                      "annotations": [],
                       "attachments": []
                     }
                   ],
-                  "status": "skipped"
+                  "status": "expected"
                 }
               ],
               "id": "9a796f8072cefbf5a12a-e886568b489c489c921a",
@@ -2256,15 +1314,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3455,
+                      "duration": 2038,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:23.950Z",
+                      "startTime": "2026-08-19T05:17:01.617Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2294,15 +1352,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1697,
+                      "duration": 1507,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:28.334Z",
+                      "startTime": "2026-08-19T05:17:04.069Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2332,15 +1390,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1615,
+                      "duration": 1071,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:30.065Z",
+                      "startTime": "2026-08-19T05:17:05.594Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2370,15 +1428,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1303,
+                      "duration": 1050,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:31.693Z",
+                      "startTime": "2026-08-19T05:17:06.677Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2402,46 +1460,26 @@
               "tests": [
                 {
                   "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "description": "No partner event configured",
-                      "location": {
-                        "file": "/app/tests/e2e/partner-regression.spec.js",
-                        "line": 28,
-                        "column": 31
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
+                  "annotations": [],
+                  "expectedStatus": "passed",
                   "projectId": "partner",
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
-                      "status": "skipped",
-                      "duration": 503,
+                      "status": "passed",
+                      "duration": 1393,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:33.010Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "description": "No partner event configured",
-                          "location": {
-                            "file": "/app/tests/e2e/partner-regression.spec.js",
-                            "line": 28,
-                            "column": 31
-                          }
-                        }
-                      ],
+                      "startTime": "2026-08-19T05:17:07.738Z",
+                      "annotations": [],
                       "attachments": []
                     }
                   ],
-                  "status": "skipped"
+                  "status": "expected"
                 }
               ],
               "id": "c0361463b4a8c12efc3b-dfd45303cb83f2eb12c3",
@@ -2467,15 +1505,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1530,
+                      "duration": 1290,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:33.526Z",
+                      "startTime": "2026-08-19T05:17:09.147Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2506,15 +1544,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1398,
+                      "duration": 1093,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:35.067Z",
+                      "startTime": "2026-08-19T05:17:10.448Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2544,15 +1582,15 @@
                   "projectName": "partner",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 8,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1260,
+                      "duration": 1024,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:14:36.476Z",
+                      "startTime": "2026-08-19T05:17:11.551Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2572,11 +1610,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-19T05:13:37.538Z",
-    "duration": 60427.352,
-    "expected": 20,
-    "skipped": 25,
-    "unexpected": 0,
+    "startTime": "2026-08-19T05:15:32.220Z",
+    "duration": 100485.78700000001,
+    "expected": 21,
+    "skipped": 0,
+    "unexpected": 6,
     "flaky": 0
   }
 }
