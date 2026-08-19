@@ -257,7 +257,7 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "failed",
-                  "duration": 12002,
+                  "duration": 12205,
                   "error": {
                     "message": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n",
                     "stack": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n\n    at /app/tests/support/auth-setup.js:16:37",
@@ -281,7 +281,7 @@
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-08-19T03:08:12.434Z",
+                  "startTime": "2026-08-19T03:08:53.859Z",
                   "annotations": [],
                   "attachments": [
                     {
@@ -442,8 +442,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-19T03:08:11.244Z",
-    "duration": 13535.902,
+    "startTime": "2026-08-19T03:08:52.703Z",
+    "duration": 13720.786999999998,
     "expected": 0,
     "skipped": 4,
     "unexpected": 1,
