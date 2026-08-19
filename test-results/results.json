@@ -257,31 +257,31 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "failed",
-                  "duration": 276,
+                  "duration": 12002,
                   "error": {
-                    "message": "Error: Missing E2E_PARTICIPANT_EMAIL or E2E_PARTICIPANT_PASSWORD. Configure the participant test account in the test environment.",
-                    "stack": "Error: Missing E2E_PARTICIPANT_EMAIL or E2E_PARTICIPANT_PASSWORD. Configure the participant test account in the test environment.\n    at /app/tests/support/auth-setup.js:12:13",
+                    "message": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n",
+                    "stack": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n\n    at /app/tests/support/auth-setup.js:16:37",
                     "location": {
                       "file": "/app/tests/support/auth-setup.js",
-                      "column": 13,
-                      "line": 12
+                      "column": 37,
+                      "line": 16
                     },
-                    "snippet": "\u001b[90m   at \u001b[39m../support/auth-setup.js:12\n\n  10 |\n  11 |     if (!email || !password) {\n> 12 |       throw new Error(`Missing ${emailKey} or ${passwordKey}. Configure the ${role} test account in the test environment.`);\n     |             ^\n  13 |     }\n  14 |\n  15 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });"
+                    "snippet": "\u001b[90m   at \u001b[39m../support/auth-setup.js:16\n\n  14 |\n  15 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });\n> 16 |     await page.getByLabel('E-mail').fill(email);\n     |                                     ^\n  17 |     await page.getByLabel('Senha').fill(password);\n  18 |     await page.getByRole('button', { name: 'Entrar' }).click();\n  19 |"
                   },
                   "errors": [
                     {
                       "location": {
                         "file": "/app/tests/support/auth-setup.js",
-                        "column": 13,
-                        "line": 12
+                        "column": 37,
+                        "line": 16
                       },
-                      "message": "Error: Missing E2E_PARTICIPANT_EMAIL or E2E_PARTICIPANT_PASSWORD. Configure the participant test account in the test environment.\n\n   at ../support/auth-setup.js:12\n\n  10 |\n  11 |     if (!email || !password) {\n> 12 |       throw new Error(`Missing ${emailKey} or ${passwordKey}. Configure the ${role} test account in the test environment.`);\n     |             ^\n  13 |     }\n  14 |\n  15 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });\n    at /app/tests/support/auth-setup.js:12:13"
+                      "message": "TimeoutError: locator.fill: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('E-mail')\u001b[22m\n\n\n   at ../support/auth-setup.js:16\n\n  14 |\n  15 |     await page.goto('/login', { waitUntil: 'domcontentloaded' });\n> 16 |     await page.getByLabel('E-mail').fill(email);\n     |                                     ^\n  17 |     await page.getByLabel('Senha').fill(password);\n  18 |     await page.getByRole('button', { name: 'Entrar' }).click();\n  19 |\n    at /app/tests/support/auth-setup.js:16:37"
                     }
                   ],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-08-19T03:07:36.658Z",
+                  "startTime": "2026-08-19T03:08:12.434Z",
                   "annotations": [],
                   "attachments": [
                     {
@@ -307,8 +307,8 @@
                   ],
                   "errorLocation": {
                     "file": "/app/tests/support/auth-setup.js",
-                    "column": 13,
-                    "line": 12
+                    "column": 37,
+                    "line": 16
                   }
                 }
               ],
@@ -442,8 +442,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-19T03:07:35.526Z",
-    "duration": 1999.154,
+    "startTime": "2026-08-19T03:08:11.244Z",
+    "duration": 13535.902,
     "expected": 0,
     "skipped": 4,
     "unexpected": 1,
