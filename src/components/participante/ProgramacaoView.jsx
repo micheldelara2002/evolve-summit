@@ -232,9 +232,14 @@ export default function ProgramacaoView({ eventId, participant, isReadOnly = fal
     queryFn: () => base44.entities.Track.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  // Piloto RLS Room — leitura via backend function event-scoped
+  // (valida EventMembership/Participant ativa no evento; service role interno).
   const { data: rooms = [] } = useQuery({
     queryKey: ["rooms", eventId],
-    queryFn: () => base44.entities.Room.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventRooms', { eventId });
+      return res.data?.rooms || [];
+    },
   });
 
   // Favorites
