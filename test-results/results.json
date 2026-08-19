@@ -4,16 +4,13 @@
       "/usr/bin/node",
       "/app/node_modules/.bin/playwright",
       "test",
-      "tests/e2e/participant-regression.spec.js",
-      "tests/e2e/speaker-regression.spec.js",
-      "tests/e2e/partner-regression.spec.js",
+      "tests/e2e/manager-regression.spec.js",
+      "tests/e2e/staff-regression.spec.js",
       "--no-deps",
       "--project",
-      "participant",
+      "manager",
       "--project",
-      "speaker",
-      "--project",
-      "partner"
+      "staff"
     ],
     "configFile": "/app/playwright.config.js",
     "rootDir": "/app/tests/e2e",
@@ -242,23 +239,23 @@
   },
   "suites": [
     {
-      "title": "participant-regression.spec.js",
-      "file": "participant-regression.spec.js",
+      "title": "manager-regression.spec.js",
+      "file": "manager-regression.spec.js",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Participant regression @participant @regression",
-          "file": "participant-regression.spec.js",
-          "line": 11,
+          "title": "Manager regression @manager @regression",
+          "file": "manager-regression.spec.js",
+          "line": 10,
           "column": 6,
           "specs": [
             {
-              "title": "PA-001/002 home and My Events load @P0 @smoke",
+              "title": "GM-001/003 manager home and event load @P0 @smoke",
               "ok": true,
               "tags": [
-                "participant",
+                "manager",
                 "regression",
                 "P0",
                 "smoke"
@@ -268,19 +265,19 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
+                  "projectId": "manager",
+                  "projectName": "manager",
                   "results": [
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3769,
+                      "duration": 1491,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:15:32.953Z",
+                      "startTime": "2026-08-19T05:20:38.849Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -288,16 +285,403 @@
                   "status": "expected"
                 }
               ],
-              "id": "371b54a5a3a7203949dd-950e22ea055d11d85a3d",
-              "file": "participant-regression.spec.js",
-              "line": 12,
+              "id": "2a63d470a7348f3d010c-71182e95348ee59cd06c",
+              "file": "manager-regression.spec.js",
+              "line": 11,
               "column": 3
             },
             {
-              "title": "PA-003/004 event access is tied to participant association @P0 @security",
+              "title": "GM-007 event modules do not crash @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 10703,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:20:40.815Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-819397ad97e37b789e49",
+              "file": "manager-regression.spec.js",
+              "line": 17,
+              "column": 3
+            },
+            {
+              "title": "GM-008 returning from module retains event context @P1",
               "ok": false,
               "tags": [
-                "participant",
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 10963,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/events\\/6a85301af03da997381fd879$/\u001b[39m\nReceived string:  \u001b[31m\"about:blank\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"about:blank\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/events\\/6a85301af03da997381fd879$/\u001b[39m\nReceived string:  \u001b[31m\"about:blank\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"about:blank\"\u001b[22m\n\n    at /app/tests/e2e/manager-regression.spec.js:32:24",
+                        "location": {
+                          "file": "/app/tests/e2e/manager-regression.spec.js",
+                          "column": 24,
+                          "line": 32
+                        },
+                        "snippet": "  30 |     await expect(page.getByRole('heading').first()).toBeVisible();\n  31 |     await page.goBack();\n> 32 |     await expect(page).toHaveURL(new RegExp(`/events/${eventId}$`));\n     |                        ^\n  33 |   });\n  34 |\n  35 |   test('GM-030/031 tracks and rooms are reachable @P1', async ({ page }) => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/app/tests/e2e/manager-regression.spec.js",
+                            "column": 24,
+                            "line": 32
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/events\\/6a85301af03da997381fd879$/\u001b[39m\nReceived string:  \u001b[31m\"about:blank\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"about:blank\"\u001b[22m\n\n\n  30 |     await expect(page.getByRole('heading').first()).toBeVisible();\n  31 |     await page.goBack();\n> 32 |     await expect(page).toHaveURL(new RegExp(`/events/${eventId}$`));\n     |                        ^\n  33 |   });\n  34 |\n  35 |   test('GM-030/031 tracks and rooms are reachable @P1', async ({ page }) => {\n    at /app/tests/e2e/manager-regression.spec.js:32:24"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:20:51.529Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/app/test-results/raw/manager-regression-Manager-029f4-le-retains-event-context-P1-manager/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/app/test-results/raw/manager-regression-Manager-029f4-le-retains-event-context-P1-manager/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/app/test-results/raw/manager-regression-Manager-029f4-le-retains-event-context-P1-manager/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/app/test-results/raw/manager-regression-Manager-029f4-le-retains-event-context-P1-manager/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/app/tests/e2e/manager-regression.spec.js",
+                        "column": 24,
+                        "line": 32
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-d0b8800d74f92e1c2bc8",
+              "file": "manager-regression.spec.js",
+              "line": 27,
+              "column": 3
+            },
+            {
+              "title": "GM-030/031 tracks and rooms are reachable @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2003,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:03.421Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-b93c2d3f0969c5358723",
+              "file": "manager-regression.spec.js",
+              "line": 35,
+              "column": 3
+            },
+            {
+              "title": "GM-032/033 sessions and speaker assignment surface load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1220,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:05.845Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-721c9443816e1b18e848",
+              "file": "manager-regression.spec.js",
+              "line": 43,
+              "column": 3
+            },
+            {
+              "title": "GM-035/036 scoring and badges surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2023,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:07.079Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-2e9d3430597febcf2e4f",
+              "file": "manager-regression.spec.js",
+              "line": 50,
+              "column": 3
+            },
+            {
+              "title": "GM-037/038/039 store raffle certificates surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2281,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:09.114Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-eb0c6486887446f774b7",
+              "file": "manager-regression.spec.js",
+              "line": 58,
+              "column": 3
+            },
+            {
+              "title": "GM-040/041 CFP and awards surfaces load @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1923,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:11.407Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-f49c8976e3bfa2608da0",
+              "file": "manager-regression.spec.js",
+              "line": 66,
+              "column": 3
+            },
+            {
+              "title": "GM-050/051 notification campaign surface is reachable @P0",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P0"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1761,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:13.342Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-176991d0f2cf94aa2756",
+              "file": "manager-regression.spec.js",
+              "line": 74,
+              "column": 3
+            },
+            {
+              "title": "GM-055 notification metrics surface loads @P1",
+              "ok": true,
+              "tags": [
+                "manager",
+                "regression",
+                "P1"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1232,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:15.112Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-397f9d9274d7555480d4",
+              "file": "manager-regression.spec.js",
+              "line": 80,
+              "column": 3
+            },
+            {
+              "title": "GM-060 arbitrary event ID does not silently expose another event @P0 @security",
+              "ok": true,
+              "tags": [
+                "manager",
                 "regression",
                 "P0",
                 "security"
@@ -307,247 +691,215 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 9463,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:20:5",
-                        "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
-                        },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:20:5"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:15:37.135Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-b7eb1-ant-association-P0-security-participant/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
-                      }
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-a8ec173f35c4c8cb17a1",
-              "file": "participant-regression.spec.js",
-              "line": 19,
-              "column": 3
-            },
-            {
-              "title": "PA-007/008 schedule and navigation controls are usable @P0",
-              "ok": false,
-              "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
+                  "projectId": "manager",
+                  "projectName": "manager",
                   "results": [
                     {
                       "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 9609,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:31:5",
-                        "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
-                        },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:31:5"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 1158,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:15:47.485Z",
+                      "startTime": "2026-08-19T05:21:16.354Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-7445c-tion-controls-are-usable-P0-participant/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "371b54a5a3a7203949dd-ddfb73d3ea3ded9fe085",
-              "file": "participant-regression.spec.js",
-              "line": 30,
+              "id": "2a63d470a7348f3d010c-36647fae2ac980317db3",
+              "file": "manager-regression.spec.js",
+              "line": 86,
               "column": 3
             },
             {
-              "title": "PA-009/010 favorite controls, when sessions exist, are interactive @P0",
-              "ok": false,
+              "title": "GM-061/062/063/064/065 sensitive modules remain manager-scoped @P0 @security",
+              "ok": true,
               "tags": [
-                "participant",
+                "manager",
                 "regression",
-                "P0"
+                "P0",
+                "security"
               ],
               "tests": [
                 {
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
+                  "projectId": "manager",
+                  "projectName": "manager",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3239,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:17.523Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a63d470a7348f3d010c-801576b0711286767e69",
+              "file": "manager-regression.spec.js",
+              "line": 94,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "staff-regression.spec.js",
+      "file": "staff-regression.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Staff regression @staff @regression",
+          "file": "staff-regression.spec.js",
+          "line": 10,
+          "column": 6,
+          "specs": [
+            {
+              "title": "ST-001/002 staff home and assigned event load @P0 @smoke",
+              "ok": true,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4019,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-19T05:21:21.540Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b481708feafc19b21d7-6b8cfb2a952dc6fb5a10",
+              "file": "staff-regression.spec.js",
+              "line": 11,
+              "column": 3
+            },
+            {
+              "title": "ST-003 staff remains inside assigned event scope @P0 @security",
+              "ok": false,
+              "tags": [
+                "staff",
+                "regression",
+                "P0",
+                "security"
+              ],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "staff",
+                  "projectName": "staff",
                   "results": [
                     {
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 9597,
+                      "duration": 10732,
                       "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:36:5",
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).not.\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: not \u001b[32m/\\/event\\/6a85301af03da997381fd879-unauthorized$/\u001b[39m\nReceived string: \u001b[31m\"https://share--evolve-summit.base44.app\u001b[7m/event/6a85301af03da997381fd879-unauthorized\u001b[27m\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html lang=\"pt-BR\" class=\"dark\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://share--evolve-summit.base44.app/event/6a85301af03da997381fd879-unauthorized\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).not.\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: not \u001b[32m/\\/event\\/6a85301af03da997381fd879-unauthorized$/\u001b[39m\nReceived string: \u001b[31m\"https://share--evolve-summit.base44.app\u001b[7m/event/6a85301af03da997381fd879-unauthorized\u001b[27m\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html lang=\"pt-BR\" class=\"dark\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://share--evolve-summit.base44.app/event/6a85301af03da997381fd879-unauthorized\"\u001b[22m\n\n    at /app/tests/e2e/staff-regression.spec.js:23:28",
                         "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
+                          "file": "/app/tests/e2e/staff-regression.spec.js",
+                          "column": 28,
+                          "line": 23
                         },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
+                        "snippet": "  21 |     const fakeEvent = `${eventId}-unauthorized`;\n  22 |     await page.goto(`/event/${fakeEvent}`);\n> 23 |     await expect(page).not.toHaveURL(new RegExp(`/event/${fakeEvent}$`));\n     |                            ^\n  24 |   });\n  25 |\n  26 |   test('ST-004/008 participants and schedule surfaces are reachable @P1', async ({ page }) => {"
                       },
                       "errors": [
                         {
                           "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
+                            "file": "/app/tests/e2e/staff-regression.spec.js",
+                            "column": 28,
+                            "line": 23
                           },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:36:5"
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).not.\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: not \u001b[32m/\\/event\\/6a85301af03da997381fd879-unauthorized$/\u001b[39m\nReceived string: \u001b[31m\"https://share--evolve-summit.base44.app\u001b[7m/event/6a85301af03da997381fd879-unauthorized\u001b[27m\"\u001b[39m\nTimeout: 8000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveURL\" with timeout 8000ms\u001b[22m\n\u001b[2m    20 × locator resolved to <html lang=\"pt-BR\" class=\"dark\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://share--evolve-summit.base44.app/event/6a85301af03da997381fd879-unauthorized\"\u001b[22m\n\n\n  21 |     const fakeEvent = `${eventId}-unauthorized`;\n  22 |     await page.goto(`/event/${fakeEvent}`);\n> 23 |     await expect(page).not.toHaveURL(new RegExp(`/event/${fakeEvent}$`));\n     |                            ^\n  24 |   });\n  25 |\n  26 |   test('ST-004/008 participants and schedule surfaces are reachable @P1', async ({ page }) => {\n    at /app/tests/e2e/staff-regression.spec.js:23:28"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:15:58.403Z",
+                      "startTime": "2026-08-19T05:21:25.943Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/test-failed-1.png"
+                          "path": "/app/test-results/raw/staff-regression-Staff-reg-418c6-ned-event-scope-P0-security-staff/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/video.webm"
+                          "path": "/app/test-results/raw/staff-regression-Staff-reg-418c6-ned-event-scope-P0-security-staff/video.webm"
                         },
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/error-context.md"
+                          "path": "/app/test-results/raw/staff-regression-Staff-reg-418c6-ned-event-scope-P0-security-staff/error-context.md"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-eb7ae-ns-exist-are-interactive-P0-participant/trace.zip"
+                          "path": "/app/test-results/raw/staff-regression-Staff-reg-418c6-ned-event-scope-P0-security-staff/trace.zip"
                         }
                       ],
                       "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
+                        "file": "/app/tests/e2e/staff-regression.spec.js",
+                        "column": 28,
+                        "line": 23
                       }
                     }
                   ],
                   "status": "unexpected"
                 }
               ],
-              "id": "371b54a5a3a7203949dd-4a697690463a45d28fc6",
-              "file": "participant-regression.spec.js",
-              "line": 35,
+              "id": "8b481708feafc19b21d7-81430f998de417838fcf",
+              "file": "staff-regression.spec.js",
+              "line": 17,
               "column": 3
             },
             {
-              "title": "PA-011 session detail can open and close when sessions exist @P1",
-              "ok": false,
+              "title": "ST-004/008 participants and schedule surfaces are reachable @P1",
+              "ok": true,
               "tags": [
-                "participant",
+                "staff",
                 "regression",
                 "P1"
               ],
@@ -556,268 +908,19 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
+                  "projectId": "staff",
+                  "projectName": "staff",
                   "results": [
                     {
                       "workerIndex": 3,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 9747,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:47:5",
-                        "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
-                        },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:47:5"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:09.260Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-69cc2-lose-when-sessions-exist-P1-participant/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
-                      }
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-029001c546a446ebdece",
-              "file": "participant-regression.spec.js",
-              "line": 46,
-              "column": 3
-            },
-            {
-              "title": "PA-020 ranking is event scoped @P0",
-              "ok": false,
-              "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 4,
-                      "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 9760,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:61:5",
-                        "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
-                        },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:61:5"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:20.413Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-54f2f--ranking-is-event-scoped-P0-participant/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
-                      }
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-28b79d7a1f076dbf4fc9",
-              "file": "participant-regression.spec.js",
-              "line": 60,
-              "column": 3
-            },
-            {
-              "title": "PA-022 store exposes participant balance context @P0",
-              "ok": false,
-              "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 5,
-                      "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 9617,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:67:5",
-                        "location": {
-                          "file": "/app/tests/e2e/participant-regression.spec.js",
-                          "column": 51,
-                          "line": 8
-                        },
-                        "snippet": "   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/app/tests/e2e/participant-regression.spec.js",
-                            "column": 51,
-                            "line": 8
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('heading').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('heading').first()\u001b[22m\n\n\n   6 |   test.skip(!eventId, 'E2E_EVENT_ID not configured');\n   7 |   await page.goto(`/event/${eventId}`);\n>  8 |   await expect(page.getByRole('heading').first()).toBeVisible();\n     |                                                   ^\n   9 | }\n  10 |\n  11 | test.describe('Participant regression @participant @regression', () => {\n    at eventShell (/app/tests/e2e/participant-regression.spec.js:8:51)\n    at /app/tests/e2e/participant-regression.spec.js:67:5"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:31.506Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/app/test-results/raw/participant-regression-Par-9ee6f-ticipant-balance-context-P0-participant/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/app/tests/e2e/participant-regression.spec.js",
-                        "column": 51,
-                        "line": 8
-                      }
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-3a35cb24a34156716099",
-              "file": "participant-regression.spec.js",
-              "line": 66,
-              "column": 3
-            },
-            {
-              "title": "PA-028/029 networking is reachable @P0",
-              "ok": true,
-              "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1683,
+                      "duration": 3207,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:16:42.367Z",
+                      "startTime": "2026-08-19T05:21:37.600Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -825,349 +928,16 @@
                   "status": "expected"
                 }
               ],
-              "id": "371b54a5a3a7203949dd-830eea248107950aadb1",
-              "file": "participant-regression.spec.js",
-              "line": 77,
+              "id": "8b481708feafc19b21d7-625e940eb2d97fddb3b1",
+              "file": "staff-regression.spec.js",
+              "line": 26,
               "column": 3
             },
             {
-              "title": "PA-032/033 notification inbox loads @P0",
+              "title": "ST-010/011 staff cannot enter global admin routes @P0 @security",
               "ok": true,
               "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1046,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:44.493Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-38fca8334060bfa493f1",
-              "file": "participant-regression.spec.js",
-              "line": 82,
-              "column": 3
-            },
-            {
-              "title": "PA-034 profile edit entry point is available @P1",
-              "ok": true,
-              "tags": [
-                "participant",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1533,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:45.549Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-0b8c3b78fc4785928cfe",
-              "file": "participant-regression.spec.js",
-              "line": 100,
-              "column": 3
-            },
-            {
-              "title": "PA-035 deletion requires explicit confirmation @P0",
-              "ok": true,
-              "tags": [
-                "participant",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2191,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:47.094Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-a2a4464c37d19d69f338",
-              "file": "participant-regression.spec.js",
-              "line": 105,
-              "column": 3
-            },
-            {
-              "title": "PA-037 deleted-account behavior remains a backend security responsibility @P0 @security",
-              "ok": true,
-              "tags": [
-                "participant",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [
-                    {
-                      "type": "backend-covered",
-                      "description": "Old-session mutation blocking is covered by backend security audit; this E2E does not mutate the regression account."
-                    }
-                  ],
-                  "expectedStatus": "passed",
-                  "projectId": "participant",
-                  "projectName": "participant",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1345,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:49.297Z",
-                      "annotations": [
-                        {
-                          "type": "backend-covered",
-                          "description": "Old-session mutation blocking is covered by backend security audit; this E2E does not mutate the regression account."
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "371b54a5a3a7203949dd-e8b64575d66b3ed626d9",
-              "file": "participant-regression.spec.js",
-              "line": 115,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "speaker-regression.spec.js",
-      "file": "speaker-regression.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Speaker regression @speaker @regression",
-          "file": "speaker-regression.spec.js",
-          "line": 5,
-          "column": 6,
-          "specs": [
-            {
-              "title": "SP-001 speaker dashboard loads @P0 @smoke",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P0",
-                "smoke"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 7,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2110,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:51.418Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-c8d88e8dd3abe5a421c5",
-              "file": "speaker-regression.spec.js",
-              "line": 6,
-              "column": 3
-            },
-            {
-              "title": "SP-002/003 own sessions are visible without application errors @P0",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 7,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1043,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:53.931Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-d4ed98ea9d65ebe436d2",
-              "file": "speaker-regression.spec.js",
-              "line": 11,
-              "column": 3
-            },
-            {
-              "title": "SP-004/005/006 speaker KPI areas load @P1",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 7,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1362,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:54.988Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-0383200710a952dfe388",
-              "file": "speaker-regression.spec.js",
-              "line": 16,
-              "column": 3
-            },
-            {
-              "title": "SP-007/008 engagement UI is available when own sessions exist @P1",
-              "ok": true,
-              "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 7,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1323,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:56.362Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-6d61dc337a78cbd7b642",
-              "file": "speaker-regression.spec.js",
-              "line": 23,
-              "column": 3
-            },
-            {
-              "title": "SP-009/012 speaker cannot rely on arbitrary participant mutation routes @P0 @security",
-              "ok": true,
-              "tags": [
-                "speaker",
+                "staff",
                 "regression",
                 "P0",
                 "security"
@@ -1177,19 +947,19 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
+                  "projectId": "staff",
+                  "projectName": "staff",
                   "results": [
                     {
-                      "workerIndex": 7,
+                      "workerIndex": 3,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1035,
+                      "duration": 2829,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:16:57.695Z",
+                      "startTime": "2026-08-19T05:21:41.214Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1197,54 +967,16 @@
                   "status": "expected"
                 }
               ],
-              "id": "9a796f8072cefbf5a12a-e7e565dc1fce9b275492",
-              "file": "speaker-regression.spec.js",
-              "line": 29,
+              "id": "8b481708feafc19b21d7-f96c839bafa723d3a0fc",
+              "file": "staff-regression.spec.js",
+              "line": 34,
               "column": 3
             },
             {
-              "title": "SP-013 notifications do not crash speaker experience @P1",
+              "title": "ST-013 staff cannot use global campaign administration @P0 @security",
               "ok": true,
               "tags": [
-                "speaker",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
-                  "results": [
-                    {
-                      "workerIndex": 7,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1044,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:16:58.742Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "9a796f8072cefbf5a12a-83294ce75582b63d51a1",
-              "file": "speaker-regression.spec.js",
-              "line": 36,
-              "column": 3
-            },
-            {
-              "title": "SP-014 cross-event speaker URL does not expose arbitrary event data @P0 @security",
-              "ok": true,
-              "tags": [
-                "speaker",
+                "staff",
                 "regression",
                 "P0",
                 "security"
@@ -1254,19 +986,19 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "speaker",
-                  "projectName": "speaker",
+                  "projectId": "staff",
+                  "projectName": "staff",
                   "results": [
                     {
-                      "workerIndex": 7,
+                      "workerIndex": 3,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 988,
+                      "duration": 1292,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:16:59.800Z",
+                      "startTime": "2026-08-19T05:21:44.054Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1274,224 +1006,16 @@
                   "status": "expected"
                 }
               ],
-              "id": "9a796f8072cefbf5a12a-e886568b489c489c921a",
-              "file": "speaker-regression.spec.js",
-              "line": 41,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "partner-regression.spec.js",
-      "file": "partner-regression.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Partner regression @partner @regression",
-          "file": "partner-regression.spec.js",
-          "line": 5,
-          "column": 6,
-          "specs": [
-            {
-              "title": "PR-001 partner dashboard loads @P0 @smoke",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P0",
-                "smoke"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2038,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:01.617Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-90f1bcc7adc5f3b522e9",
-              "file": "partner-regression.spec.js",
-              "line": 6,
+              "id": "8b481708feafc19b21d7-debbaf8f4043bbb87087",
+              "file": "staff-regression.spec.js",
+              "line": 40,
               "column": 3
             },
             {
-              "title": "PR-002/005 partner management is scoped and reachable for manager persona @P0",
+              "title": "ST-014 staff cannot mutate points through a route-only shortcut @P0 @security",
               "ok": true,
               "tags": [
-                "partner",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1507,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:04.069Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-76cbaf4da20db15c6138",
-              "file": "partner-regression.spec.js",
-              "line": 11,
-              "column": 3
-            },
-            {
-              "title": "PR-006 event selector does not expose application errors @P1",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1071,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:05.594Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-abf76001e474d903615d",
-              "file": "partner-regression.spec.js",
-              "line": 16,
-              "column": 3
-            },
-            {
-              "title": "PR-007/008 leads view is partner scoped @P0",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P0"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1050,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:06.677Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-d0f9e44cf061e40ecd50",
-              "file": "partner-regression.spec.js",
-              "line": 21,
-              "column": 3
-            },
-            {
-              "title": "PR-009 QR/partner flow remains available when event is configured @P1",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1393,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:07.738Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-dfd45303cb83f2eb12c3",
-              "file": "partner-regression.spec.js",
-              "line": 27,
-              "column": 3
-            },
-            {
-              "title": "PR-011 partner notification surface does not leak global admin UI @P0 @security",
-              "ok": true,
-              "tags": [
-                "partner",
+                "staff",
                 "regression",
                 "P0",
                 "security"
@@ -1501,19 +1025,19 @@
                   "timeout": 45000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
+                  "projectId": "staff",
+                  "projectName": "staff",
                   "results": [
                     {
-                      "workerIndex": 8,
+                      "workerIndex": 3,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1290,
+                      "duration": 1263,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-08-19T05:17:09.147Z",
+                      "startTime": "2026-08-19T05:21:45.357Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1521,86 +1045,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "c0361463b4a8c12efc3b-07fa37efc267c7ce967e",
-              "file": "partner-regression.spec.js",
-              "line": 33,
-              "column": 3
-            },
-            {
-              "title": "PR-013 partnerId tampering cannot establish another partner context @P0 @security",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P0",
-                "security"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1093,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:10.448Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-7a388a9a63c54831668c",
-              "file": "partner-regression.spec.js",
-              "line": 38,
-              "column": 3
-            },
-            {
-              "title": "PR-015 finished-event read-only behavior is not broken by route loading @P1",
-              "ok": true,
-              "tags": [
-                "partner",
-                "regression",
-                "P1"
-              ],
-              "tests": [
-                {
-                  "timeout": 45000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "partner",
-                  "projectName": "partner",
-                  "results": [
-                    {
-                      "workerIndex": 8,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1024,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-08-19T05:17:11.551Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c0361463b4a8c12efc3b-138c1753789a5c55aa2d",
-              "file": "partner-regression.spec.js",
-              "line": 51,
+              "id": "8b481708feafc19b21d7-8a40fbf2cfc8b006528f",
+              "file": "staff-regression.spec.js",
+              "line": 44,
               "column": 3
             }
           ]
@@ -1610,11 +1057,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-19T05:15:32.220Z",
-    "duration": 100485.78700000001,
-    "expected": 21,
+    "startTime": "2026-08-19T05:20:38.141Z",
+    "duration": 68595.651,
+    "expected": 16,
     "skipped": 0,
-    "unexpected": 6,
+    "unexpected": 2,
     "flaky": 0
   }
 }
