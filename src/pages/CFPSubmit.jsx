@@ -53,7 +53,8 @@ export default function CFPSubmit() {
   const { data: cfp } = useQuery({
     queryKey: ["cfp", cfpId],
     queryFn: async () => {
-      const list = await base44.entities.CallForPapers.filter({ id: cfpId, is_deleted: false });
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "CallForPapers", id: cfpId });
+      const list = response.data?.records || response.records || [];
       return list[0];
     },
   });
