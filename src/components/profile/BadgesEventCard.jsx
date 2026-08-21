@@ -4,6 +4,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listEventConfig } from "@/lib/eventConfigApi";
 import { isBadgeUnlocked } from "@/lib/badgeEngine";
 
 function BadgePill({ badge, unlocked }) {
@@ -29,7 +30,7 @@ function BadgePill({ badge, unlocked }) {
 export default function BadgesEventCard({ eventId, participantId }) {
   const { data: badges = [] } = useQuery({
     queryKey: ["badges-event", eventId],
-    queryFn: () => base44.entities.Badge.filter({ event_id: eventId, ativo: true, is_deleted: false }),
+    queryFn: () => listEventConfig("Badge", eventId, { activeOnly: true }),
   });
 
   const { data: event } = useQuery({
