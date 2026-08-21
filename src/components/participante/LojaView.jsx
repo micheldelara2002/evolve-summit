@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listEventConfig } from "@/lib/eventConfigApi";
 import { ShoppingBag, ImageIcon, Star, Wallet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -127,7 +128,7 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["store-items", eventId],
-    queryFn: () => base44.entities.StoreItem.filter({ event_id: eventId, is_deleted: false, status: "ativo" }),
+    queryFn: () => listEventConfig("StoreItem", eventId, { activeOnly: true }),
   });
 
   // Buscar resgates já feitos por este participante
