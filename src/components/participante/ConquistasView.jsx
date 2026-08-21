@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listEventConfig } from "@/lib/eventConfigApi";
 import { isBadgeUnlocked } from "@/lib/badgeEngine";
 import { Trophy } from "lucide-react";
 
@@ -60,7 +61,7 @@ function BadgeCard({ badge, earned }) {
 export default function ConquistasView({ eventId, userEmail, myPerson, participantId }) {
   const { data: badges = [], isLoading } = useQuery({
     queryKey: ["badges", eventId],
-    queryFn: () => base44.entities.Badge.filter({ event_id: eventId, is_deleted: false, ativo: true }),
+    queryFn: () => listEventConfig("Badge", eventId, { activeOnly: true }),
   });
 
   const { data: transactions = [] } = useQuery({
