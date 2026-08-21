@@ -31,7 +31,13 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
   const [statusFilter, setStatusFilter] = useState("pending");
   const [promoteFor, setPromoteFor] = useState(null);
 
-  const { data: configs = [] } = useQuery({ queryKey: ["award-configs", eventId], queryFn: () => base44.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false }) });
+  const { data: configs = [] } = useQuery({
+    queryKey: ["award-configs", eventId],
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "AwardConfig", eventId });
+      return response.data?.records || response.records || [];
+    },
+  });
   const { data: submissions = [], isLoading } = useQuery({
     queryKey: ["award-submissions", eventId],
     queryFn: () => base44.entities.AwardSubmission.filter({ event_id: eventId, is_deleted: false }),
