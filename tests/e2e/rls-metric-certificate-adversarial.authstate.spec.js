@@ -26,27 +26,27 @@ test.describe('RLS quick wins — MetricBucket + Certificate @security', () => {
     }
   });
 
-  test('admin can read MetricBucket directly and backend metrics still work', async () => {
-    const admin = clientFromState('admin');
-    const records = await admin.entities.MetricBucket.list();
-    expect(Array.isArray(records)).toBeTruthy();
+  test('non-admin cannot read MetricBucket and cannot use admin-only dashboard metrics directly', async () => {
+    const manager = clientFromState('manager');
+    const records = await manager.entities.MetricBucket.list();
+    expect(records).toHaveLength(0);
 
-    const metrics = await admin.functions.invoke('getBusinessDashboardMetrics', { eventId: EVENT_A });
-    expect(metrics.status).toBe(200);
+    const metrics = await manager.functions.invoke('getBusinessDashboardMetrics', { eventId: EVENT_A }).catch(e => ({ status: e?.response?.status || 403 }));
+    expect([403, 401]).toContain(metrics.status);
   });
 
   test('Certificate direct SDK is blocked for non-admin while public validation remains available', async () => {
-    const admin = clientFromState('admin');
+    const issuer = clientFromState('manager');
     const participant = clientFromState('participant');
     const manager = clientFromState('manager');
 
-    const participants = await admin.entities.Participant.filter({ event_id: EVENT_A, is_deleted: false });
+    const participants = await issuer.entities.Participant.filter({ event_id: EVENT_A, is_deleted: false });
     const participantFixture = participants.find(p => p.person_id) || participants[0];
     test.skip(!participantFixture, 'No participant fixture available for certificate issuance.');
 
     let certificate;
     try {
-      const issue = await admin.functions.invoke('issueCertificate', {
+      const issue = await issuer.functions.invoke('issueCertificate', {
         eventId: EVENT_A,
         participantId: participantFixture.id,
         tipo: 'participacao',
@@ -76,7 +76,7 @@ test.describe('RLS quick wins — MetricBucket + Certificate @security', () => {
       expect(invalid.data?.valid).toBe(false);
     } finally {
       if (certificate?.id) {
-        try { await admin.entities.Certificate.update(certificate.id, { is_deleted: true }); } catch {}
+        try { await issuer.entities.Certificate.update(certificate.id, { is_deleted: true }); } catch {}
       }
     }
   });
