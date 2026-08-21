@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listEventConfig } from "@/lib/eventConfigApi";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -110,7 +111,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
 
   const { data: customTemplates = [] } = useQuery({
     queryKey: ["cert-templates", eventId],
-    queryFn: () => base44.entities.CertificateTemplate.filter({ event_id: eventId, is_deleted: false, is_active: true }),
+    queryFn: () => listEventConfig("CertificateTemplate", eventId, { activeOnly: true }),
   });
 
   const availableCustomTemplates = customTemplates.filter((t) => t.tipo === tipo);
