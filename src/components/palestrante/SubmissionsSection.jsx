@@ -66,7 +66,8 @@ export default function SubmissionsSection({ person }) {
   const { data: allCfps = [] } = useQuery({
     queryKey: ["cfps-open"],
     queryFn: async () => {
-      const all = await base44.entities.CallForPapers.filter({ is_active: true, is_deleted: false });
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "CallForPapers" });
+      const all = response.data?.records || response.records || [];
       const now = new Date();
       return all.filter((c) => !c.end_date || new Date(c.end_date) > now);
     },
