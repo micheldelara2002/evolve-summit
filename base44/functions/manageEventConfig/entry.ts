@@ -74,13 +74,13 @@ Deno.serve(async (req) => {
     if (!entityName || !ALLOWED_ENTITIES.has(entityName)) {
       return Response.json({ error: 'Entidade não permitida.' }, { status: 400 });
     }
-    if (!eventId || typeof eventId !== 'string') {
-      return Response.json({ error: 'eventId é obrigatório.' }, { status: 400 });
-    }
 
     const svc = base44.asServiceRole;
     const isPublicRead = action === 'list' && PUBLIC_READ_ENTITIES.has(entityName);
     const isPublicConfigRead = isPublicRead && (entityName === 'AwardConfig' || entityName === 'CallForPapers');
+    if ((!eventId || typeof eventId !== 'string') && !isPublicConfigRead) {
+      return Response.json({ error: 'eventId é obrigatório.' }, { status: 400 });
+    }
     const isAdmin = user.role === 'admin';
 
     // Reads: Badge/StoreItem are visible to legitimate event participants/members.
@@ -103,7 +103,9 @@ Deno.serve(async (req) => {
       }
       if (!authorized) return Response.json({ error: 'Sem permissão para acessar esta configuração.' }, { status: 403 });
 
-      const filter = { event_id: eventId };
+      const filter = {};
+      if (eventId) filter.event_id = eventId;
+      if (id) filter.id = id;
       // Non-management callers can only read the public, active catalog/configuration.
       if (!isAdmin && isPublicRead) {
         filter.is_deleted = false;
