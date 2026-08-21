@@ -1,11 +1,11 @@
 {
-  "name": "__RLSCheckpointAudit_AwardCFP",
   "type": "object",
   "properties": {
     "note": {
       "type": "string"
     }
   },
+  "required": [],
   "rls": {
     "read": {
       "user_condition": {
@@ -28,5 +28,5 @@
       }
     }
   },
-  "required": []
+  "name": "__RLSBatchDiscovery_20260821"
 }
