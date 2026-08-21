@@ -21,7 +21,7 @@ async function findOwnSpeakerSession(admin, speakerEmail) {
   return sessions?.[0] || null;
 }
 
-test.describe('RLS Session/Track adversarial pre-RLS @security @rls', () => {
+test.describe('RLS Session/Track adversarial pre-RLS @security @rls @participant', () => {
   test('authorized personas can read their event through functions', async () => {
     test.skip(!baseUrl, 'E2E_BASE_URL required');
     const personas = [
@@ -61,8 +61,23 @@ test.describe('RLS Session/Track adversarial pre-RLS @security @rls', () => {
     test.skip(!baseUrl, 'E2E_BASE_URL required');
     const admin = await login(process.env.E2E_ADMIN_EMAIL, process.env.E2E_ADMIN_PASSWORD);
     const speakerEmail = process.env.E2E_SPEAKER_EMAIL;
-    const ownSession = await findOwnSpeakerSession(admin, speakerEmail);
-    expect(ownSession, 'E2E speaker must own a Session for this gate').toBeTruthy();
+    let ownSession = await findOwnSpeakerSession(admin, speakerEmail);
+    if (!ownSession) {
+      const people = await admin.entities.Person.filter({ contact_email: speakerEmail });
+      const personId = people?.[0]?.id;
+      const speakerParts = await admin.entities.Participant.filter({ event_id: eventId, person_id: personId, role_in_event: 'speaker', is_deleted: false });
+      const speakerParticipantId = speakerParts?.[0]?.id;
+      expect(speakerParticipantId, 'E2E speaker participant must exist').toBeTruthy();
+      const tracks = await admin.entities.Track.filter({ event_id: eventId, is_deleted: false });
+      const rooms = await admin.entities.Room.filter({ event_id: eventId, is_deleted: false });
+      ownSession = await admin.entities.Session.create({
+        event_id: eventId, title: 'E2E RLS Speaker-Owned Session', description: 'temporary adversarial fixture',
+        speaker_id: speakerParticipantId, speaker_name: 'E2E Speaker',
+        track_id: tracks?.[0]?.id || '', room_id: rooms?.[0]?.id || '',
+        session_type: 'palestra', start_time: new Date().toISOString(), end_time: new Date(Date.now()+3600000).toISOString(),
+        capacity: 10, is_deleted: false, material_url: '',
+      });
+    }
 
     const speaker = await login(speakerEmail, process.env.E2E_SPEAKER_PASSWORD);
     const before = ownSession.material_url || '';
