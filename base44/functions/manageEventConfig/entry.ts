@@ -7,19 +7,28 @@ const ALLOWED_ENTITIES = new Set([
   'StoreItem',
   'ScoringRule',
   'CertificateTemplate',
+  'AwardConfig',
+  'CallForPapers',
 ]);
 
-const PUBLIC_READ_ENTITIES = new Set(['Badge', 'StoreItem']);
+const PUBLIC_READ_ENTITIES = new Set(['Badge', 'StoreItem', 'AwardConfig', 'CallForPapers']);
 
 const READABLE_FIELDS = {
   Badge: ['id', 'event_id', 'codigo', 'titulo', 'icone_emoji', 'icone_cor', 'categoria', 'coluna_progresso', 'criterio_tipo', 'acao_referencia', 'valor_meta', 'ativo', 'is_deleted', 'description', 'created_date', 'updated_date'],
   StoreItem: ['id', 'event_id', 'codigo_item', 'descricao_item', 'imagem_url', 'pontos_necessarios', 'estoque_total', 'quantidade_resgatada', 'limite_por_usuario', 'status', 'is_deleted', 'created_date', 'updated_date'],
   ScoringRule: ['id', 'event_id', 'acao', 'pontos', 'ativo', 'limite_tipo', 'limite_valor', 'is_deleted', 'description', 'created_date', 'updated_date'],
   CertificateTemplate: ['id', 'event_id', 'name', 'tipo', 'background_url', 'field_configs', 'is_active', 'is_deleted', 'description', 'created_date', 'updated_date'],
+  AwardConfig: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'criteria_config', 'assigned_reviewer_ids', 'is_active', 'is_deleted', 'created_date', 'updated_date'],
+  CallForPapers: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'is_active', 'is_deleted', 'created_date', 'updated_date'],
 };
 
-function sanitizeRecord(entityName, data = {}) {
-  const allowed = new Set(READABLE_FIELDS[entityName] || []);
+const PUBLIC_READ_FIELDS = {
+  AwardConfig: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'is_active'],
+  CallForPapers: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'is_active'],
+};
+
+function sanitizeRecord(entityName, data = {}, publicRead = false) {
+  const allowed = new Set(publicRead ? (PUBLIC_READ_FIELDS[entityName] || READABLE_FIELDS[entityName] || []) : (READABLE_FIELDS[entityName] || []));
   const out = {};
   for (const key of Object.keys(data)) {
     if (allowed.has(key) && key !== 'id' && key !== 'event_id' && key !== 'created_date' && key !== 'updated_date' && key !== 'is_deleted' && !(entityName === 'StoreItem' && key === 'quantidade_resgatada')) {
@@ -71,6 +80,7 @@ Deno.serve(async (req) => {
 
     const svc = base44.asServiceRole;
     const isPublicRead = action === 'list' && PUBLIC_READ_ENTITIES.has(entityName);
+    const isPublicConfigRead = isPublicRead && (entityName === 'AwardConfig' || entityName === 'CallForPapers');
     const isAdmin = user.role === 'admin';
 
     // Reads: Badge/StoreItem are visible to legitimate event participants/members.
@@ -78,7 +88,12 @@ Deno.serve(async (req) => {
     if (action === 'list') {
       let authorized = isAdmin;
       if (!authorized) {
-        if (isPublicRead) {
+        if (isPublicConfigRead) {
+          // Public catalog/configuration is intentionally readable by any active authenticated user.
+          // Only active, non-deleted records are returned below, and sensitive management fields
+          // (reviewer assignments/criteria) are stripped before the response.
+          authorized = true;
+        } else if (isPublicRead) {
           const membership = await verifyAnyEventMembership(base44, user, eventId);
           authorized = membership.authorized || await isEventParticipant(base44, user, eventId);
         } else {
@@ -94,6 +109,7 @@ Deno.serve(async (req) => {
         filter.is_deleted = false;
         if (entityName === 'Badge') filter.ativo = true;
         if (entityName === 'StoreItem') filter.status = 'ativo';
+        if (entityName === 'AwardConfig' || entityName === 'CallForPapers') filter.is_active = true;
       } else if (!includeDeleted) {
         filter.is_deleted = false;
       }
@@ -103,7 +119,8 @@ Deno.serve(async (req) => {
         if (entityName === 'CertificateTemplate') filter.is_active = true;
       }
       const records = await svc.entities[entityName].filter(filter);
-      return Response.json({ records });
+      const output = isPublicConfigRead ? records.map((record) => sanitizeRecord(entityName, record, true)) : records;
+      return Response.json({ records: output });
     }
 
     // All mutations require event manager/team or global admin.
