@@ -37,7 +37,10 @@ export default function SubmissionsReview({ eventId, hasAccess, user }) {
 
   const { data: calls = [] } = useQuery({
     queryKey: ["cfps", eventId],
-    queryFn: () => base44.entities.CallForPapers.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "CallForPapers", eventId });
+      return response.data?.records || response.records || [];
+    },
   });
 
   const cfpIds = calls.map((c) => c.id);
