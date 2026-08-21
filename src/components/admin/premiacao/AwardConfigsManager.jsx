@@ -57,7 +57,7 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
     mutationFn: async (id) => {
       const response = await base44.functions.invoke("manageEventConfig", { action: "delete", entityName: "AwardConfig", eventId, id });
       return response.data?.record || response.record;
-    }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["award-configs", eventId] });
       qc.invalidateQueries({ queryKey: ["awards-open"] });
