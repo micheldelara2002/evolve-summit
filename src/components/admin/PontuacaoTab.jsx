@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
 import { ACAO_EVENTO_LABELS, ACAO_EVENTO_KEYS } from "@/lib/acaoEvento";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -164,16 +164,16 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
 
   const { data: rules = [], isLoading } = useQuery({
     queryKey: ["scoring-rules", eventId],
-    queryFn: () => base44.entities.ScoringRule.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("ScoringRule", eventId),
   });
 
   const saveMut = useMutation({
     mutationFn: async ({ data, id }) => {
       if (id) {
-        await base44.entities.ScoringRule.update(id, data);
+        await updateEventConfig("ScoringRule", eventId, id, data);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities.ScoringRule.create({ ...data, event_id: eventId, is_deleted: false });
+        const created = await createEventConfig("ScoringRule", eventId, { ...data, is_deleted: false });
         return { id: created.id, action: "create" };
       }
     },
@@ -187,7 +187,7 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => base44.entities.ScoringRule.update(id, { is_deleted: true }),
+    mutationFn: (id) => deleteEventConfig("ScoringRule", eventId, id),
     onSuccess: (_, id) => {
       logAudit({ event_id: eventId, action: "soft_delete", entity_type: "ScoringRule", entity_id: id, user });
       queryClient.invalidateQueries({ queryKey: ["scoring-rules", eventId] });
@@ -209,7 +209,7 @@ export default function PontuacaoTab({ eventId, hasAccess, user }) {
       if (toCreate.length === 0) throw new Error("Todas as regras padrão já foram criadas.");
       await Promise.all(
         toCreate.map((d) =>
-          base44.entities.ScoringRule.create({ ...d, event_id: eventId, is_deleted: false })
+          createEventConfig("ScoringRule", eventId, { ...d, is_deleted: false })
         )
       );
       return toCreate.length;
