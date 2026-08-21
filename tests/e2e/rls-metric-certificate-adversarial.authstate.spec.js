@@ -75,8 +75,17 @@ test.describe('RLS quick wins — MetricBucket + Certificate @security', () => {
       expect(invalid.status).toBe(200);
       expect(invalid.data?.valid).toBe(false);
     } finally {
+      // Cleanup through the same privileged backend function used by production issuance.
+      // Do not relax Certificate RLS or use a non-admin SDK update just for test cleanup.
       if (certificate?.id) {
-        try { await issuer.entities.Certificate.update(certificate.id, { is_deleted: true }); } catch {}
+        try {
+          await issuer.functions.invoke('manageEventConfig', {
+            action: 'delete',
+            entityName: 'Certificate',
+            eventId: EVENT_A,
+            id: certificate.id,
+          });
+        } catch {}
       }
     }
   });
