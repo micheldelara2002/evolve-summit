@@ -26,7 +26,8 @@ export default function AwardsList() {
   const { data: openAwards = [], isLoading } = useQuery({
     queryKey: ["awards-open"],
     queryFn: async () => {
-      const all = await base44.entities.AwardConfig.filter({ is_active: true, is_deleted: false });
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "AwardConfig" });
+      const all = response.data?.records || response.records || [];
       const now = new Date();
       return all
         .filter((a) => a.start_date && new Date(a.start_date) <= now && (!a.end_date || new Date(a.end_date) > now))
