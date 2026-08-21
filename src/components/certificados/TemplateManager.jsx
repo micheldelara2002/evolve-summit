@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Plus, Trash2, Image as ImageIcon, Mic, Users } from "lucide-react";
@@ -18,15 +18,15 @@ export default function TemplateManager({ eventId, event }) {
 
   const { data: templates = [] } = useQuery({
     queryKey: ["cert-templates", eventId],
-    queryFn: () => base44.entities.CertificateTemplate.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("CertificateTemplate", eventId),
   });
 
   const saveMut = useMutation({
     mutationFn: async ({ data, editingId }) => {
       if (editingId) {
-        return base44.entities.CertificateTemplate.update(editingId, data);
+        return updateEventConfig("CertificateTemplate", eventId, editingId, data);
       }
-      return base44.entities.CertificateTemplate.create({ ...data, event_id: eventId });
+      return createEventConfig("CertificateTemplate", eventId, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cert-templates", eventId] });
@@ -36,7 +36,7 @@ export default function TemplateManager({ eventId, event }) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => base44.entities.CertificateTemplate.update(id, { is_deleted: true }),
+    mutationFn: (id) => deleteEventConfig("CertificateTemplate", eventId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cert-templates", eventId] });
       toast.success("Template excluído.");
