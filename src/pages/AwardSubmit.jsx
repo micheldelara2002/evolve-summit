@@ -29,7 +29,11 @@ export default function AwardSubmit() {
 
   const { data: award } = useQuery({
     queryKey: ["award", awardId],
-    queryFn: async () => { const list = await base44.entities.AwardConfig.filter({ id: awardId, is_deleted: false }); return list[0]; },
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "AwardConfig", id: awardId });
+      const list = response.data?.records || response.records || [];
+      return list[0];
+    },
   });
 
   const { data: event } = useQuery({
