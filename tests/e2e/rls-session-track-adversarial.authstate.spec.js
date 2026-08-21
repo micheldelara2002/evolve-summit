@@ -22,6 +22,26 @@ async function invoke(client, name, payload) {
 }
 
 test.describe('RLS Session/Track adversarial post-RLS @security', () => {
+  test('speaker owner can update only material_url @speaker', async () => {
+    const speaker = clientFromState('speaker');
+    const me = await speaker.auth.me();
+    const participants = await speaker.entities.Participant.filter({ person_id: me.person_id, is_deleted: false });
+    const speakerParticipant = (participants || []).find(p => p.role_in_event === 'speaker');
+    expect(speakerParticipant, 'speaker participant fixture must exist').toBeTruthy();
+
+    const eventId = speakerParticipant.event_id;
+    const result = await invoke(speaker, 'getEventSessions', { eventIds: [eventId] });
+    const ownSession = (result.data?.sessions || []).find(s => s.speaker_id === speakerParticipant.id && !s.is_deleted);
+    expect(ownSession, 'speaker must have an existing owned session fixture').toBeTruthy();
+
+    const marker = `https://e2e.invalid/material-${Date.now()}`;
+    const updated = await invoke(speaker, 'updateSessionMaterial', { sessionId: ownSession.id, materialUrl: marker });
+    expect(updated.status).toBe(200);
+
+    const after = await invoke(speaker, 'getEventSessions', { eventIds: [eventId] });
+    const persisted = (after.data?.sessions || []).find(s => s.id === ownSession.id);
+    expect(persisted?.material_url).toBe(marker);
+  });
   test('authorized personas can read their event through functions', async () => {
     for (const role of ['participant', 'speaker', 'manager', 'partner']) {
       const c = clientFromState(role);
