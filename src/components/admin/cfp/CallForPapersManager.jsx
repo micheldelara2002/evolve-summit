@@ -65,7 +65,7 @@ export default function CallForPapersManager({ eventId, hasAccess }) {
     mutationFn: async (id) => {
       const response = await base44.functions.invoke("manageEventConfig", { action: "delete", entityName: "CallForPapers", eventId, id });
       return response.data?.record || response.record;
-    }
+    },
     onSuccess: () => {
       qc.invalidateQueries(["cfps", eventId]);
       qc.invalidateQueries(["cfps-open"]);
