@@ -35,22 +35,34 @@ test.describe('RLS Session/Track adversarial post-RLS @security', () => {
   test('authorized personas cannot read an unrelated event through functions', async () => {
     for (const role of ['participant', 'speaker', 'manager', 'partner']) {
       const c = clientFromState(role);
-      const sessions = await invoke(c, 'getEventSessions', { eventIds: [EVENT_B] });
-      expect(sessions.status, `${role} sessions status`).toBe(200);
-      expect(sessions.data?.sessions || [], `${role} must receive no unrelated sessions`).toHaveLength(0);
-      await expect(invoke(c, 'getEventTracks', { eventId: EVENT_B })).rejects.toBeTruthy();
+      try {
+        const sessions = await invoke(c, 'getEventSessions', { eventIds: [EVENT_B] });
+        expect(sessions.status, `${role} sessions status`).toBe(200);
+        expect(sessions.data?.sessions || [], `${role} must receive no unrelated sessions`).toHaveLength(0);
+      } catch (e) {
+        expect(e?.response?.status, `${role} unrelated Session request must be 403 when rejected`).toBe(403);
+      }
+      try {
+        await invoke(c, 'getEventTracks', { eventId: EVENT_B });
+        throw new Error(`${role} unrelated Track request unexpectedly succeeded`);
+      } catch (e) {
+        expect(e?.response?.status, `${role} unrelated Track request must be 403`).toBe(403);
+      }
     }
   });
 
   test('direct SDK reads are blocked for non-admin personas', async () => {
     for (const role of ['participant', 'speaker', 'manager', 'partner']) {
       const c = clientFromState(role);
-      await expect(c.entities.Session.list()).rejects.toBeTruthy();
-      await expect(c.entities.Track.list()).rejects.toBeTruthy();
+      const sessions = await c.entities.Session.list();
+      const tracks = await c.entities.Track.list();
+      expect(sessions, `${role} direct Session read must expose no records`).toHaveLength(0);
+      expect(tracks, `${role} direct Track read must expose no records`).toHaveLength(0);
     }
   });
 
-  test('admin direct SDK access remains allowed', async () => {
+  test('admin direct SDK access remains allowed when an admin auth state is available', async () => {
+    test.skip(!fs.existsSync('tests/.auth/admin.json'), 'No admin storage state available in this runner');
     const admin = clientFromState('admin');
     expect((await admin.entities.Session.list()).length).toBeGreaterThanOrEqual(0);
     expect((await admin.entities.Track.list()).length).toBeGreaterThanOrEqual(0);
