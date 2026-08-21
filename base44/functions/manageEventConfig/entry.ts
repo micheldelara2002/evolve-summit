@@ -22,7 +22,7 @@ function sanitizeRecord(entityName, data = {}) {
   const allowed = new Set(READABLE_FIELDS[entityName] || []);
   const out = {};
   for (const key of Object.keys(data)) {
-    if (allowed.has(key) && key !== 'id' && key !== 'event_id' && key !== 'created_date' && key !== 'updated_date') {
+    if (allowed.has(key) && key !== 'id' && key !== 'event_id' && key !== 'created_date' && key !== 'updated_date' && key !== 'is_deleted' && !(entityName === 'StoreItem' && key === 'quantidade_resgatada')) {
       out[key] = data[key];
     }
   }
@@ -89,7 +89,14 @@ Deno.serve(async (req) => {
       if (!authorized) return Response.json({ error: 'Sem permissão para acessar esta configuração.' }, { status: 403 });
 
       const filter = { event_id: eventId };
-      if (!includeDeleted) filter.is_deleted = false;
+      // Non-management callers can only read the public, active catalog/configuration.
+      if (!isAdmin && isPublicRead) {
+        filter.is_deleted = false;
+        if (entityName === 'Badge') filter.ativo = true;
+        if (entityName === 'StoreItem') filter.status = 'ativo';
+      } else if (!includeDeleted) {
+        filter.is_deleted = false;
+      }
       if (activeOnly) {
         if (entityName === 'Badge') filter.ativo = true;
         if (entityName === 'StoreItem') filter.status = 'ativo';
