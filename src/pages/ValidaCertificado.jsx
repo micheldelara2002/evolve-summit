@@ -48,30 +48,19 @@ export default function ValidaCertificado() {
 
     setLoading(true);
     try {
-      const certs = await base44.entities.Certificate.filter({ hash_code: hashInput.trim().toUpperCase(), is_deleted: false });
-      if (!certs || certs.length === 0) {
+      const response = await base44.functions.invoke("validateCertificate", { hashCode: hashInput.trim().toUpperCase() });
+      const data = response.data || response;
+      if (!data?.valid) {
         setResult("invalid");
         setCertData(null);
       } else {
-        const cert = certs[0];
-        // Buscar dados do evento
-        let eventName = "—";
-        try {
-          const evts = await base44.entities.Event.filter({ id: cert.event_id });
-          eventName = evts[0]?.name || "—";
-        } catch {}
-
-        // Buscar nome da person
-        let personName = "—";
-        try {
-          if (cert.person_id) {
-            const persons = await base44.entities.Person.filter({ id: cert.person_id });
-            personName = persons[0]?.full_name || "—";
-          }
-        } catch {}
-
+        const cert = data.certificate;
         setResult("valid");
-        setCertData({ cert, eventName, personName });
+        setCertData({
+          cert,
+          eventName: cert.event_name,
+          personName: cert.person_name,
+        });
       }
     } catch {
       setError("Erro ao consultar. Tente novamente.");
