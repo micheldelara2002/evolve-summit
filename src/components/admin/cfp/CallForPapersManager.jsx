@@ -38,15 +38,20 @@ export default function CallForPapersManager({ eventId, hasAccess }) {
 
   const { data: calls = [], isLoading } = useQuery({
     queryKey: ["cfps", eventId],
-    queryFn: () => base44.entities.CallForPapers.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "CallForPapers", eventId });
+      return response.data?.records || response.records || [];
+    },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
       if (editing) {
-        return base44.entities.CallForPapers.update(editing.id, data);
+        const response = await base44.functions.invoke("manageEventConfig", { action: "update", entityName: "CallForPapers", eventId, id: editing.id, data });
+        return response.data?.record || response.record;
       }
-      return base44.entities.CallForPapers.create({ ...data, event_id: eventId });
+      const response = await base44.functions.invoke("manageEventConfig", { action: "create", entityName: "CallForPapers", eventId, data });
+      return response.data?.record || response.record;
     },
     onSuccess: () => {
       qc.invalidateQueries(["cfps", eventId]);
@@ -57,7 +62,10 @@ export default function CallForPapersManager({ eventId, hasAccess }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.CallForPapers.update(id, { is_deleted: true }),
+    mutationFn: async (id) => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "delete", entityName: "CallForPapers", eventId, id });
+      return response.data?.record || response.record;
+    }
     onSuccess: () => {
       qc.invalidateQueries(["cfps", eventId]);
       qc.invalidateQueries(["cfps-open"]);
