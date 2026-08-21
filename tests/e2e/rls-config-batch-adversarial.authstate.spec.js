@@ -62,8 +62,7 @@ test.describe('RLS config batch — Badge/StoreItem/ScoringRule/CertificateTempl
       }
 
       for (const entityName of ENTITIES) {
-        const crossEvent = await invoke(manager, { action: 'list', entityName, eventId: EVENT_B });
-        expect(crossEvent.status, `${entityName} cross-event list`).not.toBe(200);
+        await expect(invoke(manager, { action: 'list', entityName, eventId: EVENT_B })).rejects.toBeTruthy();
       }
     } finally {
       for (const [entityName, id] of createdIds) {
@@ -99,8 +98,7 @@ test.describe('RLS config batch — Badge/StoreItem/ScoringRule/CertificateTempl
       }
 
       for (const entityName of ['Badge', 'StoreItem']) {
-        const result = await invoke(participant, { action: 'list', entityName, eventId: EVENT_B });
-        expect(result.status, `${entityName} unrelated event`).not.toBe(200);
+        await expect(invoke(participant, { action: 'list', entityName, eventId: EVENT_B })).rejects.toBeTruthy();
       }
     } finally {
       for (const [entityName, id] of createdIds) {
