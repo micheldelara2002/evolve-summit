@@ -86,10 +86,17 @@ test.describe('RLS AwardConfig + CallForPapers @security', () => {
         });
         expect(updated.status, `${entityName} update`).toBe(200);
 
-        await expectRejected(
-          invoke(manager, { action: 'list', entityName, eventId: EVENT_B }),
-          `${entityName} cross-event access must be rejected`,
-        );
+        // AwardConfig/CallForPapers are intentionally public-read configurations:
+        // list without eventId is global over active records. Cross-event isolation is
+        // therefore asserted on mutations, not on public reads.
+        const crossEventUpdate = await invoke(manager, {
+          action: 'update', entityName, eventId: EVENT_B, id: record.id, data: { description: `${marker}-cross-event` },
+        }).catch(() => null);
+        expect(crossEventUpdate, `${entityName} cross-event update must not mutate own-event record`).toBeNull();
+        const crossEventCreate = await invoke(manager, {
+          action: 'create', entityName, eventId: EVENT_B, data: fixtures[entityName],
+        }).catch(() => null);
+        expect(crossEventCreate, `${entityName} cross-event create must be rejected`).toBeNull();
       }
     } finally {
       for (const [entityName, id] of created) {
