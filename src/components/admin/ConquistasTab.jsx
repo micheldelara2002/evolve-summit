@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
 import { ACAO_EVENTO_LABELS, ACAO_EVENTO_KEYS } from "@/lib/acaoEvento";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -415,16 +415,16 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
 
   const { data: badges = [], isLoading } = useQuery({
     queryKey: ["badges", eventId],
-    queryFn: () => base44.entities.Badge.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("Badge", eventId),
   });
 
   const saveMut = useMutation({
     mutationFn: async ({ data, id }) => {
       if (id) {
-        await base44.entities.Badge.update(id, data);
+        await updateEventConfig("Badge", eventId, id, data);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities.Badge.create({ ...data, event_id: eventId, is_deleted: false });
+        const created = await createEventConfig("Badge", eventId, { ...data, is_deleted: false });
         return { id: created.id, action: "create" };
       }
     },
@@ -438,13 +438,13 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
   });
 
   const toggleMut = useMutation({
-    mutationFn: ({ id, ativo }) => base44.entities.Badge.update(id, { ativo }),
+    mutationFn: ({ id, ativo }) => updateEventConfig("Badge", eventId, id, { ativo }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["badges", eventId] }),
     onError: (err) => toast.error(err.message || "Erro."),
   });
 
   const deleteMut = useMutation({
-    mutationFn: ({ id }) => base44.entities.Badge.update(id, { is_deleted: true }),
+    mutationFn: ({ id }) => deleteEventConfig("Badge", eventId, id),
     onSuccess: (_, { id }) => {
       logAudit({ event_id: eventId, action: "soft_delete", entity_type: "Badge", entity_id: id, user });
       queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
@@ -462,7 +462,7 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
       );
       if (toCreate.length === 0) throw new Error("Todas as posições já estão preenchidas. Nenhuma badge foi criada.");
       await Promise.all(
-        toCreate.map((d) => base44.entities.Badge.create({ ...d, event_id: eventId, is_deleted: false, ativo: true }))
+        toCreate.map((d) => createEventConfig("Badge", eventId, { ...d, is_deleted: false, ativo: true }))
       );
       return toCreate.length;
     },
@@ -476,7 +476,7 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
   // Toggle por categoria (linha)
   const toggleCategoria = (categoria, ativo) => {
     const targets = badges.filter((b) => b.categoria === categoria);
-    Promise.all(targets.map((b) => base44.entities.Badge.update(b.id, { ativo }))).then(() => {
+    Promise.all(targets.map((b) => updateEventConfig("Badge", eventId, b.id, { ativo }))).then(() => {
       queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
       toast.success(`${ativo ? "Ativadas" : "Desativadas"} ${targets.length} badges de ${CAT_LABELS[categoria]}.`);
     });
@@ -486,7 +486,7 @@ export default function ConquistasTab({ eventId, hasAccess, user }) {
   const toggleColuna = (coluna, ativo) => {
     const targets = badges.filter((b) => b.coluna_progresso === coluna);
     if (targets.length === 0) return;
-    Promise.all(targets.map((b) => base44.entities.Badge.update(b.id, { ativo }))).then(() => {
+    Promise.all(targets.map((b) => updateEventConfig("Badge", eventId, b.id, { ativo }))).then(() => {
       queryClient.invalidateQueries({ queryKey: ["badges", eventId] });
       toast.success(`${ativo ? "Ativadas" : "Desativadas"} ${targets.length} badges de ${COL_LABELS[coluna]}.`);
     });
