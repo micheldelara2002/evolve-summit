@@ -31,7 +31,15 @@ function sanitizeRecord(entityName, data = {}, publicRead = false) {
   const allowed = new Set(publicRead ? (PUBLIC_READ_FIELDS[entityName] || READABLE_FIELDS[entityName] || []) : (READABLE_FIELDS[entityName] || []));
   const out = {};
   for (const key of Object.keys(data)) {
-    if (allowed.has(key) && key !== 'id' && key !== 'event_id' && key !== 'created_date' && key !== 'updated_date' && key !== 'is_deleted' && !(entityName === 'StoreItem' && key === 'quantidade_resgatada')) {
+    if (
+      allowed.has(key) &&
+      (publicRead || key !== 'id') &&
+      (publicRead || key !== 'event_id') &&
+      key !== 'created_date' &&
+      key !== 'updated_date' &&
+      key !== 'is_deleted' &&
+      !(entityName === 'StoreItem' && key === 'quantidade_resgatada')
+    ) {
       out[key] = data[key];
     }
   }
