@@ -7,7 +7,13 @@ import { Medal } from "lucide-react";
 
 export default function AwardResultsView({ eventId }) {
   const [awardFilter, setAwardFilter] = useState("all");
-  const { data: configs = [] } = useQuery({ queryKey: ["award-configs", eventId], queryFn: () => base44.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false }) });
+  const { data: configs = [] } = useQuery({
+    queryKey: ["award-configs", eventId],
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "AwardConfig", eventId });
+      return response.data?.records || response.records || [];
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["award-results", eventId, awardFilter],
