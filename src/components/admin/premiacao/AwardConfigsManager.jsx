@@ -30,13 +30,20 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
 
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ["award-configs", eventId],
-    queryFn: () => base44.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "AwardConfig", eventId });
+      return response.data?.records || response.records || [];
+    },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
-      if (editing) return base44.entities.AwardConfig.update(editing.id, data);
-      return base44.entities.AwardConfig.create({ ...data, event_id: eventId });
+      if (editing) {
+        const response = await base44.functions.invoke("manageEventConfig", { action: "update", entityName: "AwardConfig", eventId, id: editing.id, data });
+        return response.data?.record || response.record;
+      }
+      const response = await base44.functions.invoke("manageEventConfig", { action: "create", entityName: "AwardConfig", eventId, data });
+      return response.data?.record || response.record;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["award-configs", eventId] });
@@ -47,7 +54,10 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.AwardConfig.update(id, { is_deleted: true }),
+    mutationFn: async (id) => {
+      const response = await base44.functions.invoke("manageEventConfig", { action: "delete", entityName: "AwardConfig", eventId, id });
+      return response.data?.record || response.record;
+    }
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["award-configs", eventId] });
       qc.invalidateQueries({ queryKey: ["awards-open"] });
