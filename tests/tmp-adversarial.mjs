@@ -3,7 +3,7 @@ const BASE='https://share--evolve-summit.base44.app/api';
 const APP='6a2c618daec1758ff2122225';
 const personas={participant:'participant',speaker:'speaker',partner:'partner',manager:'manager'};
 const auth=p=>JSON.parse(fs.readFileSync(`tests/.auth/${p}.json`,'utf8')).origins[0].localStorage.find(x=>x.name==='token').value;
-async function req(persona, path, opts={}) { const r=await fetch(`${BASE}${path}`,{...opts,headers:{'X-App-Id':APP,'Authorization':`Bearer ${auth(persona)}`,'Content-Type':'application/json',...(opts.headers||{})}}); let body; try{body=await r.json()}catch{body=await r.text()}; return {status:r.status,body}; }
+async function req(persona, path, opts={}) { const r=await fetch(`${BASE}${path}`,{...opts,headers:{'X-App-Id':APP,'Authorization':`Bearer ${auth(persona)}`,'Content-Type':'application/json',...(opts.headers||{})}}); const raw=await r.text(); let body; try{body=JSON.parse(raw)}catch{body=raw}; return {status:r.status,body}; }
 async function entity(p,e,query){return req(p,`/apps/${APP}/entities/${e}?q=${encodeURIComponent(JSON.stringify(query))}`)}
 async function fn(p,name,data){return req(p,`/apps/${APP}/functions/${name}`,{method:'POST',body:JSON.stringify(data),headers:{'Base44-Functions-Version':'prod'}})}
 const out={};
@@ -27,8 +27,10 @@ for(const p of Object.keys(personas)){
   }
 }
 // Find speaker-owned/non-owned sessions using speaker auth data
-const spSessions=(await entity('speaker','Session',{is_deleted:false})).body?.data || (await entity('speaker','Session',{is_deleted:false})).body || [];
-const spParts=(await entity('speaker','Participant',{is_deleted:false})).body?.data || (await entity('speaker','Participant',{is_deleted:false})).body || [];
+const spSessionResp=await entity('speaker','Session',{is_deleted:false});
+const spSessions=spSessionResp.body?.data || spSessionResp.body || [];
+const spPartResp=await entity('speaker','Participant',{is_deleted:false});
+const spParts=spPartResp.body?.data || spPartResp.body || [];
 const speakerParticipant=spParts.find(x=>x.email==='contato+speaker@evolveinst.com');
 const own=spSessions.find(s=>s.speaker_id===speakerParticipant?.id);
 const other=spSessions.find(s=>s.speaker_id && s.speaker_id!==speakerParticipant?.id);
