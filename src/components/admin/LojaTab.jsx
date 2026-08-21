@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { logAudit } from "@/lib/audit";
+import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -223,18 +223,17 @@ export default function LojaTab({ eventId, hasAccess, user }) {
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["store-items", eventId],
-    queryFn: () => base44.entities.StoreItem.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("StoreItem", eventId),
   });
 
   const saveMut = useMutation({
     mutationFn: async ({ data, id }) => {
       if (id) {
-        await base44.entities.StoreItem.update(id, data);
+        await updateEventConfig("StoreItem", eventId, id, data);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities.StoreItem.create({
+        const created = await createEventConfig("StoreItem", eventId, {
           ...data,
-          event_id: eventId,
           is_deleted: false,
           quantidade_resgatada: 0,
         });
@@ -251,7 +250,7 @@ export default function LojaTab({ eventId, hasAccess, user }) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => base44.entities.StoreItem.update(id, { is_deleted: true }),
+    mutationFn: (id) => deleteEventConfig("StoreItem", eventId, id),
     onSuccess: (_, id) => {
       logAudit({ event_id: eventId, action: "soft_delete", entity_type: "StoreItem", entity_id: id, user });
       queryClient.invalidateQueries({ queryKey: ["store-items", eventId] });
