@@ -218,6 +218,99 @@ test.describe('Lote Realtime Session Polls — adversarial @security @rls @realt
     await admin.entities.PollEvent.deleteMany({ poll_id: pollId });
   });
 
+  // ── Idempotência atômica (concorrência-safe) ───────────────────────────────
+  test('CONC-DEDUP-1 mesmo participante: 1ª resposta 200, 2ª 409 alreadyAnswered; um único registro', async () => {
+    test.skip(!baseUrl, 'E2E_BASE_URL required');
+    const admin = await login(process.env.E2E_ADMIN_EMAIL, process.env.E2E_ADMIN_PASSWORD);
+    const ownSession = await findSpeakerSession(admin, process.env.E2E_SPEAKER_EMAIL);
+    test.skip(!ownSession, 'speaker session fixture missing');
+    const speaker = await login(process.env.E2E_SPEAKER_EMAIL, process.env.E2E_SPEAKER_PASSWORD);
+    const created = await speaker.functions.invoke('manageSessionPoll', {
+      operation: 'create', sessionId: ownSession.id,
+      data: { question: 'DEDUP', answer_type: 'single_choice', max_options: 1, duration_seconds: 600 },
+      options: ['A', 'B'],
+    });
+    const pollId = created.data?.poll?.id;
+    await speaker.functions.invoke('manageSessionPoll', { operation: 'open', pollId });
+    const opts = await admin.entities.SessionPollOption.filter({ poll_id: pollId, is_deleted: false });
+    const participant = await login(process.env.E2E_PARTICIPANT_EMAIL, process.env.E2E_PARTICIPANT_PASSWORD);
+
+    // 1ª votação → sucesso
+    const r1 = await participant.functions.invoke('submitPollAnswer', { pollId, selectedOptionIds: [opts[0].id] });
+    expect(r1?.status || 200).toBe(200);
+    // 2ª votação (mesma opção, mesmo participante) → 409 alreadyAnswered
+    let secondStatus = 0;
+    try {
+      await participant.functions.invoke('submitPollAnswer', { pollId, selectedOptionIds: [opts[0].id] });
+    } catch (e) {
+      secondStatus = e?.response?.status || e?.status || 0;
+    }
+    expect(secondStatus).toBe(409);
+
+    // Source of truth: exatamente UM registro de resposta
+    const answers = await admin.entities.SessionPollAnswer.filter({ poll_id: pollId, is_deleted: false });
+    expect(answers.length).toBe(1);
+    const poll = await admin.entities.SessionPoll.get(pollId);
+    expect(poll.voter_count || 0).toBe(1);
+    const sumCounts = opts.reduce((s, o) => s + (o.vote_count || 0), 0);
+    expect(sumCounts).toBe(1);
+
+    // cleanup
+    await speaker.functions.invoke('manageSessionPoll', { operation: 'close', pollId });
+    await admin.entities.SessionPoll.update(pollId, { is_deleted: true });
+    await admin.entities.SessionPollOption.deleteMany({ poll_id: pollId });
+    await admin.entities.SessionPollAnswer.deleteMany({ poll_id: pollId });
+    await admin.entities.PollEvent.deleteMany({ poll_id: pollId });
+  });
+
+  test('CONC-MULTI-1 mesmo participante dispara N chamadas concorrentes: exatamente 1 vence, N-1 recebem 409', async () => {
+    test.skip(!baseUrl, 'E2E_BASE_URL required');
+    const N = 6;
+    const admin = await login(process.env.E2E_ADMIN_EMAIL, process.env.E2E_ADMIN_PASSWORD);
+    const ownSession = await findSpeakerSession(admin, process.env.E2E_SPEAKER_EMAIL);
+    test.skip(!ownSession, 'speaker session fixture missing');
+    const speaker = await login(process.env.E2E_SPEAKER_EMAIL, process.env.E2E_SPEAKER_PASSWORD);
+    const created = await speaker.functions.invoke('manageSessionPoll', {
+      operation: 'create', sessionId: ownSession.id,
+      data: { question: 'MULTI', answer_type: 'single_choice', max_options: 1, duration_seconds: 600 },
+      options: ['A', 'B'],
+    });
+    const pollId = created.data?.poll?.id;
+    await speaker.functions.invoke('manageSessionPoll', { operation: 'open', pollId });
+    const opts = await admin.entities.SessionPollOption.filter({ poll_id: pollId, is_deleted: false });
+
+    // N logins independentes + N invokes concorrentes do MESMO participante (pressão de concorrência)
+    const email = process.env.E2E_PARTICIPANT_EMAIL;
+    const pwd = process.env.E2E_PARTICIPANT_PASSWORD;
+    const outcomes = await Promise.all([...Array(N)].map(async () => {
+      const c = await login(email, pwd);
+      try {
+        const r = await c.functions.invoke('submitPollAnswer', { pollId, selectedOptionIds: [opts[0].id] });
+        return { ok: true, status: r?.status || 200 };
+      } catch (e) {
+        return { ok: false, status: e?.response?.status || e?.status || 0 };
+      }
+    }));
+    const wins = outcomes.filter((o) => o.ok && o.status < 400).length;
+    const rejects = outcomes.filter((o) => o.status === 409).length;
+    expect(wins).toBe(1);
+    expect(wins + rejects).toBe(N);
+
+    const answers = await admin.entities.SessionPollAnswer.filter({ poll_id: pollId, is_deleted: false });
+    expect(answers.length).toBe(1);
+    const poll = await admin.entities.SessionPoll.get(pollId);
+    expect(poll.voter_count || 0).toBe(1);
+    const sumCounts = opts.reduce((s, o) => s + (o.vote_count || 0), 0);
+    expect(sumCounts).toBe(1);
+
+    // cleanup
+    await speaker.functions.invoke('manageSessionPoll', { operation: 'close', pollId });
+    await admin.entities.SessionPoll.update(pollId, { is_deleted: true });
+    await admin.entities.SessionPollOption.deleteMany({ poll_id: pollId });
+    await admin.entities.SessionPollAnswer.deleteMany({ poll_id: pollId });
+    await admin.entities.PollEvent.deleteMany({ poll_id: pollId });
+  });
+
   // ── Reconnect (fallback) ───────────────────────────────────────────────────
   test('RECONNECT-1 fallback polling (30s) recupera estado após ausência de realtime', async () => {
     test.skip(!baseUrl, 'E2E_BASE_URL required');

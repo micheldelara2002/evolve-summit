@@ -69,13 +69,7 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'Esta enquete já foi encerrada.' }, { status: 400 });
     }
 
-    // Idempotência: 1 resposta por (poll, person).
-    const existing = await svc.entities.SessionPollAnswer.filter({ poll_id: pollId, person_id: personId, is_deleted: false });
-    if (existing && existing.length > 0) {
-      return Response.json({ error: 'Você já respondeu esta enquete.', alreadyAnswered: true }, { status: 409 });
-    }
-
-    // Valida opções pertencem ao poll.
+    // Valida opções pertencem ao poll (ANTES do claim atômico — opção inválida não consome o slot de voto).
     const pollOptions = await svc.entities.SessionPollOption.filter({ poll_id: pollId, is_deleted: false });
     const validOptionIds = new Set(pollOptions.map((o: any) => o.id));
     const validSelections = [...new Set(selectedOptionIds.filter((id: any) => validOptionIds.has(id)))];
@@ -92,6 +86,20 @@ export default async function(req: Request): Promise<Response> {
       if (validSelections.length > 1) {
         return Response.json({ error: 'Apenas uma opção é permitida.' }, { status: 400 });
       }
+    }
+
+    // Idempotência atômica (concorrência-safe): claim via updateMany condicional.
+    // $ne (no filtro) + $addToSet (no update) executam atomicamente em nível de documento
+    // (single-doc atomicity do MongoDB). updated === 1 → ganhou o claim (primeiro voto deste
+    // person neste poll). updated === 0 → já votou → 409 idempotente. Chamadas concorrentes
+    // do mesmo person: exatamente uma recebe updated===1, as demais recebem 0.
+    // Source of truth permanece SessionPollAnswer (append-only); voted_person_ids é guarda de idempotência.
+    const claim = await svc.entities.SessionPoll.updateMany(
+      { id: pollId, voted_person_ids: { $ne: personId } },
+      { $addToSet: { voted_person_ids: personId } }
+    );
+    if (!claim || !claim.updated) {
+      return Response.json({ error: 'Você já respondeu esta enquete.', alreadyAnswered: true }, { status: 409 });
     }
 
     const answer = await svc.entities.SessionPollAnswer.create({

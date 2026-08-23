@@ -64,6 +64,14 @@
       "format": "date-time",
       "description": "Quando foi encerrada"
     },
+    "voted_person_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Lote Concorr\u00eancia-Safe \u2014 Guarda de idempot\u00eancia at\u00f4mica. Cont\u00e9m person_ids que j\u00e1 votaram neste poll. Atualizado via updateMany condicional ({id, voted_person_ids:{$ne:person}}, {$addToSet:{voted_person_ids:person}}) \u2014 atomicidade em n\u00edvel de documento (single-doc MongoDB). updated===1 \u2192 primeiro voto; updated===0 \u2192 j\u00e1 votou (409 idempotente, inclusive sob concorr\u00eancia). Source of truth permanece SessionPollAnswer (append-only); este array \u00e9 denormaliza\u00e7\u00e3o de guarda, n\u00e3o fonte. Limpeza impl\u00edcita: poll deletado = novo record = array vazio."
+    },
     "voter_count": {
       "type": "number",
       "default": 0,
