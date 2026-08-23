@@ -10,7 +10,7 @@ const PERSONAS = {
   partner: ['E2E_PARTNER_EMAIL', 'E2E_PARTNER_PASSWORD'],
 };
 const ADMIN_ONLY = ['AuditLog','Import','EventStats','AwardCategory','MetricBucket','Certificate','Session','Track','Room','AwardConfig','CallForPapers','Badge','StoreItem','ScoringRule','CertificateTemplate'];
-const SENSITIVE_NO_RLS = ['Lead','NotificationCampaign','Participant','Partner','PartnerRepresentative','Person','PersonDocument','PointTransaction','SessionAttendance','SessionFavorite','SessionQuestion','SessionReview','StoreRedemption'];
+const SENSITIVE_NO_RLS = ['Lead','NotificationCampaign','Participant','Partner','PartnerRepresentative','Person','PersonDocument','SessionAttendance','SessionQuestion','SessionReview'];
 
 async function clientFor(role) {
   const [emailEnv, passEnv] = PERSONAS[role];
@@ -89,6 +89,44 @@ test.describe('Live direct-SDK authorization gate @security @rls', () => {
       participant_id: participantId,
       store_item_id: 'rls-test-item',
       pontos_debitados: 1
+    })).rejects.toBeTruthy();
+  });
+
+  test('quick-win RLS: ConnectionRequest, Connection and ChatThread expose only self-scoped rows and block participant writes', async () => {
+    const client = await clientFor('participant');
+    const me = await client.auth.me();
+    const myPersonId = me?.person_id || me?.data?.person_id;
+    expect(myPersonId, 'participant test account must expose person_id').toBeTruthy();
+
+    for (const entity of ['ConnectionRequest', 'Connection', 'ChatThread']) {
+      const rows = await client.entities[entity].list();
+      for (const row of rows) {
+        if (entity === 'ConnectionRequest') {
+          expect(row.requester_person_id === myPersonId || row.receiver_person_id === myPersonId).toBeTruthy();
+        } else {
+          expect(row.person_a_id === myPersonId || row.person_b_id === myPersonId).toBeTruthy();
+        }
+      }
+    }
+
+    const fakeId = `rls-test-${Date.now()}`;
+    await expect(client.entities.ConnectionRequest.create({
+      event_id: fakeId,
+      requester_person_id: myPersonId,
+      receiver_person_id: fakeId,
+      status: 'pending'
+    })).rejects.toBeTruthy();
+
+    await expect(client.entities.Connection.create({
+      event_id: fakeId,
+      person_a_id: myPersonId,
+      person_b_id: fakeId
+    })).rejects.toBeTruthy();
+
+    await expect(client.entities.ChatThread.create({
+      event_id: fakeId,
+      person_a_id: myPersonId,
+      person_b_id: fakeId
     })).rejects.toBeTruthy();
   });
 
