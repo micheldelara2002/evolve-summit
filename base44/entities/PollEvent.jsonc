@@ -1,0 +1,74 @@
+{
+  "name": "PollEvent",
+  "type": "object",
+  "description": "Canal realtime SEGURO e ESCAL\u00c1VEL para Session Polls (Lote Realtime Seguro).\n\nMecanismo: entidade + RLS. O backend (service role) cria registros aqui; o WebSocket\nentrega cada registro apenas aos usu\u00e1rios cujo email est\u00e1 em recipient_emails\n(RLS array-contains {{user.email}} \u2014 autoriza\u00e7\u00e3o server-side, n\u00e3o client-side).\n\nEventos:\n  poll_live    \u2192 broadcast aos participantes ativos do evento (+ speaker). 1-N registros\n                 (chunked 500 emails/registro). payload = { live_ends_at }.\n  poll_closed  \u2192 mesma audi\u00eancia. payload = {}.\n  poll_results \u2192 upsert, SOMENTE speaker. payload = { totalResponses, totalVotes, counts: { optionId: n } }.\n\nN\u00c3O exp\u00f5e respostas individuais, person_id nem participant_id de terceiros \u2014 somente\nagregados (speaker) ou notifica\u00e7\u00f5es de estado (participante).\n\nLimpeza: publishPollBroadcast deleta eventos antigos do poll antes de criar novos;\nclearPollEvents limpa tudo na exclus\u00e3o do poll. Isto mant\u00e9m o volume ~O(polls ativas).\n\nContadores (voter_count em SessionPoll, vote_count em SessionPollOption) s\u00e3o a fonte\ndos agregados do payload; SessionPollAnswer permanece a source of truth (append-only).",
+  "properties": {
+    "recipient_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Emails autorizados a receber o evento. RLS read: data.recipient_emails contains {{user.email}}."
+    },
+    "poll_id": {
+      "type": "string",
+      "description": "ID da SessionPoll alvo"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "ID da Session (scoping client-side no subscribe)"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do Event (contexto)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "poll_live",
+        "poll_closed",
+        "poll_results"
+      ],
+      "description": "Tipo do evento realtime"
+    },
+    "payload": {
+      "type": "string",
+      "description": "JSON serializado. poll_results: { totalResponses, totalVotes, counts: { optionId: n } }. poll_live: { live_ends_at }. poll_closed: {}."
+    }
+  },
+  "required": [
+    "poll_id",
+    "session_id",
+    "event_id",
+    "type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.recipient_emails": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

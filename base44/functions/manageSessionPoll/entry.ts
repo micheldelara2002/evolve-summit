@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveSessionCaller } from "../../shared/sessionAuth.ts";
+import { ensurePollCounters, publishPollBroadcast, clearPollEvents } from "../../shared/pollRealtime.ts";
 
 /**
  * manageSessionPoll — cria/edição/exclusão/abertura/encerramento de enquetes + opções
@@ -91,22 +92,38 @@ export default async function(req: Request): Promise<Response> {
 
     if (operation === 'delete') {
       await svc.entities.SessionPoll.update(pollId, { is_deleted: true });
+      // Limpa eventos realtime do poll (bound de volume).
+      await clearPollEvents(svc, pollId);
       return Response.json({ ok: true });
     }
 
     if (operation === 'open') {
       const now = new Date();
       const secs = poll.duration_seconds || 15;
+      const liveEndsAt = new Date(now.getTime() + secs * 1000).toISOString();
       await svc.entities.SessionPoll.update(pollId, {
         status: 'live',
         live_started_at: now.toISOString(),
-        live_ends_at: new Date(now.getTime() + secs * 1000).toISOString(),
+        live_ends_at: liveEndsAt,
       });
+      // Backfill legado (race-free: speaker abre antes dos votos) + broadcast poll_live.
+      try {
+        const { poll: freshPoll } = await ensurePollCounters(svc, pollId);
+        if (freshPoll) await publishPollBroadcast(svc, freshPoll, ctx.session, 'poll_live', { live_ends_at: liveEndsAt });
+      } catch (e: any) {
+        console.error('[manageSessionPoll] open publish failed:', e?.message || e);
+      }
       return Response.json({ ok: true });
     }
 
     if (operation === 'close') {
       await svc.entities.SessionPoll.update(pollId, { status: 'closed', closed_at: new Date().toISOString() });
+      // Broadcast poll_closed (limpa poll_results antigo do poll).
+      try {
+        await publishPollBroadcast(svc, poll, ctx.session, 'poll_closed');
+      } catch (e: any) {
+        console.error('[manageSessionPoll] close publish failed:', e?.message || e);
+      }
       return Response.json({ ok: true });
     }
 

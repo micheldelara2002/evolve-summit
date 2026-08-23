@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Radio, BarChart3, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import PollFormDialog from "@/components/palestrante/PollFormDialog";
+import usePollRealtime from "@/hooks/usePollRealtime";
 
 const STATUS = {
   draft: { label: "Rascunho", color: "bg-muted text-muted-foreground" },
@@ -30,6 +31,7 @@ export default function PollsTab({ session, myParticipant }) {
   const [resultsPollId, setResultsPollId] = useState(null);
 
   const qKey = ["session-polls", session.id];
+  usePollRealtime(session.id, qKey);
 
   const { data: polls = [] } = useQuery({
     queryKey: qKey,
@@ -37,8 +39,10 @@ export default function PollsTab({ session, myParticipant }) {
       const res = await base44.functions.invoke('getSessionPolls', { sessionId: session.id });
       return res.data?.polls || [];
     },
-    // Realtime substituído por polling autorizado do endpoint getSessionPolls.
-    refetchInterval: polls.some((p) => p.status === "live") ? 2000 : false,
+    // Realtime: PollEvent (subscribe) é o mecanismo primário (resultos agregados ao
+    // speaker via payload; live/closed via invalidate). Polling de fallback não-agressivo
+    // (30s) para recovery de desconexão e consistência eventual — sem polling de 2s.
+    refetchInterval: 30000,
   });
 
   const createMut = useMutation({

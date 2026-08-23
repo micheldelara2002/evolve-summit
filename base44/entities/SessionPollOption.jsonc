@@ -16,6 +16,11 @@
       "default": 0,
       "description": "Ordem de exibi\u00e7\u00e3o"
     },
+    "vote_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Lote Realtime \u2014 Contador at\u00f4mico de votos nesta op\u00e7\u00e3o. Mantido via $inc em submitPollAnswer. Source of truth = SessionPollAnswer (append-only). Legacy options (null) s\u00e3o backfilled uma vez (ensurePollCounters)."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
+import { ensurePollCounters, publishPollResults } from "../../shared/pollRealtime.ts";
 
 /**
  * submitPollAnswer — voto de participante em uma enquete (Lote RLS Session Interaction).
@@ -99,6 +100,34 @@ export default async function(req: Request): Promise<Response> {
       selected_option_ids: JSON.stringify(validSelections),
       answered_at: new Date().toISOString(),
     });
+
+    // ── Contadores atômicos (concorrência-safe) + realtime ──────────────────────
+    // voter_count (poll) e vote_count (options) via $inc atômico. Legacy polls
+    // (voter_count null) são backfilled uma única vez (ensurePollCounters); nesse
+    // caso o total já inclui a resposta recém-criada — NÃO inc de novo.
+    try {
+      const { poll: freshPoll, options: freshOptions, backfilled } = await ensurePollCounters(svc, pollId);
+      if (freshPoll) {
+        if (!backfilled) {
+          await svc.entities.SessionPoll.updateMany({ id: pollId }, { $inc: { voter_count: 1 } });
+          for (const optId of validSelections) {
+            await svc.entities.SessionPollOption.updateMany({ id: optId }, { $inc: { vote_count: 1 } });
+          }
+          freshPoll.voter_count = (freshPoll.voter_count || 0) + 1;
+          for (const optId of validSelections) {
+            const o = freshOptions.find((x: any) => x.id === optId);
+            if (o) o.vote_count = (o.vote_count || 0) + 1;
+          }
+        }
+        // Publica resultado agregado ao speaker (upsert O(1)). Resposta já commited;
+        // falha de publish NÃO faz rollback (spec §7) — loga e segue.
+        const sessions = await svc.entities.Session.filter({ id: freshPoll.session_id, is_deleted: false });
+        const session = sessions?.[0];
+        if (session) await publishPollResults(svc, freshPoll, session, freshOptions);
+      }
+    } catch (publishError: any) {
+      console.error('[submitPollAnswer] realtime/contadores falhou (resposta permanece consistente):', publishError?.message || publishError);
+    }
 
     return Response.json({ answer });
   } catch (error: any) {

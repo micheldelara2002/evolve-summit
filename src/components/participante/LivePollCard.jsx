@@ -16,6 +16,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Radio, CheckCircle2, BarChart3, Lock } from "lucide-react";
 import { toast } from "sonner";
+import usePollRealtime from "@/hooks/usePollRealtime";
 
 export default function LivePollCard({ session, participant }) {
   const queryClient = useQueryClient();
@@ -29,16 +30,21 @@ export default function LivePollCard({ session, participant }) {
   });
   const isPresent = attendances.some((a) => a.is_present !== false);
 
+  const participantPollsKey = ["session-polls-participant", session.id];
+  usePollRealtime(session.id, participantPollsKey);
+
   // Polls da sessão (live + closed recentes) — leitura autorizada e agregada.
   const { data: polls = [], isLoading } = useQuery({
-    queryKey: ["session-polls-participant", session.id],
+    queryKey: participantPollsKey,
     queryFn: async () => {
       const res = await base44.functions.invoke('getSessionPolls', { sessionId: session.id });
       return res.data?.polls || [];
     },
     enabled: isPresent,
-    // Realtime: polling autorizado substitui a subscription direta.
-    refetchInterval: polls.some((p) => p.status === "live") ? 2000 : 5000,
+    // Realtime: PollEvent (subscribe) é o mecanismo primário (live/closed via invalidate).
+    // Polling de fallback não-agressivo (30s) para recovery de desconexão e consistência
+    // eventual dos agregados pós-resposta — sem polling agressivo de 2s.
+    refetchInterval: 30000,
   });
 
   if (!isPresent) {
