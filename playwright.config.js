@@ -21,6 +21,8 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
   projects: [
+    // Pure-SDK security gate: no browser/auth setup dependency.
+    { name: 'security-direct', grep: /@rls/ },
     { name: 'setup-manager', testMatch: /auth-manager\.setup\.js/ },
     { name: 'setup-staff', testMatch: /auth-staff\.setup\.js/ },
     { name: 'setup-participant', testMatch: /auth-participant\.setup\.js/ },
