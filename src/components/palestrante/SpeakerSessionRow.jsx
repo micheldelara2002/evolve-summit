@@ -35,41 +35,28 @@ function PerguntasTab({ session, myParticipant }) {
 
   const { data: questions = [] } = useQuery({
     queryKey: ["speaker-questions", session.id],
-    queryFn: () => base44.entities.SessionQuestion.filter({ session_id: session.id, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getSessionQuestions', { sessionId: session.id });
+      return res.data?.questions || [];
+    },
   });
-
-  const { data: answers = [] } = useQuery({
-    queryKey: ["speaker-answers", session.id],
-    queryFn: () => base44.entities.SessionAnswer.filter({ session_id: session.id, is_deleted: false }),
-  });
-
-  const answerMap = Object.fromEntries(answers.map((a) => [a.question_id, a]));
 
   const markMut = useMutation({
-    mutationFn: (q) => base44.entities.SessionQuestion.update(q.id, { is_answered: !q.is_answered }),
+    mutationFn: (q) => base44.functions.invoke('manageSessionQuestion', {
+      operation: 'markAnswered',
+      questionId: q.id,
+    }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["speaker-questions", session.id] }),
   });
 
   const replyMut = useMutation({
-    mutationFn: async ({ question, text }) => {
-      const existing = answerMap[question.id];
-      if (existing) {
-        await base44.entities.SessionAnswer.update(existing.id, { answer_text: text });
-      } else {
-        await base44.entities.SessionAnswer.create({
-          question_id: question.id,
-          session_id: session.id,
-          event_id: session.event_id,
-          speaker_participant_id: myParticipant?.id,
-          speaker_person_id: myParticipant?.person_id,
-          answer_text: text,
-        });
-      }
-      await base44.entities.SessionQuestion.update(question.id, { is_answered: true });
-    },
+    mutationFn: ({ question, text }) => base44.functions.invoke('manageSessionAnswer', {
+      operation: 'save',
+      questionId: question.id,
+      answerText: text,
+    }),
     onSuccess: (_, { question }) => {
       queryClient.invalidateQueries({ queryKey: ["speaker-questions", session.id] });
-      queryClient.invalidateQueries({ queryKey: ["speaker-answers", session.id] });
       setReplyTexts((prev) => ({ ...prev, [question.id]: "" }));
       toast.success("Resposta enviada!");
     },
@@ -92,7 +79,7 @@ function PerguntasTab({ session, myParticipant }) {
       </div>
 
       {questions.map((q) => {
-        const answer = answerMap[q.id];
+        const answer = q.answer;
         const replyText = replyTexts[q.id] || "";
         return (
           <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.is_answered ? "border-emerald-200 bg-emerald-50/40" : "border-border"}`}>

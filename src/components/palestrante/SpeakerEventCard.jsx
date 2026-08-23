@@ -29,17 +29,19 @@ export default function SpeakerEventCard({ event, myParticipant, personId, userE
   });
 
   const sessionIds = sessions.map((s) => s.id);
-  const { data: questions = [] } = useQuery({
-    queryKey: ["speaker-event-questions-summary", event.id, myParticipant?.id],
+  const { data: stats = [] } = useQuery({
+    queryKey: ["speaker-question-stats", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionQuestion.filter({ event_id: event.id, is_deleted: false });
-      return all.filter((q) => sessionIds.includes(q.session_id));
+      const res = await base44.functions.invoke('getSpeakerQuestionStats', { sessionIds });
+      return res.data?.stats || [];
     },
     enabled: expanded && sessionIds.length > 0,
   });
 
-  const pendingQ = questions.filter((q) => !q.is_answered).length;
+  const totalQ = stats.reduce((s, x) => s + (x.total || 0), 0);
+  const answeredQ = stats.reduce((s, x) => s + (x.answered || 0), 0);
+  const pendingQ = totalQ - answeredQ;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">

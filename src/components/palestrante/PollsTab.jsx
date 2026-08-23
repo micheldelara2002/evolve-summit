@@ -1,6 +1,11 @@
 /**
  * Aba de Enquetes no painel do palestrante.
  * Criar/editar/excluir rascunhos, Go live, encerrar, ver resultados em tempo real.
+ *
+ * Lote RLS Session Interaction: leitura/escrita via Backend Functions
+ * (getSessionPolls / manageSessionPoll). Nenhum acesso SDK direto a
+ * SessionPoll / SessionPollOption / SessionPollAnswer. Auto-encerramento de polls
+ * expiradas é feito server-side (getSessionPolls).
  */
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -28,63 +33,28 @@ export default function PollsTab({ session, myParticipant }) {
 
   const { data: polls = [] } = useQuery({
     queryKey: qKey,
-    queryFn: () => base44.entities.SessionPoll.filter({ session_id: session.id, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getSessionPolls', { sessionId: session.id });
+      return res.data?.polls || [];
+    },
+    // Realtime substituído por polling autorizado do endpoint getSessionPolls.
+    refetchInterval: polls.some((p) => p.status === "live") ? 2000 : false,
   });
 
-  // Auto-encerrar polls expiradas
-  useEffect(() => {
-    const now = new Date();
-    polls.forEach((p) => {
-      if (p.status === "live" && p.live_ends_at && new Date(p.live_ends_at) < now) {
-        base44.entities.SessionPoll.update(p.id, {
-          status: "closed",
-          closed_at: new Date().toISOString(),
-        }).then(() => queryClient.invalidateQueries({ queryKey: qKey }));
-      }
-    });
-  }, [polls, queryClient, qKey]);
-
   const createMut = useMutation({
-    mutationFn: async ({ data, options }) => {
-      const poll = await base44.entities.SessionPoll.create({
-        event_id: session.event_id,
-        session_id: session.id,
-        created_by_person_id: myParticipant?.person_id,
-        question: data.question,
-        answer_type: data.answer_type,
-        max_options: data.max_options,
-        duration_seconds: data.duration_seconds,
-        status: "draft",
-      });
-      await base44.entities.SessionPollOption.bulkCreate(
-        options.map((text, i) => ({ poll_id: poll.id, option_text: text, position: i }))
-      );
-    },
+    mutationFn: ({ data, options }) =>
+      base44.functions.invoke('manageSessionPoll', { operation: 'create', sessionId: session.id, data, options }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       setDialogOpen(false);
       toast.success("Enquete criada!");
     },
-    onError: () => toast.error("Erro ao criar enquete."),
+    onError: (e) => toast.error(e?.response?.data?.error || "Erro ao criar enquete."),
   });
 
   const updateMut = useMutation({
-    mutationFn: async ({ poll, data, options }) => {
-      await base44.entities.SessionPoll.update(poll.id, {
-        question: data.question,
-        answer_type: data.answer_type,
-        max_options: data.max_options,
-        duration_seconds: data.duration_seconds,
-      });
-      // Recriar opções
-      const oldOpts = await base44.entities.SessionPollOption.filter({ poll_id: poll.id, is_deleted: false });
-      await base44.entities.SessionPollOption.bulkUpdate(
-        oldOpts.map((o) => ({ id: o.id, is_deleted: true }))
-      );
-      await base44.entities.SessionPollOption.bulkCreate(
-        options.map((text, i) => ({ poll_id: poll.id, option_text: text, position: i }))
-      );
-    },
+    mutationFn: ({ poll, data, options }) =>
+      base44.functions.invoke('manageSessionPoll', { operation: 'update', pollId: poll.id, data, options }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       setDialogOpen(false);
@@ -94,25 +64,16 @@ export default function PollsTab({ session, myParticipant }) {
   });
 
   const goLiveMut = useMutation({
-    mutationFn: (poll) => {
-      const now = new Date();
-      return base44.entities.SessionPoll.update(poll.id, {
-        status: "live",
-        live_started_at: now.toISOString(),
-        live_ends_at: new Date(now.getTime() + (poll.duration_seconds || 15) * 1000).toISOString(),
-      });
-    },
+    mutationFn: (poll) => base44.functions.invoke('manageSessionPoll', { operation: 'open', pollId: poll.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       toast.success("Enquete ao vivo!");
     },
+    onError: (e) => toast.error(e?.response?.data?.error || "Erro."),
   });
 
   const closeMut = useMutation({
-    mutationFn: (poll) => base44.entities.SessionPoll.update(poll.id, {
-      status: "closed",
-      closed_at: new Date().toISOString(),
-    }),
+    mutationFn: (poll) => base44.functions.invoke('manageSessionPoll', { operation: 'close', pollId: poll.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       toast.success("Enquete encerrada.");
@@ -120,9 +81,7 @@ export default function PollsTab({ session, myParticipant }) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (poll) => {
-      await base44.entities.SessionPoll.update(poll.id, { is_deleted: true });
-    },
+    mutationFn: (poll) => base44.functions.invoke('manageSessionPoll', { operation: 'delete', pollId: poll.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       toast.success("Enquete excluída.");
@@ -135,6 +94,14 @@ export default function PollsTab({ session, myParticipant }) {
     } else {
       createMut.mutate({ data: formData, options: formData.options });
     }
+  };
+
+  const handleEdit = (poll) => {
+    setEditing({
+      ...poll,
+      options: (poll.options || []).map((o) => ({ option_text: o.option_text })),
+    });
+    setDialogOpen(true);
   };
 
   const sorted = [...polls].sort((a, b) => {
@@ -161,7 +128,7 @@ export default function PollsTab({ session, myParticipant }) {
         <PollCard
           key={poll.id}
           poll={poll}
-          onEdit={() => { setEditing(poll); setDialogOpen(true); }}
+          onEdit={() => handleEdit(poll)}
           onDelete={() => deleteMut.mutate(poll)}
           onGoLive={() => goLiveMut.mutate(poll)}
           onClose={() => closeMut.mutate(poll)}
@@ -171,7 +138,7 @@ export default function PollsTab({ session, myParticipant }) {
 
       {resultsPollId && (
         <ResultsModal
-          pollId={resultsPollId}
+          poll={polls.find((p) => p.id === resultsPollId)}
           onClose={() => setResultsPollId(null)}
         />
       )}
@@ -188,10 +155,7 @@ export default function PollsTab({ session, myParticipant }) {
 
 // ── Card individual ──────────────────────────────────────────────────────────
 function PollCard({ poll, onEdit, onDelete, onGoLive, onClose, onShowResults }) {
-  const { data: options = [] } = useQuery({
-    queryKey: ["poll-options", poll.id],
-    queryFn: () => base44.entities.SessionPollOption.filter({ poll_id: poll.id, is_deleted: false }),
-  });
+  const options = poll.options || [];
 
   const st = STATUS[poll.status] || STATUS.draft;
   const isLive = poll.status === "live";
@@ -258,45 +222,11 @@ function PollCard({ poll, onEdit, onDelete, onGoLive, onClose, onShowResults }) 
 }
 
 // ── Modal de resultados ──────────────────────────────────────────────────────
-function ResultsModal({ pollId, onClose }) {
-  const queryClient = useQueryClient();
-  const { data: poll } = useQuery({
-    queryKey: ["poll", pollId],
-    queryFn: async () => {
-      const list = await base44.entities.SessionPoll.filter({ id: pollId });
-      return list[0];
-    },
-    enabled: !!pollId,
-  });
-
-  const { data: options = [] } = useQuery({
-    queryKey: ["poll-options", pollId],
-    queryFn: () => base44.entities.SessionPollOption.filter({ poll_id: pollId, is_deleted: false }),
-  });
-
-  const { data: answers = [] } = useQuery({
-    queryKey: ["poll-answers", pollId],
-    queryFn: () => base44.entities.SessionPollAnswer.filter({ poll_id: pollId, is_deleted: false }),
-    refetchInterval: poll?.status === "live" ? 2000 : false,
-  });
-
-  // realtime
-  useEffect(() => {
-    if (!pollId) return;
-    const unsub = base44.entities.SessionPollAnswer.subscribe(() => {
-      queryClient.invalidateQueries({ queryKey: ["poll-answers", pollId] });
-    });
-    return unsub;
-  }, [pollId]);
-
-  const totalVoters = answers.length;
-  const voteCounts = {};
-  answers.forEach((a) => {
-    let ids = [];
-    try { ids = JSON.parse(a.selected_option_ids || "[]"); } catch { ids = []; }
-    ids.forEach((id) => { voteCounts[id] = (voteCounts[id] || 0) + 1; });
-  });
-  const totalVotes = Object.values(voteCounts).reduce((s, n) => s + n, 0);
+function ResultsModal({ poll, onClose }) {
+  if (!poll) return null;
+  const options = [...(poll.options || [])].sort((a, b) => a.position - b.position);
+  const totalVoters = poll.totalVoters || 0;
+  const totalVotes = poll.totalVotes || 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -305,15 +235,15 @@ function ResultsModal({ pollId, onClose }) {
           <h3 className="font-display font-bold text-base">Resultados</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted"><XCircle className="w-4 h-4" /></button>
         </div>
-        {poll && <p className="text-sm text-muted-foreground">{poll.question}</p>}
+        <p className="text-sm text-muted-foreground">{poll.question}</p>
 
         <div className="text-xs text-muted-foreground">
           {totalVoters} participante{totalVoters !== 1 ? "s" : ""} · {totalVotes} voto{totalVotes !== 1 ? "s" : ""}
         </div>
 
         <div className="space-y-2">
-          {options.sort((a, b) => a.position - b.position).map((opt) => {
-            const count = voteCounts[opt.id] || 0;
+          {options.map((opt) => {
+            const count = opt.count || 0;
             const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
             return (
               <div key={opt.id} className="space-y-1">

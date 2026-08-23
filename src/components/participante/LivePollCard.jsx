@@ -3,8 +3,12 @@
  * - Só exibe se o participante tem presença confirmada.
  * - Poll ativa: votação com contador regressivo.
  * - Poll encerrada: resultados consolidados.
- * - 1 resposta por participante (deduplicação por poll_id + person_id).
- * - Atualização em tempo real enquanto live.
+ * - 1 resposta por participante (deduplicação server-side por poll_id + person_id).
+ * - Atualização em tempo real via polling autorizado (getSessionPolls).
+ *
+ * Lote RLS Session Interaction: leitura via getSessionPolls (agregado + minha resposta).
+ * Nenhum acesso SDK direto a SessionPoll/Option/Answer. A subscription direta em
+ * SessionPollAnswer foi substituída por polling autorizado equivalente.
  */
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +21,7 @@ export default function LivePollCard({ session, participant }) {
   const queryClient = useQueryClient();
   const personId = participant?.person_id;
 
-  // Presença confirmada?
+  // Presença confirmada? (SessionAttendance — fora deste lote, acesso SDK direto permitido)
   const { data: attendances = [] } = useQuery({
     queryKey: ["session-attendance-poll", session.id, participant?.id],
     queryFn: () => base44.entities.SessionAttendance.filter({ session_id: session.id, participant_id: participant?.id }),
@@ -25,22 +29,17 @@ export default function LivePollCard({ session, participant }) {
   });
   const isPresent = attendances.some((a) => a.is_present !== false);
 
-  // Polls da sessão (live + closed recentes)
+  // Polls da sessão (live + closed recentes) — leitura autorizada e agregada.
   const { data: polls = [], isLoading } = useQuery({
     queryKey: ["session-polls-participant", session.id],
-    queryFn: () => base44.entities.SessionPoll.filter({ session_id: session.id, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getSessionPolls', { sessionId: session.id });
+      return res.data?.polls || [];
+    },
     enabled: isPresent,
-    refetchInterval: 5000,
+    // Realtime: polling autorizado substitui a subscription direta.
+    refetchInterval: polls.some((p) => p.status === "live") ? 2000 : 5000,
   });
-
-  // Realtime: atualizar quando answers mudarem
-  useEffect(() => {
-    if (!isPresent) return;
-    const unsub = base44.entities.SessionPollAnswer.subscribe(() => {
-      queryClient.invalidateQueries({ queryKey: ["poll-answers-participant"] });
-    });
-    return unsub;
-  }, [isPresent, queryClient]);
 
   if (!isPresent) {
     return (
@@ -64,7 +63,7 @@ export default function LivePollCard({ session, participant }) {
   const closedPolls = polls.filter((p) => p.status === "closed");
   const now = new Date();
 
-  // Tratar polls live expiradas como closed
+  // Tratar polls live expiradas como closed (defensivo; o server já encerra)
   const effectivelyClosed = livePolls.filter((p) => p.live_ends_at && new Date(p.live_ends_at) < now);
   const activeLive = livePolls.filter((p) => !p.live_ends_at || new Date(p.live_ends_at) >= now);
 
@@ -92,25 +91,12 @@ function PollView({ poll, personId }) {
   const [submitted, setSubmitted] = useState(false);
 
   const isLive = poll.status === "live";
+  const options = [...(poll.options || [])].sort((a, b) => a.position - b.position);
+  const totalVotes = poll.totalVotes || 0;
 
-  const { data: options = [] } = useQuery({
-    queryKey: ["poll-options-participant", poll.id],
-    queryFn: () => base44.entities.SessionPollOption.filter({ poll_id: poll.id, is_deleted: false }),
-  });
-
-  const { data: myAnswer = [] } = useQuery({
-    queryKey: ["poll-my-answer", poll.id, personId],
-    queryFn: () => base44.entities.SessionPollAnswer.filter({ poll_id: poll.id, person_id: personId, is_deleted: false }),
-    enabled: !!personId,
-  });
-
-  const { data: answers = [] } = useQuery({
-    queryKey: ["poll-answers-participant", poll.id],
-    queryFn: () => base44.entities.SessionPollAnswer.filter({ poll_id: poll.id, is_deleted: false }),
-    refetchInterval: isLive ? 2000 : false,
-  });
-
-  const alreadyAnswered = myAnswer.length > 0;
+  const myAnswer = poll.myAnswer;
+  const mySelectedIds = myAnswer ? myAnswer.selected_option_ids : [];
+  const alreadyAnswered = !!myAnswer;
   const showResults = !isLive || alreadyAnswered;
 
   // countdown
@@ -137,15 +123,14 @@ function PollView({ poll, personId }) {
     },
     onSuccess: () => {
       setSubmitted(true);
-      queryClient.invalidateQueries({ queryKey: ["poll-my-answer", poll.id, personId] });
-      queryClient.invalidateQueries({ queryKey: ["poll-answers-participant", poll.id] });
+      queryClient.invalidateQueries({ queryKey: ["session-polls-participant", poll.session_id] });
       toast.success("Resposta enviada.");
     },
     onError: (err) => {
       const msg = (err?.response?.data?.error || err?.message || "").toLowerCase();
       if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("já")) {
         toast.error("Você já respondeu esta enquete.");
-        queryClient.invalidateQueries({ queryKey: ["poll-my-answer", poll.id, personId] });
+        queryClient.invalidateQueries({ queryKey: ["session-polls-participant", poll.session_id] });
       } else {
         toast.error("Não foi possível enviar. Tente novamente.");
       }
@@ -165,19 +150,7 @@ function PollView({ poll, personId }) {
     }
   };
 
-  // Cálculo de resultados
-  const voteCounts = {};
-  answers.forEach((a) => {
-    let ids = [];
-    try { ids = JSON.parse(a.selected_option_ids || "[]"); } catch { ids = []; }
-    ids.forEach((id) => { voteCounts[id] = (voteCounts[id] || 0) + 1; });
-  });
-  const totalVotes = Object.values(voteCounts).reduce((s, n) => s + n, 0);
-  const sortedOptions = [...options].sort((a, b) => a.position - b.position);
-
-  const mySelectedIds = alreadyAnswered
-    ? (() => { try { return JSON.parse(myAnswer[0].selected_option_ids || "[]"); } catch { return []; } })()
-    : selected;
+  const currentSelected = alreadyAnswered ? mySelectedIds : selected;
 
   return (
     <div className={`rounded-2xl border p-4 space-y-3 ${isLive ? "border-red-300 bg-red-50/20" : "border-border bg-card"}`}>
@@ -201,8 +174,8 @@ function PollView({ poll, personId }) {
       {/* Opções / Resultados */}
       {showResults ? (
         <div className="space-y-2">
-          {sortedOptions.map((opt) => {
-            const count = voteCounts[opt.id] || 0;
+          {options.map((opt) => {
+            const count = opt.count || 0;
             const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
             const isMine = mySelectedIds.includes(opt.id);
             return (
@@ -224,8 +197,8 @@ function PollView({ poll, personId }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {sortedOptions.map((opt) => {
-            const isSelected = selected.includes(opt.id);
+          {options.map((opt) => {
+            const isSelected = currentSelected.includes(opt.id);
             return (
               <button
                 key={opt.id}

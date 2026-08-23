@@ -61,15 +61,13 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
     enabled: participantIds.length > 0,
   });
 
-  // Perguntas das sessões do palestrante — query direcionada por session_id ($in)
-  const { data: questions = [] } = useQuery({
-    queryKey: ["speaker-questions-kpi", sessionIds.join(",")],
+  // Perguntas das sessões do palestrante — contagens via backend function (autorização server-side)
+  const { data: stats = [] } = useQuery({
+    queryKey: ["speaker-question-stats", sessionIds.join(",")],
     queryFn: async () => {
       if (!sessionIds.length) return [];
-      return base44.entities.SessionQuestion.filter({
-        session_id: { $in: sessionIds },
-        is_deleted: false,
-      });
+      const res = await base44.functions.invoke('getSpeakerQuestionStats', { sessionIds });
+      return res.data?.stats || [];
     },
     enabled: sessionIds.length > 0,
   });
@@ -78,8 +76,8 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
     ? normalizeRating(reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1)
     : null;
 
-  const totalQ = questions.length;
-  const answeredQ = questions.filter((q) => q.is_answered).length;
+  const totalQ = stats.reduce((s, x) => s + (x.total || 0), 0);
+  const answeredQ = stats.reduce((s, x) => s + (x.answered || 0), 0);
   const pctAnswered = totalQ > 0 ? Math.round((answeredQ / totalQ) * 100) : null;
 
   return (

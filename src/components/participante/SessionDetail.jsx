@@ -233,29 +233,17 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
 
   const { data: questions = [] } = useQuery({
     queryKey: ["session-questions", session.id],
-    queryFn: () => base44.entities.SessionQuestion.filter({ session_id: session.id, is_deleted: false }),
-  });
-
-  const { data: answers = [] } = useQuery({
-    queryKey: ["session-answers", session.id],
-    queryFn: () => base44.entities.SessionAnswer.filter({ session_id: session.id, is_deleted: false }),
-  });
-
-  const answerMap = Object.fromEntries(answers.map((a) => [a.question_id, a]));
-
-  const visibleQuestions = questions.filter((q) => {
-    if (q.visibility === "particular") return isSpeaker || q.participant_id === myParticipantId;
-    return true;
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getSessionQuestions', { sessionId: session.id });
+      return res.data?.questions || [];
+    },
   });
 
   const sendMut = useMutation({
-    mutationFn: () => base44.entities.SessionQuestion.create({
-      event_id: session.event_id,
-      session_id: session.id,
-      participant_id: participant?.id,
-      person_id: participant?.person_id,
-      question: sanitizeText(text.trim()),
-      visibility,
+    mutationFn: () => base44.functions.invoke('manageSessionQuestion', {
+      operation: 'create',
+      sessionId: session.id,
+      data: { question: sanitizeText(text.trim()), visibility },
     }),
     onSuccess: async () => {
       const questionText = text.trim();
@@ -276,31 +264,21 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
   });
 
   const markMut = useMutation({
-    mutationFn: (q) => base44.entities.SessionQuestion.update(q.id, { is_answered: !q.is_answered }),
+    mutationFn: (q) => base44.functions.invoke('manageSessionQuestion', {
+      operation: 'markAnswered',
+      questionId: q.id,
+    }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session-questions", session.id] }),
   });
 
   const replyMut = useMutation({
-    mutationFn: async ({ question, replyText }) => {
-      const existing = answerMap[question.id];
-      const safeReply = sanitizeText(replyText);
-      if (existing) {
-        await base44.entities.SessionAnswer.update(existing.id, { answer_text: safeReply });
-      } else {
-        await base44.entities.SessionAnswer.create({
-          question_id: question.id,
-          session_id: session.id,
-          event_id: session.event_id,
-          speaker_participant_id: participant?.id,
-          speaker_person_id: participant?.person_id,
-          answer_text: safeReply,
-        });
-      }
-      await base44.entities.SessionQuestion.update(question.id, { is_answered: true });
-    },
+    mutationFn: ({ question, replyText }) => base44.functions.invoke('manageSessionAnswer', {
+      operation: 'save',
+      questionId: question.id,
+      answerText: sanitizeText(replyText),
+    }),
     onSuccess: (_, { question }) => {
       queryClient.invalidateQueries({ queryKey: ["session-questions", session.id] });
-      queryClient.invalidateQueries({ queryKey: ["session-answers", session.id] });
       setReplyTexts((prev) => ({ ...prev, [question.id]: "" }));
       toast.success("Resposta enviada!");
     },
@@ -342,11 +320,11 @@ function QASection({ session, participant, myParticipantId, isReadOnly }) {
       )}
 
       <div className="space-y-2">
-        {visibleQuestions.length === 0 && (
+        {questions.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-3">Nenhuma pergunta ainda.</p>
         )}
-        {visibleQuestions.map((q) => {
-          const answer = answerMap[q.id];
+        {questions.map((q) => {
+          const answer = q.answer;
           const replyText = replyTexts[q.id] || "";
           return (
             <div key={q.id} className={`rounded-xl p-3 border text-sm space-y-2 ${q.is_answered ? "border-emerald-200 bg-emerald-50/50" : "border-border"}`}>
