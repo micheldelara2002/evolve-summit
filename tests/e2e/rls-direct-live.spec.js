@@ -45,6 +45,53 @@ test.describe('Live direct-SDK authorization gate @security @rls', () => {
     }
   });
 
+  test('quick-win RLS: SessionFavorite is self-service; PointTransaction and StoreRedemption are read-self/admin-write', async () => {
+    const client = await clientFor('participant');
+    const personId = '6a84dee6898f07362bd2e0fd';
+    const participantId = '6a84def0e914028f54769dfc';
+    const sessionId = '6a829c47b675f6c1aaa80192';
+    const eventId = '6a829bfb79832f1efececa3d';
+
+    let favoriteId;
+    try {
+      const created = await client.entities.SessionFavorite.create({
+        event_id: eventId,
+        session_id: sessionId,
+        participant_id: participantId,
+        person_id: personId,
+        description: 'RLS test fixture'
+      });
+      favoriteId = created.id;
+      const own = await client.entities.SessionFavorite.filter({ id: favoriteId });
+      expect(own).toHaveLength(1);
+      expect(own[0].person_id).toBe(personId);
+    } finally {
+      if (favoriteId) {
+        try { await client.entities.SessionFavorite.delete(favoriteId); } catch { /* cleanup best effort */ }
+      }
+    }
+
+    const points = await client.entities.PointTransaction.list();
+    expect(points).toHaveLength(0);
+    const redemptions = await client.entities.StoreRedemption.list();
+    expect(redemptions).toHaveLength(0);
+
+    await expect(client.entities.PointTransaction.create({
+      event_id: eventId,
+      participant_id: participantId,
+      acao: 'pergunta_valida',
+      pontos: 1,
+      chave_idempotencia: `rls-test-${Date.now()}`
+    })).rejects.toBeTruthy();
+
+    await expect(client.entities.StoreRedemption.create({
+      event_id: eventId,
+      participant_id: participantId,
+      store_item_id: 'rls-test-item',
+      pontos_debitados: 1
+    })).rejects.toBeTruthy();
+  });
+
   test('event-scoped functions allow authorized event and reject unrelated event', async () => {
     const client = await clientFor('manager');
     const own = '6a84a75d4d0b7d531fd91dd0';
