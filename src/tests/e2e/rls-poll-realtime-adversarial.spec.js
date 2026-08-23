@@ -17,6 +17,7 @@
  * admin/service-role (publish, contadores) é feita via test_backend_function e
  * registrada no checkpoint como VERIFICADO.
  */
+import process from 'node:process';
 import { test, expect } from '@playwright/test';
 import { createClient } from '@base44/sdk';
 
