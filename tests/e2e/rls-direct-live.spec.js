@@ -130,6 +130,20 @@ test.describe('Live direct-SDK authorization gate @security @rls', () => {
     })).rejects.toBeTruthy();
   });
 
+  test('Event is readable by authenticated users but write operations are admin-only', async () => {
+    const client = await clientFor('participant');
+    const events = await client.entities.Event.filter({ is_deleted: false });
+    expect(Array.isArray(events)).toBeTruthy();
+    const fakeId = `rls-test-${Date.now()}`;
+    await expect(client.entities.Event.create({
+      name: 'RLS test fixture',
+      start_date: new Date().toISOString(),
+      status: 'draft'
+    })).rejects.toBeTruthy();
+    await expect(client.entities.Event.update(fakeId, { name: 'blocked' })).rejects.toBeTruthy();
+    await expect(client.entities.Event.delete(fakeId)).rejects.toBeTruthy();
+  });
+
   test('event-scoped functions allow authorized event and reject unrelated event', async () => {
     const client = await clientFor('manager');
     const own = '6a84a75d4d0b7d531fd91dd0';
