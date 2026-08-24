@@ -221,13 +221,16 @@ export default function UserProfileEdit() {
     const hasPrimary = documents.some((d) => d.is_primary);
 
     try {
-      await base44.entities.PersonDocument.create({
-        person_id: personId,
-        country_code: newDoc.country_code,
-        document_type: newDoc.document_type,
-        document_number: newDoc.document_number.trim(),
-        is_primary: !hasPrimary, // primeiro documento vira primário automaticamente
-        status: "active",
+      await base44.functions.invoke("managePersonDocument", {
+        operation: "create",
+        data: {
+          person_id: personId,
+          country_code: newDoc.country_code,
+          document_type: newDoc.document_type,
+          document_number: newDoc.document_number.trim(),
+          is_primary: !hasPrimary,
+          status: "active",
+        },
       });
       setNewDoc({ country_code: "BR", document_type: "CPF", document_number: "" });
       setAddingDoc(false);
@@ -239,7 +242,7 @@ export default function UserProfileEdit() {
   };
 
   const handleDeleteDoc = async (docId) => {
-    await base44.entities.PersonDocument.delete(docId);
+    await base44.functions.invoke("managePersonDocument", { operation: "delete", documentId: docId });
     refetchDocs();
     toast.success("Documento removido.");
   };
@@ -247,8 +250,8 @@ export default function UserProfileEdit() {
   const handleSetPrimary = async (docId) => {
     // Remover primário dos outros
     const others = documents.filter((d) => d.id !== docId && d.is_primary);
-    await Promise.all(others.map((d) => base44.entities.PersonDocument.update(d.id, { is_primary: false })));
-    await base44.entities.PersonDocument.update(docId, { is_primary: true });
+    await Promise.all(others.map((d) => base44.functions.invoke("managePersonDocument", { operation: "update", documentId: d.id, data: { is_primary: false } })));
+    await base44.functions.invoke("managePersonDocument", { operation: "update", documentId: docId, data: { is_primary: true } });
     refetchDocs();
   };
 
