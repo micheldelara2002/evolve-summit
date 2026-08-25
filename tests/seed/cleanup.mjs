@@ -85,9 +85,30 @@ async function main() {
     log(`People deactivated: ${people.length}`);
   }
 
-  // Finally soft-delete the event itself
+  // Finally soft-delete the primary event itself
   await client.entities.Event.update(eventId, { is_deleted: true }).catch(() => {});
   log(`Event ${eventId} soft-deleted.`);
+
+  // Also clean the dedicated cross-event adversarial fixture, if bootstrap created it.
+  const eventBId = process.env.E2E_EVENT_B_ID;
+  if (eventBId && eventBId !== eventId) {
+    const eventsB = await client.entities.Event.filter({ id: eventBId }).catch(() => []);
+    const eventB = eventsB?.[0];
+    if (eventB && eventB.name === `${MARKER}-B`) {
+      log(`Cleaning cross-event fixture ${eventBId}`);
+      for (const e of childEntities) {
+        const n = await softDeleteByEvent(e, eventBId);
+        if (n) log(`${e} (B): soft-deleted ${n}`);
+      }
+      const pollsB = await client.entities.SessionPoll.filter({ event_id: eventBId, is_deleted: false }).catch(() => []);
+      for (const poll of pollsB) {
+        await client.entities.SessionPollOption.deleteMany({ poll_id: poll.id }).catch(() => {});
+        await client.entities.SessionPollAnswer.deleteMany({ poll_id: poll.id }).catch(() => {});
+      }
+      await client.entities.Event.update(eventBId, { is_deleted: true }).catch(() => {});
+      log(`Event ${eventBId} soft-deleted.`);
+    }
+  }
   log('Done. Run bootstrap again to recreate.');
 }
 
