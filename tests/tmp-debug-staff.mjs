@@ -1,0 +1,12 @@
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch({headless:true});
+const context = await browser.newContext({storageState:'tests/.auth/staff.json'});
+const page = await context.newPage();
+page.on('console', m => console.log('[console]', m.type(), m.text()));
+page.on('requestfailed', r => console.log('[requestfailed]', r.url(), r.failure()?.errorText));
+await page.goto(`${process.env.E2E_BASE_URL}/event/${process.env.E2E_EVENT_ID}`, {waitUntil:'networkidle'});
+console.log('url=',page.url());
+console.log('title=',await page.title());
+console.log('body=',(await page.locator('body').innerText()).slice(0,1200));
+console.log('storage=',JSON.stringify((await context.storageState()).origins.map(o=>({origin:o.origin,localStorage:o.localStorage.map(x=>x.name)}))));
+await browser.close();
