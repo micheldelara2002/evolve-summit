@@ -51,7 +51,8 @@ async function main() {
 
   const childEntities = [
     'SessionAttendance', 'SessionFavorite', 'PointTransaction', 'StoreRedemption',
-    'SessionQuestion', 'SessionReview', 'Feedback', 'Lead', 'Session', 'Track', 'Room',
+    'SessionQuestion', 'SessionAnswer', 'SessionReview', 'Feedback', 'Lead', 'Session', 'Track', 'Room',
+    'SessionPoll', 'PollEvent',
     'StoreItem', 'ScoringRule', 'CertificateTemplate', 'Certificate', 'CallForPapers',
     'AwardConfig', 'AwardCategory', 'AwardNomination', 'AwardSubmission', 'AwardEvaluation',
     'NotificationCampaign', 'NotificationRecipient', 'EventPartner', 'EventMembership', 'Participant',
@@ -59,6 +60,13 @@ async function main() {
   for (const e of childEntities) {
     const n = await softDeleteByEvent(e, eventId);
     if (n) log(`${e}: soft-deleted ${n}`);
+  }
+
+  // Poll child records have no event_id; remove only polls belonging to this E2E event.
+  const polls = await client.entities.SessionPoll.filter({ event_id: eventId, is_deleted: false }).catch(() => []);
+  for (const poll of polls) {
+    await client.entities.SessionPollOption.deleteMany({ poll_id: poll.id }).catch(() => {});
+    await client.entities.SessionPollAnswer.deleteMany({ poll_id: poll.id }).catch(() => {});
   }
 
   // PartnerRepresentative for the E2E partner
