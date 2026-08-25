@@ -26,7 +26,7 @@ if (!BASE_URL || !APP_ID || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
   die('Missing E2E_BASE_URL / BASE44_APP_ID / E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD.');
 }
 
-const client = createClient({ appId: APP_ID, token: undefined, serverUrl: API_URL, appBaseUrl: BASE_URL, requiresAuth: true });
+const client = createClient({ appId: APP_ID, token: undefined, ...(API_URL ? { serverUrl: API_URL } : {}), appBaseUrl: BASE_URL, requiresAuth: true });
 
 async function softDeleteByEvent(entity, eventId) {
   const recs = await client.entities[entity].filter({ event_id: eventId, is_deleted: false }).catch(() => []);
