@@ -206,7 +206,9 @@ test.describe('Lote Realtime Session Polls — adversarial @security @rls @realt
     // Validar agregado final (source of truth = answers; contadores devem convergir)
     const answers = await admin.entities.SessionPollAnswer.filter({ poll_id: pollId, is_deleted: false });
     const poll = await admin.entities.SessionPoll.get(pollId);
-    const sumCounts = opts.reduce((s, o) => s + (o.vote_count || 0), 0);
+    // Reload options after concurrent writes; the initial objects are stale snapshots.
+    const currentOpts = await admin.entities.SessionPollOption.filter({ poll_id: pollId, is_deleted: false });
+    const sumCounts = currentOpts.reduce((s, o) => s + (o.vote_count || 0), 0);
     expect(answers.length).toBe(poll.voter_count || 0);
     expect(sumCounts).toBe(answers.length); // single-choice: 1 opt por resposta
 
