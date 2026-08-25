@@ -21,7 +21,7 @@ test.describe('Release smoke @regression @smoke', () => {
     await page.goto('/');
     await healthy(page);
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
-    await page.goto(`/event/${eventId}`);
+    await page.goto(`/events/${eventId}`);
     await healthy(page);
   });
 
