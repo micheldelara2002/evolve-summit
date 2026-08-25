@@ -47,7 +47,7 @@ if (process.env.E2E_ALLOW_PROD !== '1' && /prod/i.test(BASE_URL)) {
 const client = createClient({
   appId: APP_ID,
   token: undefined,
-  serverUrl: API_URL,
+  ...(API_URL ? { serverUrl: API_URL } : {}),
   appBaseUrl: BASE_URL,
   requiresAuth: true,
 });
