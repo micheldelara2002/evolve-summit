@@ -178,9 +178,6 @@ async function main() {
   // These fixtures exist specifically to eliminate false SKIPs in the adversarial suite.
   const speakerPerson = (await filter('Person', { contact_email: process.env.E2E_SPEAKER_EMAIL || '' }))[0];
   const managerPerson = (await filter('Person', { contact_email: process.env.E2E_MANAGER_EMAIL || '' }))[0];
-  const attendee2Email = process.env.E2E_ATTENDEE2_EMAIL || '';
-  const attendee2User = await resolveUser(attendee2Email);
-
   const { rec: pollA } = await getOrCreate('SessionPoll',
     { session_id: (await filter('Session', { event_id: event.id, title: 'E2E Session', is_deleted: false }))[0]?.id || '', question: 'E2E Fixture Poll A', is_deleted: false },
     {
