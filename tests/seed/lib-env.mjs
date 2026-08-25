@@ -50,7 +50,6 @@ export const PERSONAS = [
   { key: 'manager', emailEnv: 'E2E_MANAGER_EMAIL', passEnv: 'E2E_MANAGER_PASSWORD', roleInEvent: 'manager', membership: 'manager' },
   { key: 'staff', emailEnv: 'E2E_STAFF_EMAIL', passEnv: 'E2E_STAFF_PASSWORD', roleInEvent: 'team', membership: 'team' },
   { key: 'participant', emailEnv: 'E2E_PARTICIPANT_EMAIL', passEnv: 'E2E_PARTICIPANT_PASSWORD', roleInEvent: 'attendee', membership: 'attendee' },
-  { key: 'attendee2', emailEnv: 'E2E_ATTENDEE2_EMAIL', passEnv: 'E2E_ATTENDEE2_PASSWORD', roleInEvent: 'attendee', membership: 'attendee' },
   { key: 'speaker', emailEnv: 'E2E_SPEAKER_EMAIL', passEnv: 'E2E_SPEAKER_PASSWORD', roleInEvent: 'speaker', membership: 'speaker' },
   { key: 'partner', emailEnv: 'E2E_PARTNER_EMAIL', passEnv: 'E2E_PARTNER_PASSWORD', roleInEvent: 'partner_rep', membership: 'partner_rep' },
 ];
