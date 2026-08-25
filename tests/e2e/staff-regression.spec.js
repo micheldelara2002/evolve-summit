@@ -19,8 +19,8 @@ test.describe('Staff regression @staff @regression', () => {
     await page.goto(`/events/${eventId}`);
     await expect(page.getByRole('heading').first()).toBeVisible();
     const fakeEvent = `${eventId}-unauthorized`;
-    await page.goto(`/event/${fakeEvent}`);
-    await expect(page).not.toHaveURL(new RegExp(`/event/${fakeEvent}$`));
+    await page.goto(`/events/${fakeEvent}`);
+    await expect(page).not.toHaveURL(new RegExp(`/events/${fakeEvent}$`));
   });
 
   test('ST-004/008 participants and schedule surfaces are reachable @P1', async ({ page }) => {
