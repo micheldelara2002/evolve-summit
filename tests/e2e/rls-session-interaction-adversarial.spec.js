@@ -28,7 +28,7 @@ const appId = process.env.BASE44_APP_ID || '6a2c618daec1758ff2122225';
 const baseUrl = process.env.E2E_BASE_URL;
 const eventId = process.env.E2E_EVENT_ID || '6a829bfb79832f1efececa3d';
 // Evento NÃO autorizado para as personas de A (cross-event).
-const unrelatedEventId = '6a829bfb79832f1efececa3e';
+const unrelatedEventId = process.env.E2E_EVENT_B_ID || '6a829bfb79832f1efece3e';
 
 async function login(email, password) {
   const client = createClient({ appId, appBaseUrl: baseUrl, requiresAuth: true });
