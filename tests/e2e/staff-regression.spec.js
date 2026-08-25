@@ -10,13 +10,13 @@ async function assertDenied(page, route) {
 test.describe('Staff regression @staff @regression', () => {
   test('ST-001/002 staff home and assigned event load @P0 @smoke', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
-    await page.goto(`/event/${eventId}`);
+    await page.goto(`/events/${eventId}`);
     await expect(page.getByRole('heading').first()).toBeVisible();
   });
 
   test('ST-003 staff remains inside assigned event scope @P0 @security', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
-    await page.goto(`/event/${eventId}`);
+    await page.goto(`/events/${eventId}`);
     await expect(page.getByRole('heading').first()).toBeVisible();
     const fakeEvent = `${eventId}-unauthorized`;
     await page.goto(`/event/${fakeEvent}`);
@@ -25,7 +25,7 @@ test.describe('Staff regression @staff @regression', () => {
 
   test('ST-004/008 participants and schedule surfaces are reachable @P1', async ({ page }) => {
     test.skip(!eventId, 'E2E_EVENT_ID not configured');
-    for (const route of [`/event/${eventId}`, '/my-events']) {
+    for (const route of [`/events/${eventId}`, '/my-events']) {
       await page.goto(route);
       await expect(page.getByRole('heading').first()).toBeVisible();
     }
