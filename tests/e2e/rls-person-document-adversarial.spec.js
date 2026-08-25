@@ -105,10 +105,16 @@ test.describe('RLS PersonDocument — adversarial @security @rls @person-documen
     const people = await admin.entities.Person.filter({ contact_email: process.env.E2E_ADMIN_EMAIL });
     const otherPersonId = people?.[0]?.id;
     test.skip(!otherPersonId || otherPersonId === me.person_id, 'distinct admin person fixture required');
-    const created = await participant.entities.PersonDocument.create({
-      person_id: me.person_id, country_code: 'BR', document_type: 'E2E',
-      document_number: `RLS-OWN-${Date.now()}`, is_primary: false, status: 'active',
+    // The application function pins ownership to the authenticated caller.
+    const createdResult = await participant.functions.invoke('managePersonDocument', {
+      operation: 'create',
+      data: {
+        person_id: otherPersonId, country_code: 'BR', document_type: 'E2E',
+        document_number: `RLS-OWN-${Date.now()}`, is_primary: false, status: 'active',
+      },
     });
+    const created = createdResult.data?.document || createdResult.document;
+    expect(created?.person_id).toBe(me.person_id);
     try {
       await expect(participant.entities.PersonDocument.update(created.id, { person_id: otherPersonId })).rejects.toBeTruthy();
     } finally {
