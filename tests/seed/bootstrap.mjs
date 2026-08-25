@@ -174,7 +174,60 @@ async function main() {
     });
   log('Content (track/room/session) seeded.');
 
-  // 5. Gamification + store + certificates + CFP + Award
+  // 5. Session Interaction fixtures: polls + Q&A + a genuinely unrelated event/session.
+  // These fixtures exist specifically to eliminate false SKIPs in the adversarial suite.
+  const speakerPerson = (await filter('Person', { contact_email: process.env.E2E_SPEAKER_EMAIL || '' }))[0];
+  const managerPerson = (await filter('Person', { contact_email: process.env.E2E_MANAGER_EMAIL || '' }))[0];
+  const attendee2Email = process.env.E2E_ATTENDEE2_EMAIL || '';
+  const attendee2User = await resolveUser(attendee2Email);
+
+  const { rec: pollA } = await getOrCreate('SessionPoll',
+    { session_id: (await filter('Session', { event_id: event.id, title: 'E2E Session', is_deleted: false }))[0]?.id || '', question: 'E2E Fixture Poll A', is_deleted: false },
+    {
+      event_id: event.id, session_id: (await filter('Session', { event_id: event.id, title: 'E2E Session', is_deleted: false }))[0]?.id || '',
+      created_by_person_id: speakerPerson?.id || '', question: 'E2E Fixture Poll A', answer_type: 'single_choice',
+      max_options: 1, duration_seconds: 300, status: 'draft', voter_count: 0, voted_person_ids: [], is_deleted: false,
+    });
+  if (pollA) {
+    await getOrCreate('SessionPollOption', { poll_id: pollA.id, option_text: 'A', is_deleted: false }, { poll_id: pollA.id, option_text: 'A', position: 0, vote_count: 0, is_deleted: false });
+    await getOrCreate('SessionPollOption', { poll_id: pollA.id, option_text: 'B', is_deleted: false }, { poll_id: pollA.id, option_text: 'B', position: 1, vote_count: 0, is_deleted: false });
+  }
+
+  const sessionA = (await filter('Session', { event_id: event.id, title: 'E2E Session', is_deleted: false }))[0];
+  const participantA = (await filter('Participant', { event_id: event.id, email: process.env.E2E_PARTICIPANT_EMAIL || '', is_deleted: false }))[0];
+  await getOrCreate('SessionQuestion',
+    { session_id: sessionA?.id || '', question: 'E2E Fixture Public Question', is_deleted: false },
+    { event_id: event.id, session_id: sessionA?.id || '', participant_id: participantA?.id || '', person_id: participantA?.person_id || '', question: 'E2E Fixture Public Question', visibility: 'publica', is_answered: false, upvotes: 0, is_deleted: false });
+  await getOrCreate('SessionQuestion',
+    { session_id: sessionA?.id || '', question: 'E2E Fixture Private Other', is_deleted: false },
+    { event_id: event.id, session_id: sessionA?.id || '', participant_id: (await filter('Participant', { event_id: event.id, email: process.env.E2E_MANAGER_EMAIL || '', is_deleted: false }))[0]?.id || '', person_id: managerPerson?.id || '', question: 'E2E Fixture Private Other', visibility: 'particular', is_answered: false, upvotes: 0, is_deleted: false });
+
+  // Event B is deliberately isolated: the speaker persona of A is NOT a member of B.
+  // attendee2 is used only here, so cross-event tests exercise a real second boundary.
+  let eventB = null;
+  let sessionB = null;
+  if (attendee2User) {
+    const resultB = await getOrCreate('Event',
+      { name: `${MARKER}-B`, is_deleted: false },
+      { name: `${MARKER}-B`, description: 'Evento B dedicado a testes adversariais cross-event.', start_date: iso(0), end_date: iso(1), location: 'E2E Virtual B', status: 'active', manager_id: managerUser?.id || '', manager_name: managerUser?.full_name || 'E2E Manager', max_participants: 100 });
+    eventB = resultB.rec;
+    const { rec: personB } = await getOrCreate('Person', { contact_email: attendee2Email }, { full_name: attendee2User.full_name || 'E2E Attendee2', contact_email: attendee2Email, is_active: true, created_day: iso(0).slice(0, 10) });
+    const { rec: participantB } = await getOrCreate('Participant', { event_id: eventB?.id || '', email: attendee2Email, is_deleted: false }, { event_id: eventB?.id || '', full_name: attendee2User.full_name || 'E2E Attendee2', email: attendee2Email, role_in_event: 'speaker', registration_status: 'confirmed', person_id: personB?.id || '', import_id: SEED_TAG, is_eligible: true, is_deleted: false });
+    const { rec: trackB } = await getOrCreate('Track', { event_id: eventB?.id || '', name: 'E2E Track B', is_deleted: false }, { event_id: eventB?.id || '', name: 'E2E Track B' });
+    const { rec: roomB } = await getOrCreate('Room', { event_id: eventB?.id || '', name: 'E2E Room B', is_deleted: false }, { event_id: eventB?.id || '', name: 'E2E Room B', capacity: 100 });
+    sessionB = (await getOrCreate('Session', { event_id: eventB?.id || '', title: 'E2E Session B', is_deleted: false }, { event_id: eventB?.id || '', track_id: trackB?.id || '', room_id: roomB?.id || '', title: 'E2E Session B', description: `${MARKER}-B`, session_type: 'palestra', speaker_id: participantB?.id || '', speaker_name: participantB?.full_name || 'E2E Attendee2', start_time: iso(0), end_time: iso(0), capacity: 100 })).rec;
+    const { rec: pollB } = await getOrCreate('SessionPoll', { session_id: sessionB?.id || '', question: 'E2E Fixture Poll B', is_deleted: false }, { event_id: eventB?.id || '', session_id: sessionB?.id || '', created_by_person_id: personB?.id || '', question: 'E2E Fixture Poll B', answer_type: 'single_choice', max_options: 1, duration_seconds: 300, status: 'draft', voter_count: 0, voted_person_ids: [], is_deleted: false });
+    if (pollB) {
+      await getOrCreate('SessionPollOption', { poll_id: pollB.id, option_text: 'A', is_deleted: false }, { poll_id: pollB.id, option_text: 'A', position: 0, vote_count: 0, is_deleted: false });
+      await getOrCreate('SessionPollOption', { poll_id: pollB.id, option_text: 'B', is_deleted: false }, { poll_id: pollB.id, option_text: 'B', position: 1, vote_count: 0, is_deleted: false });
+    }
+    await getOrCreate('SessionQuestion', { session_id: sessionB?.id || '', question: 'E2E Fixture Question B', is_deleted: false }, { event_id: eventB?.id || '', session_id: sessionB?.id || '', participant_id: participantB?.id || '', person_id: personB?.id || '', question: 'E2E Fixture Question B', visibility: 'publica', is_answered: false, upvotes: 0, is_deleted: false });
+    log(`Cross-event fixtures: eventB=${eventB?.id || '-'} sessionB=${sessionB?.id || '-'}`);
+  } else {
+    warn('E2E_ATTENDEE2_EMAIL not resolved — cross-event fixture B cannot be seeded.');
+  }
+
+  // 6. Gamification + store + certificates + CFP + Award
   await getOrCreate('ScoringRule', { event_id: event.id, acao: 'presenca_sessao', is_deleted: false },
     { event_id: event.id, acao: 'presenca_sessao', pontos: 5, is_active: true });
   await getOrCreate('StoreItem', { event_id: event.id, is_deleted: false },
@@ -187,8 +240,8 @@ async function main() {
     { event_id: event.id, title: 'E2E Award', start_date: iso(0), end_date: iso(2), form_config: '[]', criteria_config: '[]', assigned_reviewer_ids: '[]' });
   log('Gamification / store / certificates / CFP / award seeded.');
 
-  // 6. Persist state for subsequent runs
-  const state = { E2E_EVENT_ID: event.id, seeded_at: new Date().toISOString(), base_url: BASE_URL };
+  // 7. Persist state for subsequent runs
+  const state = { E2E_EVENT_ID: event.id, E2E_EVENT_B_ID: eventB?.id || '', E2E_SESSION_B_ID: sessionB?.id || '', seeded_at: new Date().toISOString(), base_url: BASE_URL };
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   log(`Wrote ${path.relative(ROOT, STATE_FILE)}`);
   console.log(`\nE2E_EVENT_ID=${event.id}`);
