@@ -268,6 +268,7 @@ const ptBR = {
     certificates: "Certificados",
     cfp: "Call for Papers",
     premiacao: "Premiação",
+    tickets: "Ingressos",
   },
   cfp: {
     mySubmissions: "Minhas Submissões",
@@ -400,6 +401,7 @@ const en = {
     certificates: "Certificates",
     cfp: "Call for Papers",
     premiacao: "Awards",
+    tickets: "Tickets",
   },
   cfp: {
     mySubmissions: "My Submissions",
