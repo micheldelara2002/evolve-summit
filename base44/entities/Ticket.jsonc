@@ -1,0 +1,106 @@
+{
+  "name": "Ticket",
+  "type": "object",
+  "description": "Ingresso individual emitido para um titular. hash_code \u00fanico para valida\u00e7\u00e3o/check-in. status: issued, used, cancelled, refunded. holder l\u00ea os pr\u00f3prios ingressos (por email).",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "ID do Order"
+    },
+    "order_item_id": {
+      "type": "string",
+      "description": "ID do OrderItem"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "ticket_type_id": {
+      "type": "string",
+      "description": "ID do TicketType"
+    },
+    "ticket_type_name": {
+      "type": "string",
+      "description": "Nome do tipo (snapshot)"
+    },
+    "lot_id": {
+      "type": "string",
+      "description": "ID do SalesLot"
+    },
+    "person_id": {
+      "type": "string",
+      "description": "ID da Person do titular"
+    },
+    "participant_id": {
+      "type": "string",
+      "description": "ID do Participant criado no evento"
+    },
+    "holder_name": {
+      "type": "string",
+      "description": "Nome do titular (snapshot)"
+    },
+    "holder_email": {
+      "type": "string",
+      "description": "Email do titular (snapshot)"
+    },
+    "hash_code": {
+      "type": "string",
+      "description": "Hash \u00fanico para valida\u00e7\u00e3o p\u00fablica/check-in"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "issued",
+        "used",
+        "cancelled",
+        "refunded"
+      ],
+      "default": "issued"
+    },
+    "used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando foi utilizado no check-in"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "holder_name",
+    "holder_email",
+    "hash_code",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.holder_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "name": "SalesLot",
+  "type": "object",
+  "description": "Lote de venda de um TicketType \u2014 define pre\u00e7o (BRL), janela de venda (in\u00edcio/fim) e quantidade dispon\u00edvel. V\u00e1rios lotes podem existir por tipo. quantity_reserved + quantity_sold nunca excedem quantity_total (guarda at\u00f4mica).",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "ticket_type_id": {
+      "type": "string",
+      "description": "ID do TicketType"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do lote (ex: 1\u00ba Lote, Lote Promocional)"
+    },
+    "price": {
+      "type": "number",
+      "description": "Pre\u00e7o em BRL (centavos: valor decimal)"
+    },
+    "currency": {
+      "type": "string",
+      "default": "BRL"
+    },
+    "sale_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "In\u00edcio da venda deste lote"
+    },
+    "sale_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Fim da venda deste lote"
+    },
+    "quantity_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade total dispon\u00edvel no lote"
+    },
+    "quantity_reserved": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade reservada em checkouts pendentes (n\u00e3o confirmados)"
+    },
+    "quantity_sold": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade efetivamente vendida (paga)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "ticket_type_id",
+    "name",
+    "price",
+    "sale_start",
+    "sale_end",
+    "quantity_total"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.is_active": true,
+          "data.is_deleted": false
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

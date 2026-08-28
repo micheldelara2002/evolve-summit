@@ -1,0 +1,118 @@
+{
+  "name": "Order",
+  "type": "object",
+  "description": "Pedido de compra de ingressos. status: pending (carrinho/checkout), paid (confirmado), cancelled, refunded. total em BRL. buyer l\u00ea os pr\u00f3prios pedidos.",
+  "properties": {
+    "buyer_user_id": {
+      "type": "string",
+      "description": "ID do User comprador"
+    },
+    "buyer_person_id": {
+      "type": "string",
+      "description": "ID da Person do comprador"
+    },
+    "buyer_name": {
+      "type": "string",
+      "description": "Nome do comprador (snapshot)"
+    },
+    "buyer_email": {
+      "type": "string",
+      "description": "Email do comprador (snapshot)"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "cancelled",
+        "refunded",
+        "partially_refunded"
+      ],
+      "default": "pending"
+    },
+    "subtotal": {
+      "type": "number",
+      "default": 0,
+      "description": "Soma dos itens sem desconto"
+    },
+    "discount": {
+      "type": "number",
+      "default": 0,
+      "description": "Desconto aplicado"
+    },
+    "total": {
+      "type": "number",
+      "default": 0,
+      "description": "Total a pagar em BRL"
+    },
+    "coupon_id": {
+      "type": "string",
+      "description": "ID do Coupon aplicado (se houver)"
+    },
+    "coupon_code": {
+      "type": "string",
+      "description": "C\u00f3digo do cupom aplicado (snapshot)"
+    },
+    "currency": {
+      "type": "string",
+      "default": "BRL"
+    },
+    "reserved_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "At\u00e9 quando as quantidades ficam reservadas antes de expirar"
+    },
+    "fulfillment_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "fulfilled",
+        "pending_retry",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Estado do fulfillment de participantes/ingressos"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "buyer_user_id",
+    "event_id",
+    "status",
+    "total"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.buyer_user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "data.buyer_user_id": "{{user.id}}"
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

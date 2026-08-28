@@ -1,0 +1,68 @@
+{
+  "name": "TicketType",
+  "type": "object",
+  "description": "Tipo de ingresso de um evento (ex: Inteira, Meia, VIP). O gerente define nomes e descri\u00e7\u00f5es; pre\u00e7os e janelas de venda ficam nos SalesLot.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do tipo de ingresso"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o/benef\u00edcios do tipo de ingresso",
+      "maxLength": 1000
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0,
+      "description": "Ordem de exibi\u00e7\u00e3o"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Se o tipo est\u00e1 ativo para venda"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.is_active": true,
+          "data.is_deleted": false
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

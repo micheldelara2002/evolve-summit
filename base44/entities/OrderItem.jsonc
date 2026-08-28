@@ -1,0 +1,90 @@
+{
+  "name": "OrderItem",
+  "type": "object",
+  "description": "Item de um pedido \u2014 um ingresso para um titular (comprador ou acompanhante). unit_price \u00e9 snapshot do pre\u00e7o do lote na compra.",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "ID do Order"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "lot_id": {
+      "type": "string",
+      "description": "ID do SalesLot"
+    },
+    "ticket_type_id": {
+      "type": "string",
+      "description": "ID do TicketType"
+    },
+    "ticket_type_name": {
+      "type": "string",
+      "description": "Nome do tipo (snapshot)"
+    },
+    "holder_name": {
+      "type": "string",
+      "description": "Nome do titular do ingresso"
+    },
+    "holder_email": {
+      "type": "string",
+      "description": "Email do titular do ingresso"
+    },
+    "unit_price": {
+      "type": "number",
+      "description": "Pre\u00e7o unit\u00e1rio (snapshot)"
+    },
+    "ticket_id": {
+      "type": "string",
+      "description": "ID do Ticket emitido (ap\u00f3s fulfillment)"
+    },
+    "refunded": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se este item foi estornado individualmente"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "order_id",
+    "event_id",
+    "lot_id",
+    "ticket_type_id",
+    "holder_name",
+    "holder_email",
+    "unit_price"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.holder_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

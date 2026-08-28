@@ -1,0 +1,116 @@
+{
+  "name": "RefundRequest",
+  "type": "object",
+  "description": "Solicita\u00e7\u00e3o de estorno/cancelamento. status: pending, approved, rejected, processed, failed. policy_decision registra o que a pol\u00edtica global+evento decidiu. admin ou comprador podem solicitar.",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "ID do Order"
+    },
+    "payment_id": {
+      "type": "string",
+      "description": "ID do Payment"
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento"
+    },
+    "requested_by_user_id": {
+      "type": "string",
+      "description": "ID do User que solicitou"
+    },
+    "requested_by_name": {
+      "type": "string",
+      "description": "Nome de quem solicitou (snapshot)"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Motivo do estorno"
+    },
+    "refund_type": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "cancel_item"
+      ],
+      "default": "full"
+    },
+    "amount_requested": {
+      "type": "number",
+      "description": "Valor solicitado para estorno em BRL"
+    },
+    "amount_refunded": {
+      "type": "number",
+      "default": 0,
+      "description": "Valor efetivamente estornado"
+    },
+    "policy_decision": {
+      "type": "string",
+      "description": "Decis\u00e3o da pol\u00edtica (ex: 'full_7_days', 'partial_50', 'no_refund', 'manual')"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "processed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "order_item_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Itens espec\u00edficos (cancel_item)"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rejection_reason": {
+      "type": "string"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "order_id",
+    "payment_id",
+    "event_id",
+    "requested_by_user_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.requested_by_user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "data.requested_by_user_id": "{{user.id}}"
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
