@@ -139,6 +139,7 @@ const AuthenticatedApp = () => {
               <Route path="certificates" element={<EventModulePage module="certificates" />} />
               <Route path="cfp" element={<EventModulePage module="cfp" />} />
               <Route path="premiacao" element={<EventModulePage module="premiacao" />} />
+              <Route path="tickets" element={<EventModulePage module="tickets" />} />
             </Route>
             <Route path="/events/:eventId/edit" element={<EventEdit />} />
             <Route path="/audit" element={<AuditLog />} />

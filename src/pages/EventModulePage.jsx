@@ -18,6 +18,7 @@ import NotificationsCenter from "@/components/notifications/NotificationsCenter"
 import EventStructureManager from "@/components/admin/EventStructureManager";
 import CallForPapersTab from "@/components/admin/cfp/CallForPapersTab";
 import PremiacaoTab from "@/components/admin/PremiacaoTab";
+import CommerceModule from "@/components/admin/commerce/CommerceModule";
 
 const MODULE_TITLES = {
   people: t("adminSections.people"),
@@ -35,6 +36,7 @@ const MODULE_TITLES = {
   certificates: t("adminSections.certificates"),
   cfp: t("adminSections.cfp"),
   premiacao: t("adminSections.premiacao"),
+  tickets: t("adminSections.tickets"),
   };
 
 function PeopleContent({ eventId, hasAccess }) {
@@ -102,6 +104,7 @@ export default function EventModulePage({ module }) {
       {module === "certificates" && <CertificadosTab eventId={eventId} user={user} />}
       {module === "cfp" && <CallForPapersTab eventId={eventId} hasAccess={hasAccess} user={user} />}
       {module === "premiacao" && <PremiacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />}
+      {module === "tickets" && <CommerceModule eventId={eventId} hasAccess={hasAccess} user={user} />}
     </div>
   );
 }

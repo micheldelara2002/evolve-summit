@@ -4,7 +4,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { ArrowLeft, CheckCircle2, Loader2, AlertCircle, Ticket, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getEventTickets, createPaymentIntent, getPaymentStatus, getMyOrders } from "@/lib/commerceApi";
+import { getEventTickets, createPaymentIntent, getPaymentStatus } from "@/lib/commerceApi";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function Checkout({ eventId }) {
@@ -186,7 +186,6 @@ function CheckoutForm({ paymentId, eventId, total }) {
 
 function SuccessScreen({ eventId }) {
   const navigate = useNavigate();
-  const { data: ordersData } = { data: null }; // tickets loaded via getMyOrders on MyTickets page
   return (
     <div className="max-w-md mx-auto px-4 py-12 text-center space-y-5">
       <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto" />

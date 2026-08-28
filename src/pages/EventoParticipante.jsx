@@ -12,7 +12,7 @@ import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import {
   Calendar, ShoppingBag, Trophy, Briefcase,
-  ArrowLeft, Lock, Star, SmilePlus, UserCheck, AlertCircle,
+  ArrowLeft, Lock, Star, SmilePlus, UserCheck, AlertCircle, Ticket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProgramacaoView from "@/components/participante/ProgramacaoView";
@@ -142,18 +142,28 @@ export default function EventoParticipante() {
   }
 
   if (!isAssociated) {
+    const needsTicket = !!event?.requires_payment;
     return (
       <div className="text-center py-24 space-y-4 max-w-sm mx-auto">
         <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
-          <Lock className="w-8 h-8 text-muted-foreground" />
+          {needsTicket ? <Ticket className="w-8 h-8 text-primary" /> : <Lock className="w-8 h-8 text-muted-foreground" />}
         </div>
-        <h2 className="text-xl font-display font-bold">Acesso Restrito</h2>
+        <h2 className="text-xl font-display font-bold">{needsTicket ? "Ingressos disponíveis" : "Acesso Restrito"}</h2>
         <p className="text-muted-foreground text-sm">
-          Você não está inscrito neste evento. Solicite acesso ao organizador.
+          {needsTicket
+            ? "Você não está inscrito neste evento. Compre seu ingresso para garantir sua participação."
+            : "Você não está inscrito neste evento. Solicite acesso ao organizador."}
         </p>
-        <Button variant="outline" onClick={() => navigate("/meus-eventos")}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
-        </Button>
+        {needsTicket ? (
+          <Button onClick={() => navigate(`/event/${eventId}/tickets`)}>
+            <Ticket className="w-4 h-4 mr-2" /> Comprar ingressos
+          </Button>
+        ) : null}
+        <div>
+          <Button variant="outline" onClick={() => navigate("/meus-eventos")}>
+            <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
+          </Button>
+        </div>
       </div>
     );
   }
@@ -173,19 +183,29 @@ export default function EventoParticipante() {
           <Button variant="ghost" size="sm" onClick={() => navigate("/meus-eventos")} className="gap-1.5 -ml-2 h-11 sm:h-8">
             <ArrowLeft className="w-4 h-4" /> Meus Eventos
           </Button>
-          {isFinished ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20">
-              <Lock className="w-3 h-3" /> Modo consulta
-            </span>
-          ) : isCheckinPending ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-              <UserCheck className="w-3 h-3" /> Check-in pendente
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <UserCheck className="w-3 h-3" /> Presente
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/event/${eventId}/tickets`)}
+              className="h-8 gap-1.5 touch-manipulation select-none"
+            >
+              <Ticket className="w-4 h-4" /> Ingressos
+            </Button>
+            {isFinished ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20">
+                <Lock className="w-3 h-3" /> Modo consulta
+              </span>
+            ) : isCheckinPending ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                <UserCheck className="w-3 h-3" /> Check-in pendente
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <UserCheck className="w-3 h-3" /> Presente
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Event identity */}

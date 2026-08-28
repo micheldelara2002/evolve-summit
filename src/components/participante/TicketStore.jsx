@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Ticket, Plus, Minus, ShoppingCart, Tag, Clock, ArrowLeft, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import { getEventTickets } from "@/lib/commerceApi";
 
 export default function TicketStore({ eventId, user }) {
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const { toast } = useToast();
   const [cart, setCart] = useState([]); // { lot, ticket_type, holder_name, holder_email }
   const [couponCode, setCouponCode] = useState("");
