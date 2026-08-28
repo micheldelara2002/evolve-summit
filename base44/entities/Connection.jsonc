@@ -36,5 +36,25 @@
     "event_id",
     "person_a_id",
     "person_b_id"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.person_a_id": "{{user.data.person_id}}"
+        },
+        {
+          "data.person_b_id": "{{user.data.person_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }
