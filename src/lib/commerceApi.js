@@ -36,6 +36,11 @@ export const setRequiresPayment = (eventId, requires_payment) =>
 export const getEventTickets = (eventId) =>
   invoke("getEventTickets", { eventId });
 
+export const getBilheteriaEvents = async () => {
+  const res = await invoke("getBilheteriaEvents", {});
+  return Array.isArray(res?.events) ? res.events : [];
+};
+
 export const createPaymentIntent = (eventId, items, couponCode) =>
   invoke("createPaymentIntent", { eventId, items, couponCode });
 

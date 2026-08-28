@@ -1,10 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Ticket, Calendar, MapPin, ArrowLeft } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { getBilheteriaEvents } from "@/lib/commerceApi";
 import { Button } from "@/components/ui/button";
 import PullToRefresh from "@/components/ui/PullToRefresh";
-import StatusBadge from "@/components/admin/StatusBadge";
 
 // Bilheteria — marketplace de ingressos.
 // Lista eventos com venda de ingressos ativa (requires_payment true, status ativo,
@@ -14,12 +13,7 @@ export default function Bilheteria() {
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ["bilheteria", "events"],
-    queryFn: () =>
-      base44.entities.Event.filter({
-        requires_payment: true,
-        status: "active",
-        is_deleted: false,
-      }),
+    queryFn: getBilheteriaEvents,
   });
 
   const handleRefresh = async () => {
@@ -88,10 +82,14 @@ export default function Bilheteria() {
                       {event.name}
                     </h2>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <StatusBadge status={event.status} />
                       {event.start_date && (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Calendar className="w-3 h-3" /> {formatDate(event.start_date)}
+                        </span>
+                      )}
+                      {typeof event.min_price === "number" && (
+                        <span className="text-xs font-semibold text-primary">
+                          a partir de R$ {Number(event.min_price).toFixed(2)}
                         </span>
                       )}
                     </div>
