@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { listCommerce, createCommerce, updateCommerce, deleteCommerce } from "@/lib/commerceApi";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
-import EntityFormDialog from "@/components/admin/EntityFormDialog";
+import CommerceFormDialog from "./CommerceFormDialog";
 
 export default function CouponsTab({ eventId, hasAccess }) {
   const qc = useQueryClient();
@@ -75,7 +75,7 @@ export default function CouponsTab({ eventId, hasAccess }) {
       {dialog && (
         <CouponDialog eventId={eventId} mode={dialog.mode} data={dialog.data} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); invalidate(); }} />
       )}
-      <ConfirmDeleteDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="Excluir cupom" description="Tem certeza que deseja excluir este cupom?" />
+      <ConfirmDeleteDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)} onConfirm={handleDelete} title="Excluir cupom" description="Tem certeza que deseja excluir este cupom?" />
     </div>
   );
 }
@@ -113,7 +113,7 @@ function CouponDialog({ eventId, mode, data, onClose, onSaved }) {
   };
 
   return (
-    <EntityFormDialog open onClose={onClose} title={mode === "create" ? "Novo cupom" : "Editar cupom"} onSave={submit} saving={saving}>
+    <CommerceFormDialog open onClose={onClose} title={mode === "create" ? "Novo cupom" : "Editar cupom"} onSave={submit} saving={saving}>
       <div className="space-y-3">
         <div>
           <Label>Código</Label>
@@ -158,6 +158,6 @@ function CouponDialog({ eventId, mode, data, onClose, onSaved }) {
           <Label htmlFor="cp-active" className="cursor-pointer">Ativo</Label>
         </div>
       </div>
-    </EntityFormDialog>
+    </CommerceFormDialog>
   );
 }

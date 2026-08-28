@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { listCommerce, createCommerce, updateCommerce, deleteCommerce } from "@/lib/commerceApi";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
-import EntityFormDialog from "@/components/admin/EntityFormDialog";
+import CommerceFormDialog from "./CommerceFormDialog";
 
 export default function TicketTypesLotsTab({ eventId, hasAccess }) {
   const qc = useQueryClient();
@@ -155,7 +155,7 @@ export default function TicketTypesLotsTab({ eventId, hasAccess }) {
 
       <ConfirmDeleteDialog
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Excluir"
         description="Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita."
@@ -186,7 +186,7 @@ function TicketTypeDialog({ eventId, mode, data, onClose, onSaved }) {
   };
 
   return (
-    <EntityFormDialog open onClose={onClose} title={mode === "create" ? "Novo tipo de ingresso" : "Editar tipo"} onSave={submit} saving={saving}>
+    <CommerceFormDialog open onClose={onClose} title={mode === "create" ? "Novo tipo de ingresso" : "Editar tipo"} onSave={submit} saving={saving}>
       <div className="space-y-3">
         <div>
           <Label>Nome</Label>
@@ -201,7 +201,7 @@ function TicketTypeDialog({ eventId, mode, data, onClose, onSaved }) {
           <Label htmlFor="tt-active" className="cursor-pointer">Ativo</Label>
         </div>
       </div>
-    </EntityFormDialog>
+    </CommerceFormDialog>
   );
 }
 
@@ -237,7 +237,7 @@ function LotDialog({ eventId, types, mode, data, onClose, onSaved }) {
   };
 
   return (
-    <EntityFormDialog open onClose={onClose} title={mode === "create" ? "Novo lote" : "Editar lote"} onSave={submit} saving={saving}>
+    <CommerceFormDialog open onClose={onClose} title={mode === "create" ? "Novo lote" : "Editar lote"} onSave={submit} saving={saving}>
       <div className="space-y-3">
         <div>
           <Label>Tipo de ingresso</Label>
@@ -276,6 +276,6 @@ function LotDialog({ eventId, types, mode, data, onClose, onSaved }) {
           <Label htmlFor="lot-active" className="cursor-pointer">Ativo</Label>
         </div>
       </div>
-    </EntityFormDialog>
+    </CommerceFormDialog>
   );
 }
