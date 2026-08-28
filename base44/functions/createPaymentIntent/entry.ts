@@ -42,6 +42,10 @@ export default async function(req: Request): Promise<Response> {
     const buyerPersonId = await resolveCallerPerson(svc, user);
     const event = (await svc.entities.Event.filter({ id: eventId, is_deleted: false }))[0];
     if (!event) return Response.json({ error: 'Evento não encontrado.' }, { status: 404 });
+    // Tickets só são vendidos se o evento estiver ativo (não draft, não finalizado, não cancelado).
+    if (event.status !== 'active') {
+      return Response.json({ error: 'Ingressos não estão à venda para este evento.' }, { status: 400 });
+    }
 
     const now = new Date();
 

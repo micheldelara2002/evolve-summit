@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -18,6 +18,7 @@ const TONE_CLASSES = {
 // ── Card definitions by section ──────────────────────────────────────────────
 const MY_AREA_CARDS = [
   { key: "meusEventos", icon: Calendar, tone: "primary", href: "/my-events" },
+  { key: "bilheteria", icon: Ticket, tone: "warning", href: "/bilheteria", label: "Bilheteria" },
   { key: "callForPapers", icon: Megaphone, tone: "secondary", href: "/cfp", label: "Call for Papers" },
   { key: "premiacao", icon: Award, tone: "success", href: "/awards", label: "Premiação" },
 ];

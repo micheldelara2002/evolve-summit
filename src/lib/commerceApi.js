@@ -9,8 +9,10 @@ async function invoke(name, payload) {
 }
 
 // ===== Admin commerce config =====
-export const listCommerce = (entityName, eventId) =>
-  invoke("manageCommerce", { action: "list", entityName, eventId });
+export const listCommerce = async (entityName, eventId) => {
+  const res = await invoke("manageCommerce", { action: "list", entityName, eventId });
+  return Array.isArray(res?.records) ? res.records : [];
+};
 
 export const createCommerce = (entityName, eventId, data) =>
   invoke("manageCommerce", { action: "create", entityName, eventId, data });

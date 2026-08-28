@@ -53,6 +53,7 @@ const AwardSubmit = lazy(() => import("@/pages/AwardSubmit"));
 const EventTickets = lazy(() => import("@/pages/EventTickets"));
 const CheckoutPage = lazy(() => import("@/pages/Checkout"));
 const MyTickets = lazy(() => import("@/pages/MyTickets"));
+const Bilheteria = lazy(() => import("@/pages/Bilheteria"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -116,6 +117,7 @@ const AuthenticatedApp = () => {
           <Route path="/event/:eventId/tickets" element={<EventTickets />} />
           <Route path="/checkout/:eventId" element={<CheckoutPage />} />
           <Route path="/my-tickets" element={<MyTickets />} />
+          <Route path="/bilheteria" element={<Bilheteria />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
