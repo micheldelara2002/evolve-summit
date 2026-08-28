@@ -50,6 +50,9 @@ const CallForPapersList = lazy(() => import("@/pages/CallForPapersList"));
 const CFPSubmit = lazy(() => import("@/pages/CFPSubmit"));
 const AwardsList = lazy(() => import("@/pages/AwardsList"));
 const AwardSubmit = lazy(() => import("@/pages/AwardSubmit"));
+const EventTickets = lazy(() => import("@/pages/EventTickets"));
+const CheckoutPage = lazy(() => import("@/pages/Checkout"));
+const MyTickets = lazy(() => import("@/pages/MyTickets"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -110,6 +113,9 @@ const AuthenticatedApp = () => {
           <Route path="/cfp/:cfpId/submit" element={<CFPSubmit />} />
           <Route path="/awards" element={<AwardsList />} />
           <Route path="/awards/:awardId/submit" element={<AwardSubmit />} />
+          <Route path="/event/:eventId/tickets" element={<EventTickets />} />
+          <Route path="/checkout/:eventId" element={<CheckoutPage />} />
+          <Route path="/my-tickets" element={<MyTickets />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
