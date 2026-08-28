@@ -48,5 +48,25 @@
     "requester_person_id",
     "receiver_person_id",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.requester_person_id": "{{user.data.person_id}}"
+        },
+        {
+          "data.receiver_person_id": "{{user.data.person_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }
