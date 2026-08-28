@@ -66,6 +66,15 @@
       "type": "number",
       "description": "M\u00e1ximo de participantes"
     },
+    "requires_payment": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o evento exige pagamento para inscri\u00e7\u00e3o"
+    },
+    "refund_policy": {
+      "type": "string",
+      "description": "Pol\u00edtica de estorno do evento (JSON: {full_refund_until_days, partial_refund_percent, no_refund_within_days, allow_manual_override})"
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false,

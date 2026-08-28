@@ -128,10 +128,10 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
     // Audit.
     try {
       await svc.entities.AuditLog.create({
-        action: "ticket_fulfillment",
-        entity: "Order",
+        action: "create",
+        entity_type: "Order",
         entity_id: order.id,
-        description: `Pedido ${order.id} fulfillado: ${createdTickets.length} ingresso(s).`,
+        details: JSON.stringify({ type: "ticket_fulfillment", tickets: createdTickets.length }),
         event_id: order.event_id,
         user_id: order.buyer_user_id,
       });
@@ -144,10 +144,10 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
     await svc.entities.Order.update(order.id, { fulfillment_status: "pending_retry" });
     try {
       await svc.entities.AuditLog.create({
-        action: "ticket_fulfillment_failed",
-        entity: "Order",
+        action: "status_change",
+        entity_type: "Order",
         entity_id: order.id,
-        description: `Falha no fulfillment: ${err?.message || err}`,
+        details: JSON.stringify({ type: "ticket_fulfillment_failed", error: err?.message || String(err) }),
         event_id: order.event_id,
         user_id: order.buyer_user_id,
       });
@@ -201,11 +201,12 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
 
   try {
     await svc.entities.AuditLog.create({
-      action: "ticket_refund",
-      entity: "Order",
+      action: "status_change",
+      entity_type: "Order",
       entity_id: order.id,
-      description: `Estorno de R$ ${refundAmountBRL.toFixed(2)} processado (${isPartial ? "parcial" : "total"}).`,
+      details: JSON.stringify({ type: "ticket_refund", amount: refundAmountBRL, partial: isPartial }),
       event_id: order.event_id,
+      user_id: order.buyer_user_id,
     });
   } catch {}
 }

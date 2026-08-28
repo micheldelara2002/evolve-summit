@@ -4,11 +4,10 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { resolveRefundPolicy, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 
 // Admin/event-manager commerce config CRUD.
-// Entities managed: TicketType, SalesLot, Coupon, and per-event refund policy override
-// (stored on the event-level CommerceConfig record inside manageEventConfig).
+// Entities managed: TicketType, SalesLot, Coupon.
+// Refund policy: stored as JSON on the Event entity (refund_policy field), override of global default.
 //
 // Actions: list, create, update, delete (soft), getPolicy, setPolicy, getGlobalPolicy.
-// Manager auth: event manager/team or global admin (verifyEventMembership).
 
 const ENTITY_SET = new Set(['TicketType', 'SalesLot', 'Coupon']);
 
@@ -17,6 +16,11 @@ const SANITIZE = {
   SalesLot: ['ticket_type_id', 'name', 'price', 'currency', 'sale_start', 'sale_end', 'quantity_total', 'is_active'],
   Coupon: ['code', 'discount_type', 'value', 'scope', 'valid_from', 'valid_to', 'max_uses', 'is_active'],
 };
+
+function parseOverride(event: any): any {
+  if (!event?.refund_policy) return null;
+  try { return JSON.parse(event.refund_policy); } catch { return null; }
+}
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -32,37 +36,28 @@ export default async function(req: Request): Promise<Response> {
     // ===== Refund policy (per-event override + global default) =====
     if (action === 'getPolicy') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
-      // global default from app config (EventConfig) — best-effort
-      let global = DEFAULT_GLOBAL_REFUND_POLICY;
-      try {
-        const cfg = await svc.entities.EventConfig.filter({ key: 'global_refund_policy' });
-        if (cfg[0]?.value) global = { ...DEFAULT_GLOBAL_REFUND_POLICY, ...cfg[0].value };
-      } catch {}
-      // event override
-      let override: any = null;
-      try {
-        const evCfg = await svc.entities.EventConfig.filter({ event_id: eventId, key: 'commerce_refund_policy' });
-        override = evCfg[0]?.value || null;
-      } catch {}
-      const policy = resolveRefundPolicy(override, { refund_policy: global });
-      return Response.json({ policy, global, override });
+      const event = (await svc.entities.Event.filter({ id: eventId }))[0];
+      const override = parseOverride(event);
+      const policy = resolveRefundPolicy(override, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
+      return Response.json({ policy, global: DEFAULT_GLOBAL_REFUND_POLICY, override });
     }
 
     if (action === 'setPolicy') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
       const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
-      if (!managerAuth.authorized) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
-      try {
-        const existing = await svc.entities.EventConfig.filter({ event_id: eventId, key: 'commerce_refund_policy' });
-        if (existing[0]) {
-          await svc.entities.EventConfig.update(existing[0].id, { value: data });
-        } else {
-          await svc.entities.EventConfig.create({ event_id: eventId, key: 'commerce_refund_policy', value: data });
-        }
-      } catch {
-        return Response.json({ error: 'Falha ao salvar política (EventConfig indisponível).' }, { status: 500 });
-      }
-      return Response.json({ ok: true, policy: data });
+      if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      const event = (await svc.entities.Event.filter({ id: eventId }))[0];
+      await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(data) });
+      const policy = resolveRefundPolicy(data, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
+      return Response.json({ ok: true, policy });
+    }
+
+    if (action === 'setRequiresPayment') {
+      if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
+      const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      await svc.entities.Event.update(eventId, { requires_payment: !!data.requires_payment });
+      return Response.json({ ok: true, requires_payment: !!data.requires_payment });
     }
 
     // ===== Entity CRUD =====
@@ -84,7 +79,6 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ records });
     }
 
-    // All mutations require manager/admin.
     if (!authorized) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
 
     if (action === 'create') {
