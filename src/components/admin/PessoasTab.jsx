@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus, QrCode } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -27,6 +27,8 @@ import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
 import PersonFormDialog from "@/components/admin/PersonFormDialog";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
+import QRScanner from "@/components/participante/QRScanner";
+import { checkinTicket } from "@/lib/commerceApi";
 
 // ── Role display ──────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -92,6 +94,7 @@ export default function PessoasTab({
   const [page, setPage] = useState(1);
 
   const [addDialog, setAddDialog] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [editDataDialog, setEditDataDialog] = useState(null);
   const [editRolesDialog, setEditRolesDialog] = useState(null);
   const [removeTarget, setRemoveTarget] = useState(null);
@@ -202,6 +205,20 @@ export default function PessoasTab({
     }
   };
 
+  // ── Check-in por QR (ingresso) ──────────────────────────────────────────────
+  const handleTicketScan = async (code) => {
+    setScannerOpen(false);
+    try {
+      const res = await checkinTicket(code);
+      if (res.ok) toast.success(`${res.message} ${res.holder_name || ""}`.trim());
+      else if (res.status === "used") toast.warning(`${res.message} ${res.holder_name || ""}`.trim());
+      else toast.error(`${res.message} ${res.holder_name || ""}`.trim());
+      invalidate();
+    } catch (e) {
+      toast.error(e.message || "Erro no check-in.");
+    }
+  };
+
   // ── Export CSV ──────────────────────────────────────────────────────────────
   const handleExportCsv = () => {
     const now = new Date();
@@ -276,6 +293,11 @@ export default function PessoasTab({
           </Select>
         )}
         <div className="flex gap-2 ml-auto">
+          {hasAccess && (
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => setScannerOpen(true)}>
+              <QrCode className="w-4 h-4" /> Check-in QR
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="gap-1" onClick={handleExportCsv}>
             <Download className="w-4 h-4" /> Exportar
           </Button>
@@ -421,6 +443,8 @@ export default function PessoasTab({
           onSuccess={invalidate}
         />
       )}
+
+      <QRScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleTicketScan} />
 
       <ConfirmDeleteDialog
         open={!!removeTarget}

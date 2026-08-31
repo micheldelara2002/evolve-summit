@@ -33,8 +33,8 @@ export default async function(req: Request): Promise<Response> {
 
     // Validate items have required fields.
     for (const it of items) {
-      if (!it.lot_id || !it.holder_name || !it.holder_email) {
-        return Response.json({ error: 'Cada ingresso precisa de lote, nome e email do titular.' }, { status: 400 });
+      if (!it.lot_id || !it.holder_name || !it.holder_email || !it.holder_phone) {
+        return Response.json({ error: 'Cada ingresso precisa de lote, nome, email e telefone do titular.' }, { status: 400 });
       }
     }
 
@@ -115,6 +115,7 @@ export default async function(req: Request): Promise<Response> {
         unit_price: lot.price,
         holder_name: it.holder_name,
         holder_email: it.holder_email,
+        holder_phone: it.holder_phone,
       };
     });
 
@@ -162,6 +163,7 @@ export default async function(req: Request): Promise<Response> {
         ticket_type_name: l.ticket_type_name,
         holder_name: l.holder_name,
         holder_email: l.holder_email,
+        holder_phone: l.holder_phone,
         unit_price: l.unit_price,
       });
       orderItems.push(oi);

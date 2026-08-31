@@ -1,7 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { retrievePaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, releaseReservations } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, releaseReservations, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
+import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Polling fallback for payment status — used when the client (Pix flow) doesn't
 // receive the webhook in time, or to confirm after Stripe Elements confirms.
@@ -27,6 +28,17 @@ export default async function(req: Request): Promise<Response> {
 
     // Already terminal?
     if (payment.status === "succeeded" && payment.fulfillment_status === "fulfilled") {
+      // Já fulfillado: garante entrega do PDF + convites (idempotentes).
+      try {
+        const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
+        const [orderItems, tickets] = await Promise.all([
+          svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false }),
+          svc.entities.Ticket.filter({ order_id: payment.order_id, is_deleted: false }),
+        ]);
+        const event = (await svc.entities.Event.filter({ id: order?.event_id }))[0];
+        await deliverTickets(svc, event, order, tickets, orderItems);
+        await ensureCompanionInvites(base44, svc, orderItems);
+      } catch (e: any) { console.error('[getPaymentStatus] post-fulfill delivery failed:', e?.message || e); }
       return Response.json({ status: "succeeded", fulfillment_status: "fulfilled" });
     }
     if (payment.status === "failed" || payment.status === "expired") {
@@ -47,6 +59,11 @@ export default async function(req: Request): Promise<Response> {
       const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
       const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
       const result = await fulfillOrder(svc, payment, order, orderItems);
+      try {
+        const event = (await svc.entities.Event.filter({ id: order?.event_id }))[0];
+        await deliverTickets(svc, event, order, result.tickets, orderItems);
+        await ensureCompanionInvites(base44, svc, orderItems);
+      } catch (e: any) { console.error('[getPaymentStatus] delivery failed:', e?.message || e); }
       return Response.json({ status: "succeeded", fulfillment_status: result.fulfilled ? "fulfilled" : "pending_retry", tickets: result.tickets.length, error: result.error });
     }
 

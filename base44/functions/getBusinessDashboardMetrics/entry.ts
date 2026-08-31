@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
+import { getPeriodRange, getPreviousRange, inRange, pctChange, dayKeyOf } from "../../shared/businessPeriod.ts";
 
 // P0.3 — Backend-driven aggregation for the Business Dashboard (read-side materializado).
 //
@@ -33,42 +34,6 @@ import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 //
 // Authorization: admin only.
 
-// === helpers (port de src/lib/businessUtils.js) ===
-function getPeriodRange(period, customStart, customEnd) {
-  const now = new Date();
-  const end = new Date(now);
-  let start = new Date(now);
-  switch (period) {
-    case "7d": start.setDate(start.getDate() - 7); break;
-    case "1m": start.setMonth(start.getMonth() - 1); break;
-    case "3m": start.setMonth(start.getMonth() - 3); break;
-    case "6m": start.setMonth(start.getMonth() - 6); break;
-    case "1y": start.setFullYear(start.getFullYear() - 1); break;
-    case "custom":
-      // Aceita date-only (snap meia-noite / fim-do-dia, retrocompatível) OU ISO datetime (precisão de minuto).
-      if (customStart) start = customStart.includes("T") ? new Date(customStart) : new Date(customStart + "T00:00:00");
-      if (customEnd) end.setTime((customEnd.includes("T") ? new Date(customEnd) : new Date(customEnd + "T23:59:59")).getTime());
-      break;
-    default: start.setMonth(start.getMonth() - 3);
-  }
-  return { start, end };
-}
-function getPreviousRange(start, end) {
-  const duration = end.getTime() - start.getTime();
-  const prevEnd = new Date(start);
-  const prevStart = new Date(start.getTime() - duration);
-  return { start: prevStart, end: prevEnd };
-}
-function inRange(dateStr, start, end) {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  return d >= start && d <= end;
-}
-function pctChange(current, previous) {
-  if (previous === 0 && current === 0) return 0;
-  if (previous === 0) return null;
-  return ((current - previous) / previous) * 100;
-}
 function getBucketKey(dateStr, bucketType) {
   const d = new Date(dateStr);
   if (bucketType === "month") return d.toISOString().slice(0, 7);
@@ -93,7 +58,7 @@ function getBucketType(days) {
   if (days <= 180) return "week";
   return "month";
 }
-function dayKeyOf(d) { return new Date(d).toISOString().slice(0, 10); }
+
 
 // Lê buckets casados pela chave. `dimension` só entra no filtro quando não-vazio.
 async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerId, dimension }) {

@@ -29,6 +29,7 @@ export default function TicketStore({ eventId, user }) {
         ticket_type: ttype,
         holder_name: "",
         holder_email: "",
+        holder_phone: "",
         key: `${lot.id}-${prev.length}`,
       },
     ]);
@@ -45,8 +46,8 @@ export default function TicketStore({ eventId, user }) {
   const checkout = () => {
     if (cart.length === 0) return;
     for (const c of cart) {
-      if (!c.holder_name.trim() || !c.holder_email.trim()) {
-        toast({ title: "Preencha nome e email de cada titular.", variant: "destructive" });
+      if (!c.holder_name.trim() || !c.holder_email.trim() || !c.holder_phone.trim()) {
+        toast({ title: "Preencha nome, email e telefone de cada titular.", variant: "destructive" });
         setCartOpen(true);
         return;
       }
@@ -56,6 +57,7 @@ export default function TicketStore({ eventId, user }) {
       ticket_type_id: c.ticket_type.id,
       holder_name: c.holder_name,
       holder_email: c.holder_email,
+      holder_phone: c.holder_phone,
     }));
     navigate(`/checkout/${eventId}`, { state: { items, couponCode } });
   };
@@ -140,6 +142,7 @@ export default function TicketStore({ eventId, user }) {
                   </div>
                   <Input placeholder="Nome do titular" value={c.holder_name} onChange={(e) => updateHolder(c.key, "holder_name", e.target.value)} />
                   <Input placeholder="Email do titular" type="email" value={c.holder_email} onChange={(e) => updateHolder(c.key, "holder_email", e.target.value)} />
+                  <Input placeholder="Telefone do titular" value={c.holder_phone} onChange={(e) => updateHolder(c.key, "holder_phone", e.target.value)} />
                 </div>
               ))
             )}

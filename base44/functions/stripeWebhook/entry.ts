@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from "base44:runtime";
 import { constructStripeEvent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, releaseReservations, processRefundSuccess } from "../../shared/commerceFulfillment.ts";
+import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
 //   payment_intent.succeeded  → idempotent fulfillment (participants + tickets + email)
@@ -46,11 +47,12 @@ export default async function(req: Request): Promise<Response> {
       // Idempotent fulfillment.
       const result = await fulfillOrder(svc, payment, order, orderItems);
 
-      // Best-effort email delivery (receipt + tickets) — non-blocking.
+      // Best-effort PDF delivery (ingresso com QR) — idempotente (pula já entregues).
       try {
-        await sendReceiptEmail(svc, order, result.tickets);
-      } catch (emailErr: any) {
-        console.error('[stripeWebhook] email send failed:', emailErr?.message || emailErr);
+        const event = (await svc.entities.Event.filter({ id: order.event_id }))[0];
+        await deliverTickets(svc, event, order, result.tickets, orderItems);
+      } catch (delivErr: any) {
+        console.error('[stripeWebhook] ticket delivery failed:', delivErr?.message || delivErr);
       }
 
       return Response.json({ received: true, fulfilled: result.fulfilled, tickets: result.tickets.length });
@@ -80,7 +82,16 @@ export default async function(req: Request): Promise<Response> {
 
       const refundAmountBRL = (charge.amount_refunded || 0) / 100;
       const isPartial = (charge.amount_refunded || 0) < (charge.amount || 0);
-      await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial);
+      // Per-item: se houver RefundRequest cancel_item, cancela só esses itens.
+      let orderItemIds: string[] | undefined = undefined;
+      try {
+        const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id });
+        const latest = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
+        if (latest && latest.refund_type === "cancel_item" && Array.isArray(latest.order_item_ids) && latest.order_item_ids.length > 0) {
+          orderItemIds = latest.order_item_ids;
+        }
+      } catch {}
+      await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
       return Response.json({ received: true, refundAmount: refundAmountBRL, partial: isPartial });
     }
 
@@ -90,20 +101,4 @@ export default async function(req: Request): Promise<Response> {
     console.error('[stripeWebhook] error:', error?.message || error);
     return Response.json({ error: error.message }, { status: 500 });
   }
-}
-
-// Best-effort receipt email via SendEmail integration.
-async function sendReceiptEmail(svc: any, order: any, tickets: any[]): Promise<void> {
-  if (!order.buyer_email) return;
-  const event = (await svc.entities.Event.filter({ id: order.event_id }))[0];
-  const eventName = event?.name || "Evento";
-  const lines = tickets.map((t: any, i: number) =>
-    `${i + 1}. ${t.ticket_type_name} — ${t.holder_name} (${t.holder_email})\n   Código: ${t.hash_code}`
-  ).join("\n\n");
-  const body = `Olá ${order.buyer_name || ""},\n\nSua compra no evento "${eventName}" foi confirmada!\n\nPedido: ${order.id}\nTotal: R$ ${Number(order.total).toFixed(2)}\n\nSeus ingressos:\n\n${lines}\n\nApresente o código (ou o QR no app) no credenciamento.\n\nEvolve Summit`;
-  await svc.integrations.Core.SendEmail({
-    to: order.buyer_email,
-    subject: `Ingressos confirmados — ${eventName}`,
-    body,
-  });
 }

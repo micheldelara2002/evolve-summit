@@ -8,6 +8,7 @@ import BusinessKPICard from "@/components/business/BusinessKPICard";
 import BusinessCharts from "@/components/business/BusinessCharts";
 import BusinessTopEventsTable from "@/components/business/BusinessTopEventsTable";
 import BusinessEventsByMonth from "@/components/business/BusinessEventsByMonth";
+import BusinessSalesSection from "@/components/business/BusinessSalesSection";
 import PageHeader from "@/components/layout/PageHeader";
 import { formatDateTime } from "@/lib/businessUtils";
 
@@ -107,6 +108,13 @@ export default function BusinessDashboard() {
         data={topEvents}
         loading={isLoading}
         error={isError}
+      />
+
+      <BusinessSalesSection
+        period={period}
+        customStart={customStart}
+        customEnd={customEnd}
+        eventFilter={eventFilter}
       />
     </div>
   );

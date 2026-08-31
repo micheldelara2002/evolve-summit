@@ -54,3 +54,12 @@ export const getMyOrders = (orderId) =>
 // ===== Refund =====
 export const requestRefund = (paymentId, reason, refundType = "full", manualApprove = false) =>
   invoke("requestRefund", { paymentId, reason, refundType, manualApprove });
+
+export const requestRefundItems = (paymentId, order_item_ids, reason = "", manualApprove = false) =>
+  invoke("requestRefund", { paymentId, reason, refundType: "cancel_item", manualApprove, order_item_ids });
+
+// ===== Sales analytics (admin/gerente) =====
+export const getSalesMetrics = (filters) => invoke("getSalesMetrics", filters);
+export const getEventSalesSummary = (eventId) => invoke("getEventSalesSummary", { eventId });
+export const getEventOrders = (eventId) => invoke("getEventOrders", { eventId });
+export const checkinTicket = (code) => invoke("checkinTicket", { code });

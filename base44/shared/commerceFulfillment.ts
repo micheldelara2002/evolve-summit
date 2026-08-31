@@ -15,17 +15,34 @@ import { generateTicketHash } from "./commercePolicy.ts";
 import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decParticipantsByRole } from "./businessMetrics.ts";
 
 // Resolve or create a Person by contact_email (companion may not have an account yet).
-async function ensurePerson(svc: any, name: string, email: string): Promise<string> {
+async function ensurePerson(svc: any, name: string, email: string, phone?: string): Promise<string> {
   const existing = await svc.entities.Person.filter({ contact_email: email, is_active: true });
   if (existing.length > 0) return existing[0].id;
   const person = await svc.entities.Person.create({
     full_name: name,
     contact_email: email,
+    phone: phone || "",
     is_active: true,
     created_day: new Date().toISOString().slice(0, 10),
     metrics_inc: true,
   });
   return person.id;
+}
+
+// Convida titulares (acompanhantes) sem conta de usuário no app. Idempotente:
+// pula quem já é User; erros de invite são silenciados. Usa o client normal
+// (autenticado) — chamado a partir do getPaymentStatus (buyer autenticado).
+export async function ensureCompanionInvites(base44: any, svc: any, orderItems: any[]): Promise<void> {
+  const emails = [...new Set(orderItems.map((i: any) => i.holder_email).filter(Boolean))];
+  for (const email of emails) {
+    try {
+      const existing = await svc.entities.User.filter({ email });
+      if (existing && existing.length > 0) continue;
+      await base44.users.inviteUser(email, "user");
+    } catch (err: any) {
+      console.error("[ensureCompanionInvites] invite failed for", email, err?.message || err);
+    }
+  }
 }
 
 // Idempotent fulfillment: create Participants + Tickets for a paid order.
@@ -58,7 +75,7 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         continue;
       }
       // Ensure Person for the holder.
-      const personId = await ensurePerson(svc, item.holder_name, item.holder_email);
+      const personId = await ensurePerson(svc, item.holder_name, item.holder_email, item.holder_phone);
 
       // Create Participant in the event (registration_status 'paid').
       const existingPart = await svc.entities.Participant.filter({
@@ -81,6 +98,7 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
           event_id: order.event_id,
           full_name: item.holder_name,
           email: item.holder_email,
+          phone: item.holder_phone || "",
           person_id: personId,
           role_in_event: "attendee",
           registration_status: "confirmed",
@@ -169,14 +187,16 @@ export async function releaseReservations(svc: any, orderItems: any[]): Promise<
 }
 
 // Process a successful refund: cancel participants + tickets + EventStats.
-export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean): Promise<void> {
+export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[]): Promise<void> {
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
+  const targetItemIds = orderItemIds && orderItemIds.length > 0 ? new Set(orderItemIds) : null;
+  const relevantTickets = targetItemIds ? tickets.filter((t: any) => targetItemIds.has(t.order_item_id)) : tickets;
 
   // For full refund: cancel all. For partial: we cancel proportionally (simplest: cancel
   // the items whose unit_price sums to ~refundAmount; here we cancel all and mark order
   // partially_refunded — full cancel is the supported primary path).
-  for (const ticket of tickets) {
+  for (const ticket of relevantTickets) {
     if (ticket.status === "cancelled" || ticket.status === "refunded") continue;
     await svc.entities.Ticket.update(ticket.id, { status: "refunded" });
     if (ticket.participant_id) {

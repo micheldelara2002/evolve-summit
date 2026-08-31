@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useOutletContext, useSearchParams, Navigate } from "react-router-dom";
 import EventModuleNav from "@/components/admin/EventModuleNav";
+import { getEventSalesSummary } from "@/lib/commerceApi";
 
 const LEGACY_TAB_MAP = {
   pessoas: "people", people: "people",
@@ -44,6 +45,11 @@ function EventModulesHomeContent({ eventId }) {
     queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  const { data: sales } = useQuery({
+    queryKey: ["event-sales-summary", eventId],
+    queryFn: () => getEventSalesSummary(eventId),
+  });
+
   const stats = [
     { value: participants.length, label: "Participantes", sub: `${participants.filter((p) => p.registration_status === "confirmed").length} confirmados` },
     { value: participants.filter((p) => p.checkin_status === "confirmed").length, label: "Check-in", sub: "presentes" },
@@ -64,6 +70,27 @@ function EventModulesHomeContent({ eventId }) {
           ))}
         </div>
       </div>
+
+      {/* Sales big numbers */}
+      {sales && (sales.ticketsSold > 0 || sales.revenue > 0 || sales.ordersPaid > 0) && (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-card rounded-xl p-3 text-center border border-border">
+            <p className="text-2xl font-bold text-primary">{sales.ticketsSold}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Ingressos vendidos</p>
+            <p className="text-[10px] text-muted-foreground/70">{sales.ticketsUsed} usados</p>
+          </div>
+          <div className="bg-card rounded-xl p-3 text-center border border-border">
+            <p className="text-2xl font-bold text-primary">R$ {Number(sales.revenue).toFixed(2)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Receita</p>
+            <p className="text-[10px] text-muted-foreground/70">{sales.ordersPaid} pedido(s)</p>
+          </div>
+          <div className="bg-card rounded-xl p-3 text-center border border-border">
+            <p className="text-2xl font-bold text-primary">{sales.checkins}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Check-ins</p>
+            <p className="text-[10px] text-muted-foreground/70">confirmados</p>
+          </div>
+        </div>
+      )}
 
       {/* Module navigation cards */}
       <EventModuleNav eventId={eventId} />
