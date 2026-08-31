@@ -36,14 +36,18 @@ export default async function(req: Request): Promise<Response> {
     const sorted = orders.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const orderIds = sorted.map((o: any) => o.id);
 
-    const [allItems, allTickets, allPayments] = await Promise.all([
+    const eventIds = Array.from(new Set(sorted.map((o: any) => o.event_id).filter(Boolean)));
+    const [allItems, allTickets, allPayments, events] = await Promise.all([
       svc.entities.OrderItem.filter({ order_id: { $in: orderIds }, is_deleted: false }),
       svc.entities.Ticket.filter({ order_id: { $in: orderIds }, is_deleted: false }),
       svc.entities.Payment.filter({ order_id: { $in: orderIds } }),
+      eventIds.length ? svc.entities.Event.filter({ id: { $in: eventIds } }) : [],
     ]);
+    const eventById = new Map(events.map((e: any) => [e.id, e]));
 
     const result = sorted.map((o: any) => ({
       ...o,
+      event: eventById.get(o.event_id) || null,
       items: allItems.filter((i: any) => i.order_id === o.id),
       tickets: allTickets.filter((t: any) => t.order_id === o.id),
       payment: allPayments.find((p: any) => p.order_id === o.id),

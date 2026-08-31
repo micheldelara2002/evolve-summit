@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Pencil, Camera, Mail, Star, Award, Users, Trophy, ShoppingBag,
-  Moon, Sun, Monitor, LogOut,
+  Moon, Sun, Monitor, LogOut, Ticket,
 } from "lucide-react";
 import { useTheme } from "@/lib/ThemeContext";
 import { t } from "@/lib/i18n";
@@ -226,6 +226,7 @@ export default function UserProfile() {
     { label: "Conexões", icon: Users, onClick: () => navigate("/network"), active: true },
     { label: "Ranking", icon: Trophy, onClick: () => setShowRanking(true), active: true },
     { label: "Resgates", icon: ShoppingBag, onClick: () => setShowResgates(true), active: true },
+    { label: "Meus Ingressos", icon: Ticket, onClick: () => navigate("/my-tickets"), active: true },
   ];
 
   return (

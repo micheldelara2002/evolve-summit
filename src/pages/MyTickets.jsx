@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Ticket, Calendar, QrCode } from "lucide-react";
+import { ArrowLeft, Ticket, Calendar, QrCode, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMyOrders } from "@/lib/commerceApi";
 
@@ -38,7 +38,8 @@ export default function MyTickets() {
       ) : (
         <div className="space-y-5">
           {orders.map((order) => {
-            const event = order.event_id;
+            const event = order.event;
+            const eventDate = event?.start_date ? new Date(event.start_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : null;
             return (
               <div key={order.id} className="rounded-2xl bg-card border border-border overflow-hidden">
                 <div className="p-4 border-b border-border bg-muted/30">
@@ -48,12 +49,21 @@ export default function MyTickets() {
                     </span>
                     <span className="text-xs text-muted-foreground">{new Date(order.created_date).toLocaleDateString("pt-BR")}</span>
                   </div>
+                  {event && (
+                    <div className="mt-2">
+                      <p className="font-display font-bold text-base leading-tight">{event.name}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
+                        {eventDate && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {eventDate}</span>}
+                        {event.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {event.location}</span>}
+                      </div>
+                    </div>
+                  )}
                   <p className="font-display font-bold text-lg mt-1.5">R$ {Number(order.total).toFixed(2)}</p>
                   {order.coupon_code && <p className="text-[11px] text-emerald-500">Cupom: {order.coupon_code}</p>}
                 </div>
                 <div className="divide-y divide-border">
                   {order.tickets.map((ticket) => (
-                    <TicketRow key={ticket.id} ticket={ticket} eventId={event} />
+                    <TicketRow key={ticket.id} ticket={ticket} eventId={order.event_id} />
                   ))}
                   {order.tickets.length === 0 && order.status === "pending" && (
                     <div className="p-4 text-sm text-muted-foreground">Pagamento em processamento…</div>
