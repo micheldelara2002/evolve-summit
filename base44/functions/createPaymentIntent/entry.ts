@@ -3,6 +3,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
 import { createPaymentIntent } from "../../shared/stripeClient.ts";
+import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
 // Reserves lot quantities atomically (cannot oversell). Returns the client secret
@@ -167,6 +168,46 @@ export default async function(req: Request): Promise<Response> {
         unit_price: l.unit_price,
       });
       orderItems.push(oi);
+    }
+
+    // Free order (100% discount) — skip Stripe, fulfill immediately.
+    if (totals.total <= 0) {
+      const freePayment = await svc.entities.Payment.create({
+        order_id: order.id,
+        event_id: eventId,
+        buyer_user_id: user.id,
+        intent_id: `free_${order.id}`,
+        amount: 0,
+        amount_cents: 0,
+        currency: 'BRL',
+        status: 'pending',
+        provider: 'free',
+        payment_method: 'free',
+        refunded_amount: 0,
+        fulfillment_status: 'pending',
+      });
+      try {
+        await fulfillOrder(svc, freePayment, order, orderItems);
+      } catch (err: any) {
+        console.error('[createPaymentIntent] free fulfillment error:', err?.message || err);
+      }
+      try { await ensureCompanionInvites(base44, svc, orderItems); } catch {}
+      if (coupon && totals.coupon_valid) {
+        try {
+          await svc.entities.Coupon.updateMany(
+            { id: coupon.id, uses_count: { $lt: coupon.max_uses || Number.MAX_SAFE_INTEGER } },
+            { $inc: { uses_count: 1 } }
+          );
+        } catch {}
+      }
+      return Response.json({
+        free: true,
+        order_id: order.id,
+        payment_id: freePayment.id,
+        total: totals.total,
+        subtotal: totals.subtotal,
+        discount: totals.discount,
+      });
     }
 
     // Create Stripe PaymentIntent.

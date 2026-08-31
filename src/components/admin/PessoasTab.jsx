@@ -444,7 +444,16 @@ export default function PessoasTab({
         />
       )}
 
-      <QRScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleTicketScan} />
+      <QRScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleTicketScan}
+        title="Check-in do Ingresso"
+        codeLabel="Digite o código do ingresso:"
+        codePlaceholder="Código do ingresso"
+        hint="Aponte a câmera para o QR Code do ingresso."
+        confirmLabel="Confirmar check-in"
+      />
 
       <ConfirmDeleteDialog
         open={!!removeTarget}

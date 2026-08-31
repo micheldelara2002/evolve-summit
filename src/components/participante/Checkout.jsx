@@ -34,10 +34,21 @@ export default function Checkout({ eventId }) {
     let cancelled = false;
     (async () => {
       try {
+        const res = await createPaymentIntent(eventId, items, couponCode || undefined);
+        if (cancelled) return;
+        // Free order (100% discount) — already fulfilled server-side, no Stripe needed.
+        if (res.free) {
+          setIntent(res);
+          return;
+        }
+        // Paid order — Stripe requires a top-level window (not inside an iframe).
+        if (window.self !== window.top) {
+          setIframeBlocked(true);
+          return;
+        }
         const ticketData = await getEventTickets(eventId);
         const pk = ticketData.publishable_key;
         if (!pk) throw new Error("Stripe não configurado.");
-        const res = await createPaymentIntent(eventId, items, couponCode || undefined);
         if (cancelled) return;
         setPublishableKey(pk);
         setIntent(res);
@@ -77,6 +88,10 @@ export default function Checkout({ eventId }) {
         <Button variant="outline" onClick={() => navigate(`/event/${eventId}`)}><ArrowLeft className="w-4 h-4 mr-2" /> Voltar</Button>
       </div>
     );
+  }
+
+  if (intent?.free) {
+    return <SuccessScreen eventId={eventId} />;
   }
 
   const stripe = publishableKey ? loadStripe(publishableKey) : null;

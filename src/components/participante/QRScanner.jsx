@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { ScanLine, CameraOff, Keyboard } from "lucide-react";
 
-export default function QRScanner({ open, onClose, onScan }) {
+export default function QRScanner({ open, onClose, onScan, title = "Ler QR Code", codeLabel = "Digite o código:", codePlaceholder = "Código", hint = "Aponte a câmera para o QR Code.", confirmLabel = "Confirmar código" }) {
   const videoRef = useRef(null);
   const detectorRef = useRef(null);
   const streamRef = useRef(null);
@@ -92,7 +92,7 @@ export default function QRScanner({ open, onClose, onScan }) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ScanLine className="w-5 h-5" /> Ler QR Code
+            <ScanLine className="w-5 h-5" /> {title}
           </DialogTitle>
         </DialogHeader>
 
@@ -105,17 +105,17 @@ export default function QRScanner({ open, onClose, onScan }) {
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Digite o código do parceiro:</p>
+              <p className="text-xs text-muted-foreground">{codeLabel}</p>
               <input
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Código do parceiro"
+                placeholder={codePlaceholder}
                 className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onKeyDown={(e) => e.key === "Enter" && handleManualSubmit()}
               />
               <Button className="w-full" onClick={handleManualSubmit} disabled={!manualCode.trim()}>
-                Confirmar código
+                {confirmLabel}
               </Button>
             </div>
           </div>
@@ -128,7 +128,7 @@ export default function QRScanner({ open, onClose, onScan }) {
               </div>
             </div>
             <p className="text-xs text-muted-foreground text-center">
-              Aponte a câmera para o QR Code do parceiro.
+              {hint}
             </p>
             <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setManualMode(true)}>
               <Keyboard className="w-3.5 h-3.5" /> Digitar código manualmente
@@ -139,12 +139,12 @@ export default function QRScanner({ open, onClose, onScan }) {
                   type="text"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
-                  placeholder="Código do parceiro"
+                  placeholder={codePlaceholder}
                   className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   onKeyDown={(e) => e.key === "Enter" && handleManualSubmit()}
                 />
                 <Button className="w-full" onClick={handleManualSubmit} disabled={!manualCode.trim()}>
-                  Confirmar código
+                  {confirmLabel}
                 </Button>
               </div>
             )}

@@ -165,7 +165,16 @@ export default function QRScan() {
         </div>
       )}
 
-      <QRScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
+      <QRScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleScan}
+        title="Escanear QR do Parceiro"
+        codeLabel="Digite o código do parceiro:"
+        codePlaceholder="Código do parceiro"
+        hint="Aponte a câmera para o QR Code do parceiro."
+        confirmLabel="Confirmar código"
+      />
 
       <PartnerVisitModal
         partnerId={scanPartnerId}
