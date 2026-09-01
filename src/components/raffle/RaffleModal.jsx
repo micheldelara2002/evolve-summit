@@ -179,12 +179,8 @@ export default function RaffleModal({
         executed_at: rounds[0]?.drawn_at || new Date().toISOString(),
         saved_at: new Date().toISOString(),
       };
-      if (savedRaffleId) {
-        await base44.entities.Raffle.update(savedRaffleId, payload);
-        return savedRaffleId;
-      }
-      const created = await base44.entities.Raffle.create(payload);
-      return created.id;
+      const res = await base44.functions.invoke('saveRaffle', { id: savedRaffleId || undefined, ...payload });
+      return res.data?.id;
     },
     onSuccess: (id) => {
       setSavedRaffleId(id);

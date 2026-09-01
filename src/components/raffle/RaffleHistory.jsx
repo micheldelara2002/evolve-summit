@@ -20,7 +20,10 @@ const STATUS_CONFIG = {
 export default function RaffleHistory({ eventId }) {
   const { data: raffles = [], isLoading } = useQuery({
     queryKey: ["raffles", eventId],
-    queryFn: () => base44.entities.Raffle.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventRaffles', { eventId });
+      return res.data?.raffles || [];
+    },
     enabled: !!eventId,
   });
 

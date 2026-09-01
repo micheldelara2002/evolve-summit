@@ -29,7 +29,10 @@ export default function PartnerSponsorshipTab({ eventId, partnerId }) {
   // EventPartner para obter o plano
   const { data: eventPartners = [] } = useQuery({
     queryKey: ["sponsorship_ep", eventId, partnerId],
-    queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, partner_id: partnerId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventPartners', { eventId, partnerId });
+      return res.data?.eventPartners || [];
+    },
     enabled: !!eventId && !!partnerId,
   });
 

@@ -86,11 +86,8 @@ function SpeakerCard({ session }) {
       if (!reps.length) return null;
 
       // Verificar se o partner está vinculado a este evento
-      const eventPartners = await base44.entities.EventPartner.filter({
-        event_id: session.event_id,
-        is_active: true,
-        is_deleted: false,
-      });
+      const epRes = await base44.functions.invoke('getEventPartners', { eventId: session.event_id });
+      const eventPartners = (epRes.data?.eventPartners || []).filter((ep) => ep.is_active);
       const rep = reps.find((r) => eventPartners.some((ep) => ep.partner_id === r.partner_id));
       if (!rep) return null;
 

@@ -19,7 +19,10 @@ const PLAN_CONFIG = {
 export default function SponsorsStrip({ eventId }) {
   const { data: eventPartners = [] } = useQuery({
     queryKey: ["event-partners-strip", eventId],
-    queryFn: () => base44.entities.EventPartner.filter({ event_id: eventId, is_active: true, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventPartners', { eventId });
+      return (res.data?.eventPartners || []).filter((ep) => ep.is_active);
+    },
     enabled: !!eventId,
   });
 

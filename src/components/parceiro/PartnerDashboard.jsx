@@ -10,7 +10,10 @@ export default function PartnerDashboard({ partnerId }) {
   // Eventos do partner
   const { data: eventPartners = [] } = useQuery({
     queryKey: ["dash_event_partners", partnerId],
-    queryFn: () => base44.entities.EventPartner.filter({ partner_id: partnerId, is_active: true, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventPartners', { partnerId });
+      return res.data?.eventPartners || [];
+    },
     enabled: !!partnerId,
   });
 
