@@ -70,7 +70,7 @@
           }
         },
         {
-          "recipient_user_id": "{{user.id}}"
+          "data.recipient_user_id": "{{user.id}}"
         }
       ]
     },
@@ -87,7 +87,7 @@
           }
         },
         {
-          "recipient_user_id": "{{user.id}}"
+          "data.recipient_user_id": "{{user.id}}"
         }
       ]
     },
