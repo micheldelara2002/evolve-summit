@@ -490,20 +490,23 @@ function MentorshipSection({ session, participant, isReadOnly }) {
   const queryClient = useQueryClient();
   const { data: existing = [] } = useQuery({
     queryKey: ["mentorship", session.id, participant?.id],
-    queryFn: () => base44.entities.MentorshipRequest.filter({ session_id: session.id, participant_id: participant?.id }),
+    queryFn: async () => {
+      if (!participant?.id) return [];
+      const res = await base44.functions.invoke('getMentorshipRequests', { participantId: participant.id, sessionId: session.id });
+      return res.data?.mentorshipRequests || [];
+    },
     enabled: !!participant?.id,
   });
   const alreadyRequested = existing.some((r) => r.status !== "cancelled");
 
   const requestMut = useMutation({
-    mutationFn: () => base44.entities.MentorshipRequest.create({
-      event_id: session.event_id,
-      session_id: session.id,
-      participant_id: participant?.id,
-      person_id: participant?.person_id,
-      mentor_participant_id: session.speaker_id || undefined,
+    mutationFn: () => base44.functions.invoke('saveMentorshipRequest', {
+      eventId: session.event_id,
+      sessionId: session.id,
+      participantId: participant?.id,
+      personId: participant?.person_id,
+      mentorParticipantId: session.speaker_id || undefined,
       topic: session.title,
-      requested_at: new Date().toISOString(),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mentorship", session.id, participant?.id] });

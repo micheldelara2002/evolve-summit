@@ -63,7 +63,7 @@ export default function JobPostingCard({ job, personMap, myPerson, myParticipant
     if (!confirm(t("jobBoard.deleteConfirm"))) return;
     setDeleting(true);
     try {
-      await base44.entities.JobPosting.update(job.id, { is_deleted: true });
+      await base44.functions.invoke('deleteJobPosting', { id: job.id });
       queryClient.invalidateQueries({ queryKey: ["job_postings", job.event_id] });
       toast.success(t("jobBoard.deleteSuccess"));
     } catch (e) {

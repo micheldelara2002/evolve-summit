@@ -54,9 +54,8 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
     queryKey: ["speaker-mentorships-kpi", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      return base44.entities.MentorshipRequest.filter({
-        mentor_participant_id: { $in: participantIds },
-      });
+      const res = await base44.functions.invoke('getMentorshipRequests', { mentorParticipantIds: participantIds });
+      return res.data?.mentorshipRequests || [];
     },
     enabled: participantIds.length > 0,
   });

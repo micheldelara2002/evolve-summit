@@ -14,7 +14,10 @@ export default function JobBoardView({ eventId, myPerson, myParticipant, user, i
 
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ["job_postings", eventId],
-    queryFn: () => base44.entities.JobPosting.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getJobPostings', { eventId });
+      return res.data?.jobPostings || [];
+    },
   });
 
   const personIds = [...new Set(jobs.map((j) => j.person_id).filter(Boolean))];

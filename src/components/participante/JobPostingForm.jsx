@@ -42,17 +42,16 @@ export default function JobPostingForm({ open, onClose, eventId, participantId, 
         description: sanitizeText(description.trim().slice(0, MAX_DESC)),
       };
 
-      if (isEditing) {
-        return base44.entities.JobPosting.update(editingJob.id, payload);
-      }
-      return base44.entities.JobPosting.create({
-        ...payload,
-        event_id: eventId,
-        participant_id: participantId,
-        person_id: personId,
+      const res = await base44.functions.invoke('saveJobPosting', {
+        id: isEditing ? editingJob.id : undefined,
+        eventId,
+        participantId,
+        personId,
         poster_name: person?.full_name || "",
         poster_photo_url: person?.photo_url || "",
+        ...payload,
       });
+      return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["job_postings", eventId] });

@@ -1,6 +1,7 @@
 {
   "name": "ChatMessage",
   "type": "object",
+  "description": "Mensagem de chat 1:1 dentro de uma ChatThread. Lote 1 RLS: travado para admin (SDK direto s\u00f3 pelo admin). Participantes leem via getChatMessages e enviam via sendChatMessage (backend functions que validam posse da thread).",
   "properties": {
     "thread_id": {
       "type": "string",
@@ -32,5 +33,27 @@
     "thread_id",
     "sender_person_id",
     "message_text"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

@@ -31,20 +31,13 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["chat_messages", threadId],
-    queryFn: () => base44.entities.ChatMessage.filter({ thread_id: threadId }, "-created_date", 100),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getChatMessages', { threadId });
+      return res.data?.messages || [];
+    },
     refetchInterval: 5000,
     enabled: isAuthorized,
   });
-
-  // Real-time subscription
-  useEffect(() => {
-    const unsub = base44.entities.ChatMessage.subscribe((event) => {
-      if (event.data?.thread_id === threadId) {
-        queryClient.invalidateQueries({ queryKey: ["chat_messages", threadId] });
-      }
-    });
-    return unsub;
-  }, [threadId, queryClient]);
 
   // Auto-scroll
   useEffect(() => {
@@ -52,16 +45,6 @@ export default function ChatWindow({ threadId, eventId, myPerson, otherPerson, i
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  // Mark messages from other person as read (batch — single API call)
-  useEffect(() => {
-    const unread = messages.filter((m) => m.sender_person_id !== myPerson.id && !m.read_at);
-    if (unread.length === 0) return;
-    const now = new Date().toISOString();
-    base44.entities.ChatMessage.bulkUpdate(unread.map((m) => ({ id: m.id, read_at: now })))
-      .then(() => queryClient.invalidateQueries({ queryKey: ["chat_messages", threadId] }))
-      .catch(() => {});
-  }, [messages, myPerson.id, threadId, queryClient]);
 
   const handleSend = async (e) => {
     e?.preventDefault();

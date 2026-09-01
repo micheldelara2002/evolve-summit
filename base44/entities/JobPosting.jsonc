@@ -1,7 +1,7 @@
 {
   "name": "JobPosting",
   "type": "object",
-  "description": "Mural de Vagas \u2014 oportunidades de emprego postadas por participantes dentro do contexto de um evento.",
+  "description": "Mural de Vagas \u2014 oportunidades de emprego postadas por participantes dentro do contexto de um evento. Lote 1 RLS: travado para admin (SDK direto s\u00f3 pelo admin). Participantes leem via getJobPostings, criam/editam via saveJobPosting e excluem via deleteJobPosting (backend functions que validam posse/modera\u00e7\u00e3o).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -45,5 +45,27 @@
     "participant_id",
     "job_title",
     "contact_email"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

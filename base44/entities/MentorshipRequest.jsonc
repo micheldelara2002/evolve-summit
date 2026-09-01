@@ -1,6 +1,7 @@
 {
   "name": "MentorshipRequest",
   "type": "object",
+  "description": "Solicita\u00e7\u00e3o de mentoria de um participante a um palestrante em uma sess\u00e3o. Lote 1 RLS: travado para admin (SDK direto s\u00f3 pelo admin). Participantes/palestrantes leem via getMentorshipRequests e criam/atualizam via saveMentorshipRequest (backend functions que validam posse do Participant).",
   "properties": {
     "event_id": {
       "type": "string"
@@ -45,5 +46,27 @@
     "event_id",
     "session_id",
     "participant_id"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
