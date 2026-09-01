@@ -1,6 +1,7 @@
 {
   "name": "EventPartner",
   "type": "object",
+  "description": "V\u00ednculo de um Partner a um Evento com plano de patroc\u00ednio. Lote 1 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Participantes/parceiros leem via getEventPartners (backend function que valida membership).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -39,5 +40,27 @@
     "event_id",
     "partner_id",
     "sponsorship_plan"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
