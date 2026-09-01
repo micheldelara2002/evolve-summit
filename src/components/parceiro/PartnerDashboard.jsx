@@ -20,7 +20,10 @@ export default function PartnerDashboard({ partnerId }) {
   // Leads do partner (todos os eventos)
   const { data: leads = [] } = useQuery({
     queryKey: ["dash_leads", partnerId],
-    queryFn: () => base44.entities.Lead.filter({ partner_id: partnerId }),
+    queryFn: async () => {
+      const r = await base44.functions.invoke('getMyLeads', { partnerId });
+      return r.data?.leads || [];
+    },
     enabled: !!partnerId,
   });
 

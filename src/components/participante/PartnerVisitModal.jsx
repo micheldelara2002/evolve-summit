@@ -31,16 +31,16 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
   const validationQ = useQuery({
     queryKey: ["partner_visit_check", eventId, partnerId, personId],
     queryFn: async () => {
-      const [epRes, existingLeads] = await Promise.all([
+      const [epRes, visitRes] = await Promise.all([
         base44.functions.invoke('getEventPartners', { eventId }),
         personId
-          ? base44.entities.Lead.filter({ event_id: eventId, partner_id: partnerId, person_id: personId, source: "booth_scan" })
-          : Promise.resolve([]),
+          ? base44.functions.invoke('checkExistingVisit', { eventId, partnerId, personId })
+          : Promise.resolve({ data: { alreadyVisited: false } }),
       ]);
       const eventPartners = epRes.data?.eventPartners || [];
       return {
         isInEvent: eventPartners.some((ep) => ep.partner_id === partnerId && ep.is_active),
-        alreadyVisited: existingLeads.length > 0,
+        alreadyVisited: !!visitRes.data?.alreadyVisited,
       };
     },
     enabled: !!partnerId && !!eventId,

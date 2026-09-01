@@ -32,7 +32,10 @@ export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, 
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["partner_leads", eventId, partnerId],
-    queryFn: () => base44.entities.Lead.filter({ event_id: eventId, partner_id: partnerId }),
+    queryFn: async () => {
+      const r = await base44.functions.invoke('getMyLeads', { partnerId, eventId });
+      return r.data?.leads || [];
+    },
     enabled: !!eventId && !!partnerId,
   });
 
