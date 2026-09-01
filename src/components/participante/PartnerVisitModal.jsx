@@ -20,7 +20,10 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
   // Fetch partner
   const partnerQ = useQuery({
     queryKey: ["partner", partnerId],
-    queryFn: () => base44.entities.Partner.get(partnerId),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getPublicPartners', { partnerId });
+      return res.data?.partners?.[0] || null;
+    },
     enabled: !!partnerId,
   });
 
@@ -28,14 +31,15 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
   const validationQ = useQuery({
     queryKey: ["partner_visit_check", eventId, partnerId, personId],
     queryFn: async () => {
-      const [eventPartners, existingLeads] = await Promise.all([
-        base44.entities.EventPartner.filter({ event_id: eventId, partner_id: partnerId, is_deleted: false }),
+      const [epRes, existingLeads] = await Promise.all([
+        base44.functions.invoke('getEventPartners', { eventId }),
         personId
           ? base44.entities.Lead.filter({ event_id: eventId, partner_id: partnerId, person_id: personId, source: "booth_scan" })
-          : [],
+          : Promise.resolve([]),
       ]);
+      const eventPartners = epRes.data?.eventPartners || [];
       return {
-        isInEvent: eventPartners.some((ep) => ep.is_active),
+        isInEvent: eventPartners.some((ep) => ep.partner_id === partnerId && ep.is_active),
         alreadyVisited: existingLeads.length > 0,
       };
     },

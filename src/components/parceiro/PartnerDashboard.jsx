@@ -27,7 +27,10 @@ export default function PartnerDashboard({ partnerId }) {
   // Representatives do partner → person_ids
   const { data: reps = [] } = useQuery({
     queryKey: ["dash_reps", partnerId],
-    queryFn: () => base44.entities.PartnerRepresentative.filter({ partner_id: partnerId, is_active: true, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getPartnerRepresentatives', { partnerId });
+      return (res.data?.representatives || []).filter((r) => r.is_active);
+    },
     enabled: !!partnerId,
   });
 

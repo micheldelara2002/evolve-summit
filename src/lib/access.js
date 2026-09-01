@@ -47,36 +47,12 @@ export function canAccessPartnerAdmin(user) {
  */
 export async function loadPartnerReps(user) {
   if (!user?.id) return [];
-  let personId = user.person_id;
-  if (!personId && user.email) {
-    try {
-      const persons = await base44.entities.Person.filter({
-        contact_email: user.email,
-        is_active: true,
-      });
-      personId = persons[0]?.id;
-    } catch {
-      personId = null;
-    }
+  try {
+    const res = await base44.functions.invoke('getMyPartnerReps', {});
+    return res.data?.partnerReps || [];
+  } catch {
+    return [];
   }
-  const [byUser, byPerson] = await Promise.all([
-    base44.entities.PartnerRepresentative.filter({
-      user_id: user.id,
-      is_active: true,
-      is_deleted: false,
-    }),
-    personId
-      ? base44.entities.PartnerRepresentative.filter({
-          person_id: personId,
-          is_active: true,
-          is_deleted: false,
-        })
-      : Promise.resolve([]),
-  ]);
-  const seen = new Set();
-  return [...byUser, ...byPerson].filter(
-    (r) => !seen.has(r.id) && seen.add(r.id)
-  );
 }
 
 /**

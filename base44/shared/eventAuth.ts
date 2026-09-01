@@ -138,3 +138,69 @@ export async function canAccessPartnerData(base44, user, partnerId) {
   const [byUser, byPerson] = await Promise.all(queries);
   return (byUser?.length > 0) || (byPerson?.length > 0);
 }
+
+/**
+ * Autorização de GESTÃO de um parceiro (Lote 2):
+ * admin, OU PartnerRepresentative ativo com role_in_partner 'partner_manager'
+ * vinculado por user_id ou person_id. Usada por savePartner/savePartnerRep/
+ * getManagedPartners para validar que o chamador pode editar a empresa e seus reps.
+ */
+export async function canManagePartnerData(base44, user, partnerId) {
+  if (!user || !partnerId) return false;
+  if (user.role === 'admin') return true;
+
+  const personId = await resolveUserPersonId(base44, user);
+  const queries = [
+    base44.asServiceRole.entities.PartnerRepresentative.filter({
+      partner_id: partnerId,
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+      role_in_partner: 'partner_manager',
+    }),
+  ];
+  if (personId) {
+    queries.push(
+      base44.asServiceRole.entities.PartnerRepresentative.filter({
+        partner_id: partnerId,
+        person_id: personId,
+        is_active: true,
+        is_deleted: false,
+        role_in_partner: 'partner_manager',
+      })
+    );
+  }
+  const [byUser, byPerson] = await Promise.all(queries);
+  return (byUser?.length > 0) || (byPerson?.length > 0);
+}
+
+/**
+ * Resolve os partner_ids que o usuário gerencia como partner_manager (Lote 2).
+ * Usado por getManagedPartners para escopar a lista de empresas.
+ */
+export async function resolveUserPartnerManagerIds(base44, user) {
+  if (!user) return [];
+  const personId = await resolveUserPersonId(base44, user);
+  const queries = [
+    base44.asServiceRole.entities.PartnerRepresentative.filter({
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+      role_in_partner: 'partner_manager',
+    }),
+  ];
+  if (personId) {
+    queries.push(
+      base44.asServiceRole.entities.PartnerRepresentative.filter({
+        person_id: personId,
+        is_active: true,
+        is_deleted: false,
+        role_in_partner: 'partner_manager',
+      })
+    );
+  }
+  const [byUser, byPerson] = await Promise.all(queries);
+  const ids = new Set();
+  for (const r of [...(byUser || []), ...(byPerson || [])]) if (r.partner_id) ids.add(r.partner_id);
+  return [...ids];
+}

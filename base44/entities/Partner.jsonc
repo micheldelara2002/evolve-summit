@@ -1,6 +1,7 @@
 {
   "name": "Partner",
   "type": "object",
+  "description": "Empresa parceira (cat\u00e1logo global de patrocinadores). Lote 2 RLS: travado para admin (SDK direto s\u00f3 pelo admin). Gestores (partner_manager) leem a pr\u00f3pria empresa via getPartnerProfile e gerenciam via savePartner; exibi\u00e7\u00f5es p\u00fablicas (patrocinadores, ficha de estande) usam getPublicPartners/getSpeakerPartner (campos p\u00fablicos sem PII).",
   "properties": {
     "legal_name": {
       "type": "string",
@@ -64,5 +65,27 @@
     "legal_country_code",
     "legal_document_type",
     "legal_document_number"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

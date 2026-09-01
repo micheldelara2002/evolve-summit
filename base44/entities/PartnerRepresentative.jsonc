@@ -1,6 +1,7 @@
 {
   "name": "PartnerRepresentative",
   "type": "object",
+  "description": "V\u00ednculo de uma Person a um Partner com papel (partner_manager/representative). Lote 2 RLS: travado para admin (SDK direto s\u00f3 pelo admin). O pr\u00f3prio usu\u00e1rio l\u00ea seus v\u00ednculos via getMyPartnerReps; gestores leem os reps da sua empresa via getPartnerRepresentatives e gerenciam via savePartnerRep (backend functions que validam canManagePartnerData).",
   "properties": {
     "partner_id": {
       "type": "string",
@@ -42,5 +43,27 @@
     "partner_id",
     "person_id",
     "role_in_partner"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

@@ -32,8 +32,8 @@ export default function SponsorsStrip({ eventId }) {
     queryKey: ["partners-strip", partnerIds.join(",")],
     queryFn: async () => {
       if (!partnerIds.length) return [];
-      const all = await base44.entities.Partner.filter({ is_active: true, is_deleted: false });
-      return all.filter((p) => partnerIds.includes(p.id));
+      const res = await base44.functions.invoke('getPublicPartners', { partnerIds });
+      return res.data?.partners || [];
     },
     enabled: partnerIds.length > 0,
   });

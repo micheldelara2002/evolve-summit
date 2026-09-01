@@ -125,11 +125,11 @@ function PartnerFormDialog({ partner, onClose, onSaved, allPartners = [] }) {
         is_active: form.is_active ?? true,
       };
       if (partner?.id) {
-        await base44.entities.Partner.update(partner.id, payload);
+        await base44.functions.invoke('savePartner', { id: partner.id, payload });
       } else {
-        const created = await base44.entities.Partner.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
+        const created = await base44.functions.invoke('savePartner', { payload });
         // P0.3 — bucket global diário de partners (best-effort; reconcile corrige drift)
-        try { await incPartnersCounter(created?.created_date); } catch {}
+        try { await incPartnersCounter(created?.data?.created_date); } catch {}
       }
       onSaved();
     } catch (err) { toast.error("Erro: " + err.message); }
@@ -248,7 +248,10 @@ function RepresentativesDialog({ partner, onClose }) {
 
   const { data: reps = [], refetch: refetchReps } = useQuery({
     queryKey: ["partner_reps", partner.id],
-    queryFn: () => base44.entities.PartnerRepresentative.filter({ partner_id: partner.id, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getPartnerRepresentatives', { partnerId: partner.id });
+      return res.data?.representatives || [];
+    },
   });
 
   const { data: allPersons = [] } = useQuery({
@@ -267,17 +270,12 @@ function RepresentativesDialog({ partner, onClose }) {
       (r) => r.person_id === newRep.person_id && r.role_in_partner === newRep.role_in_partner && r.is_active
     );
     if (dup) { toast.error("Vínculo ativo já existe para essa pessoa e papel."); return; }
-    // Máximo 1 primário
-    if (newRep.is_primary) {
-      const others = reps.filter((r) => r.is_primary && r.is_active);
-      await Promise.all(others.map((r) => base44.entities.PartnerRepresentative.update(r.id, { is_primary: false })));
-    }
-    await base44.entities.PartnerRepresentative.create({
-      partner_id: partner.id,
-      person_id: newRep.person_id,
-      role_in_partner: newRep.role_in_partner,
-      is_primary: newRep.is_primary,
-      is_active: true,
+    await base44.functions.invoke('savePartnerRep', {
+      partnerId: partner.id,
+      personId: newRep.person_id,
+      roleInPartner: newRep.role_in_partner,
+      isPrimary: newRep.is_primary,
+      isActive: true,
     });
     setNewRep({ person_id: "", role_in_partner: "partner_manager", is_primary: false });
     setAdding(false);
@@ -287,19 +285,17 @@ function RepresentativesDialog({ partner, onClose }) {
   };
 
   const handleToggleActive = async (rep) => {
-    await base44.entities.PartnerRepresentative.update(rep.id, { is_active: !rep.is_active });
+    await base44.functions.invoke('savePartnerRep', { id: rep.id, payload: { is_active: !rep.is_active } });
     refetchReps();
   };
 
   const handleSetPrimary = async (rep) => {
-    const others = reps.filter((r) => r.id !== rep.id && r.is_primary);
-    await Promise.all(others.map((r) => base44.entities.PartnerRepresentative.update(r.id, { is_primary: false })));
-    await base44.entities.PartnerRepresentative.update(rep.id, { is_primary: true });
+    await base44.functions.invoke('savePartnerRep', { id: rep.id, action: 'setPrimary' });
     refetchReps();
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.PartnerRepresentative.update(id, { is_deleted: true });
+    await base44.functions.invoke('savePartnerRep', { id, action: 'delete' });
     refetchReps();
   };
 
@@ -411,7 +407,10 @@ export default function AdminPartners() {
 
   const { data: allPartners = [], isLoading } = useQuery({
     queryKey: ["admin_partners"],
-    queryFn: () => base44.entities.Partner.list("-created_date", 500),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getManagedPartners', {});
+      return res.data?.partners || [];
+    },
   });
 
   // Reps do usuário atual (carregados no login via AuthContext)
@@ -444,13 +443,13 @@ export default function AdminPartners() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
   const handleToggleActive = async (partner) => {
-    await base44.entities.Partner.update(partner.id, { is_active: !partner.is_active });
+    await base44.functions.invoke('savePartner', { id: partner.id, payload: { is_active: !partner.is_active } });
     queryClient.invalidateQueries({ queryKey: ["admin_partners"] });
     toast.success(partner.is_active ? "Empresa inativada." : "Empresa reativada.");
   };
 
   const handleDelete = async (partner) => {
-    await base44.entities.Partner.update(partner.id, { is_deleted: true });
+    await base44.functions.invoke('savePartner', { id: partner.id, action: 'delete' });
     // P0.3 — decrementa o bucket global diário de partners (soft-delete)
     try { await decPartnersCounter(partner?.created_date); } catch {}
     queryClient.invalidateQueries({ queryKey: ["admin_partners"] });

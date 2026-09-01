@@ -71,8 +71,8 @@ export default function PainelParceiro() {
   const { data: partner } = useQuery({
     queryKey: ["partner_record", partnerId],
     queryFn: async () => {
-      const list = await base44.entities.Partner.filter({ id: partnerId });
-      return list[0] || null;
+      const res = await base44.functions.invoke('getPartnerProfile', { partnerId });
+      return res.data?.partner || null;
     },
     enabled: !!partnerId,
   });

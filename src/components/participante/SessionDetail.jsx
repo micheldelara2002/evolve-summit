@@ -73,26 +73,8 @@ function SpeakerCard({ session }) {
     queryKey: ["speaker-partner-rep", session.speaker_id, session.event_id],
     queryFn: async () => {
       if (!session.speaker_id) return null;
-      const parts = await base44.entities.Participant.filter({ id: session.speaker_id });
-      const sp = parts[0];
-      if (!sp?.person_id || sp.role_in_event !== "partner_rep") return null;
-
-      // Buscar PartnerRepresentative por person_id
-      const reps = await base44.entities.PartnerRepresentative.filter({
-        person_id: sp.person_id,
-        is_active: true,
-        is_deleted: false,
-      });
-      if (!reps.length) return null;
-
-      // Verificar se o partner está vinculado a este evento
-      const epRes = await base44.functions.invoke('getEventPartners', { eventId: session.event_id });
-      const eventPartners = (epRes.data?.eventPartners || []).filter((ep) => ep.is_active);
-      const rep = reps.find((r) => eventPartners.some((ep) => ep.partner_id === r.partner_id));
-      if (!rep) return null;
-
-      const partners = await base44.entities.Partner.filter({ id: rep.partner_id });
-      return partners[0] ?? null;
+      const res = await base44.functions.invoke('getSpeakerPartner', { eventId: session.event_id, speakerParticipantId: session.speaker_id });
+      return res.data?.partner || null;
     },
     enabled: !!session.speaker_id,
   });
