@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/lib/i18n";
 import { logAudit } from "@/lib/audit";
 import { incParticipantCounter, bulkIncParticipantsCounter } from "@/lib/businessCounters";
+import { createParticipant, bulkCreateParticipants, createEventImport, updateEventImport } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
@@ -177,12 +178,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
   const confirmImport = async () => {
     setProcessing(true);
 
-    const importRecord = await base44.entities.Import.create({
-      event_id: eventId,
-      file_name: fileName,
-      status: "processing",
-      total_rows: parsed.rows.length,
-    });
+    const importRecord = await createEventImport(eventId, fileName, parsed.rows.length);
 
     let novosCriados = 0;
     let existentesVinculados = 0;
@@ -194,7 +190,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
     for (let i = 0; i < newPayloads.length; i += 50) {
       const batch = newPayloads.slice(i, i + 50);
       try {
-        const createdBatch = await base44.entities.Participant.bulkCreate(batch);
+        const createdBatch = await bulkCreateParticipants(eventId, batch);
         novosCriados += batch.length;
         const createdDates = (createdBatch || []).map((p) => p?.created_date).filter(Boolean);
         await bulkIncParticipantsCounter(eventId, createdDates, createdDates.map(() => "attendee"));
@@ -210,7 +206,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         // Create a new event-linked record reusing data, or just update event_id if needed
         // Since participant is per-event, create a new record with same person data + this event
         try {
-          const created = await base44.entities.Participant.create({
+          const created = await createParticipant(eventId, {
             event_id: eventId,
             full_name: sanitizeText(gp.full_name),
             email: gp.email,
@@ -237,7 +233,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       }
     }
 
-    await base44.entities.Import.update(importRecord.id, {
+    await updateEventImport(eventId, importRecord.id, {
       status: "completed",
       success_count: novosCriados + existentesVinculados,
       error_count: invalidRows.length + errosCriacao,

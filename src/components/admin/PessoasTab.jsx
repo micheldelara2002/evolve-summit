@@ -29,6 +29,15 @@ import PersonFormDialog from "@/components/admin/PersonFormDialog";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 import QRScanner from "@/components/participante/QRScanner";
 import { checkinTicket } from "@/lib/commerceApi";
+import {
+  createParticipant,
+  updateParticipant,
+  softDeleteParticipant,
+  getEventReviewers,
+  getReviewerMembership,
+  setReviewerMembership,
+  findPersonIdsByDocument,
+} from "@/lib/participantApi";
 
 // ── Role display ──────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -130,7 +139,7 @@ export default function PessoasTab({
   // Avaliadores do evento (EventMembership role=reviewer) — para exibir chip + filtro
   const { data: reviewerMemberships = [] } = useQuery({
     queryKey: ["event-reviewers", eventId],
-    queryFn: () => base44.entities.EventMembership.filter({ event_id: eventId, role: "reviewer", is_active: true, is_deleted: false }),
+    queryFn: () => getEventReviewers(eventId),
   });
   const reviewerPersonIds = useMemo(() => new Set(reviewerMemberships.map((m) => m.person_id).filter(Boolean)), [reviewerMemberships]);
 
@@ -189,7 +198,7 @@ export default function PessoasTab({
       ? { checkin_status: "pending", checkin_at: null, checked_in_by_user_id: null }
       : { checkin_status: "confirmed", checkin_at: new Date().toISOString(), checked_in_by_user_id: user?.id };
     try {
-      await base44.entities.Participant.update(pessoa.id, updates);
+      await updateParticipant(eventId, pessoa.id, updates);
       logAudit({
         event_id: eventId,
         action: "status_change",
@@ -250,7 +259,7 @@ export default function PessoasTab({
       setRemoveTarget(null);
       return;
     }
-    await base44.entities.Participant.update(pessoa.id, { is_deleted: true });
+    await softDeleteParticipant(eventId, pessoa.id);
     await decParticipantCounter(eventId, pessoa?.created_date, pessoa?.role_in_event);
     logAudit({ event_id: eventId, action: "soft_delete", entity_type: "Participant", entity_id: pessoa.id, user,
       details: { field: "vínculo_evento", new_value: "removido" } });
@@ -502,14 +511,8 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
     let extra = [];
     const digits = q.replace(/\D/g, "");
     if (digits.length >= 3) {
-      const docs = await base44.entities.PersonDocument.filter({
-        person_id: { $in: all.map((p) => p.id) },
-      });
-      const docPersonIds = new Set(
-        docs
-          .filter((d) => d.document_number?.replace(/\D/g, "").includes(digits))
-          .map((d) => d.person_id)
-      );
+      const { person_ids } = await findPersonIdsByDocument(eventId, digits);
+      const docPersonIds = new Set(person_ids || []);
       extra = all.filter((p) => docPersonIds.has(p.id) && !results.find((r) => r.id === p.id));
     }
     setSearchResults([...results, ...extra]);
@@ -527,7 +530,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
       return;
     }
     setAssociating(true);
-    const created = await base44.entities.Participant.create({
+    const created = await createParticipant(eventId, {
       event_id: eventId,
       full_name: person.full_name,
       email: person.contact_email || "",
@@ -659,7 +662,7 @@ function EditParticipantDataDialog({ participant, eventId, user, onClose, onSucc
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await base44.entities.Participant.update(participant.id, { ...form, cpf: form.cpf.replace(/\D/g, "") });
+    await updateParticipant(eventId, participant.id, { ...form, cpf: form.cpf.replace(/\D/g, "") });
     // If linked to a Person, sync name/email/phone to Person global
     if (participant.person_id) {
       await base44.entities.Person.update(participant.person_id, {
@@ -738,14 +741,9 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
     if (isPartnerRep || !pessoa.person_id) { setCheckingReviewer(false); return; }
     (async () => {
       try {
-        const m = await base44.entities.EventMembership.filter({
-          event_id: eventId, person_id: pessoa.person_id, role: "reviewer", is_deleted: false,
-        });
-        if (m[0]) { setReviewerMembership(m[0]); setIsReviewer(true); }
-        if (pessoa.email) {
-          const u = await base44.entities.User.filter({ email: pessoa.email });
-          if (u[0]) setReviewerUserId(u[0].id);
-        }
+        const res = await getReviewerMembership(eventId, pessoa.person_id);
+        if (res.membership) { setReviewerMembership(res.membership); setIsReviewer(true); }
+        setReviewerUserId(res.linked_user_id);
       } finally { setCheckingReviewer(false); }
     })();
   }, [isPartnerRep, pessoa.person_id, pessoa.email, eventId]);
@@ -778,7 +776,7 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
       else if (roles.includes("speaker")) newRole = "speaker";
       else if (roles.includes("team")) newRole = "team";
       if (newRole !== pessoa.role_in_event) {
-        await base44.entities.Participant.update(pessoa.id, { role_in_event: newRole });
+        await updateParticipant(eventId, pessoa.id, { role_in_event: newRole });
         // P0.3 — move o bucket participants_by_role do papel antigo para o novo (unique não muda)
         await moveParticipantRoleCounter(eventId, pessoa.created_date, pessoa.role_in_event, newRole);
         logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
@@ -792,17 +790,18 @@ function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSucc
         return;
       }
       if (isReviewer && !reviewerMembership) {
-        await base44.entities.EventMembership.create({
-          event_id: eventId,
+        await setReviewerMembership(eventId, {
+          enable: true,
           person_id: pessoa.person_id,
           person_name: pessoa.full_name,
-          user_id: reviewerUserId || "",
           user_email: pessoa.email || "",
-          role: "reviewer",
-          is_active: true,
         });
       } else if (!isReviewer && reviewerMembership) {
-        await base44.entities.EventMembership.update(reviewerMembership.id, { is_deleted: true });
+        await setReviewerMembership(eventId, {
+          enable: false,
+          membership_id: reviewerMembership.id,
+          person_id: pessoa.person_id,
+        });
       }
 
       queryClient.invalidateQueries({ queryKey: ["event-reviewers", eventId] });

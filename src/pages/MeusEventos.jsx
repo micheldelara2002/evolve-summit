@@ -8,7 +8,7 @@ import { isAdmin } from "@/lib/access";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Calendar, Clock, Lock } from "lucide-react";
+import { Calendar, ChevronRight, Clock, Lock, Users } from "lucide-react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -76,6 +76,30 @@ function EventCard({ event, index, isFinished }) {
   );
 }
 
+function ManagedEventCard({ event, index }) {
+  const navigate = useNavigate();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06 }}
+      onClick={() => navigate(`/manage-event/${event.id}/people`)}
+      className="flex items-center gap-4 p-4 rounded-2xl border cursor-pointer hover:shadow-md transition-all group bg-card border-primary/30 hover:border-primary/60"
+    >
+      <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-primary/10 shrink-0">
+        <Users className="w-7 h-7 text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-display font-semibold text-base truncate">{event.name}</p>
+        <p className="text-xs text-muted-foreground mt-1">Gerenciar participantes deste evento</p>
+      </div>
+      <div className="shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
+        <ChevronRight className="w-5 h-5" />
+      </div>
+    </motion.div>
+  );
+}
+
 export default function MeusEventos() {
   const { user } = useAuth();
   const admin = isAdmin(user);
@@ -132,6 +156,24 @@ export default function MeusEventos() {
     enabled: !!user && (admin || eventIdList.length > 0),
   });
 
+  // 5. Eventos que o usuário GERENCIA (membership manager/team) — link para o módulo Pessoas
+  const { data: managedMemberships = [] } = useQuery({
+    queryKey: ["my_managed_memberships", user?.id],
+    queryFn: () => base44.entities.EventMembership.filter({
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+      role: { $in: ["manager", "team"] },
+    }),
+    enabled: !!user && !admin,
+  });
+  const managedEventIds = [...new Set(managedMemberships.map((m) => m.event_id))];
+  const { data: managedEvents = [] } = useQuery({
+    queryKey: ["my_managed_events", managedEventIds.join(",")],
+    queryFn: () => base44.entities.Event.filter({ id: { $in: managedEventIds }, is_deleted: false }),
+    enabled: !!user && !admin && managedEventIds.length > 0,
+  });
+
   const isLoading = admin ? loadingEvents : (loadingPersons || loadingByEmail || loadingByPerson || loadingEvents);
 
   const activeEvents = scopedEvents.filter((e) => e.status === "active");
@@ -145,6 +187,20 @@ export default function MeusEventos() {
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-8 max-w-2xl mx-auto">
       <PageHeader icon={Calendar} title="Meus Eventos" subtitle="Eventos em que você está cadastrado como participante." tone="primary" />
+
+      {/* Eventos gerenciados (membership manager/team) */}
+      {managedEvents.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Eventos que você gerencia
+          </h2>
+          <div className="space-y-3">
+            {managedEvents.map((e, i) => (
+              <ManagedEventCard key={e.id} event={e} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Ativos */}
       <section className="space-y-3">

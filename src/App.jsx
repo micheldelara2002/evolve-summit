@@ -39,6 +39,7 @@ const AdminPartners = lazy(() => import("@/pages/AdminPartners"));
 const UserProfile = lazy(() => import("@/pages/UserProfile"));
 const UserProfileEdit = lazy(() => import("@/pages/UserProfileEdit"));
 const MeusEventos = lazy(() => import("@/pages/MeusEventos"));
+const EventPeopleManage = lazy(() => import("@/pages/EventPeopleManage"));
 const EventoParticipante = lazy(() => import("@/pages/EventoParticipante"));
 const PainelPalestrante = lazy(() => import("@/pages/PainelPalestrante"));
 const PainelParceiro = lazy(() => import("@/pages/PainelParceiro"));
@@ -104,6 +105,7 @@ const AuthenticatedApp = () => {
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
           <Route path="/my-events" element={<MeusEventos />} />
+          <Route path="/manage-event/:eventId/people" element={<EventPeopleManage />} />
           <Route path="/network" element={<Rede />} />
           <Route path="/qr-scan" element={<QRScan />} />
           <Route path="/event/:eventId" element={<EventoParticipante />} />
