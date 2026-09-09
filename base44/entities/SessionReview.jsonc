@@ -1,6 +1,7 @@
 {
   "name": "SessionReview",
   "type": "object",
+  "description": "Avalia\u00e7\u00e3o de um participante para uma sess\u00e3o (nota + coment\u00e1rio). Lote 4 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Participantes enviam/consultam a pr\u00f3pria avalia\u00e7\u00e3o via saveSessionReview; palestrantes leem as avalia\u00e7\u00f5es das pr\u00f3prias sess\u00f5es via getSpeakerSessionFeedback.",
   "properties": {
     "event_id": {
       "type": "string"
@@ -26,54 +27,24 @@
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "user"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "create": {
-      "$or": [
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
-      "$or": [
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }
