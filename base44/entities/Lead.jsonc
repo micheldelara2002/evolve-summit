@@ -1,6 +1,7 @@
 {
   "name": "Lead",
   "type": "object",
+  "description": "Lead capturado por um parceiro no contexto de um evento. Lote 4 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Parceiros leem os pr\u00f3prios leads via getMyLeads; cria\u00e7\u00e3o acontece server-side via saveBoothLead e manageSessionAttendance (session leads).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -88,18 +89,9 @@
       }
     },
     "create": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "user"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
       "user_condition": {
