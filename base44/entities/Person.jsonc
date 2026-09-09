@@ -1,6 +1,7 @@
 {
   "name": "Person",
   "type": "object",
+  "description": "Cadastro global de pessoa. Lote 4 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Usu\u00e1rios leem/escrevem a pr\u00f3pria Person via getMyPerson/saveMyPerson; gestores leem/gerenciam via managePerson; resolu\u00e7\u00f5es por ID via getPersonsByIds (backend functions que validam posse/evento).",
   "properties": {
     "full_name": {
       "type": "string",
@@ -63,5 +64,27 @@
   },
   "required": [
     "full_name"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

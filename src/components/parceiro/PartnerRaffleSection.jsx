@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPartnerLeads } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Trophy, Lock } from "lucide-react";
 import RaffleModal from "@/components/raffle/RaffleModal";
@@ -14,9 +15,10 @@ import RaffleHistory from "@/components/raffle/RaffleHistory";
 export default function PartnerRaffleSection({ eventId, partnerId, user, isReadOnly, drawnByLabel }) {
   const [modalOpen, setModalOpen] = useState(false);
 
+  // Lote 4 — leads via backend (gate canAccessPartnerData)
   const { data: leads = [] } = useQuery({
     queryKey: ["partner_raffle_leads", eventId, partnerId],
-    queryFn: () => base44.entities.Lead.filter({ event_id: eventId, partner_id: partnerId }),
+    queryFn: () => fetchPartnerLeads(partnerId, eventId),
     enabled: !!eventId && !!partnerId,
   });
 

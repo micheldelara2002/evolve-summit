@@ -55,7 +55,7 @@ export default async function(req: Request): Promise<Response> {
           personId = byEmail[0].id;
           personName = byEmail[0].full_name || personName;
         } else {
-          const created = await base44.entities.Person.create({ full_name: personName, contact_email: personEmail, created_day: new Date().toISOString().slice(0, 10) });
+          const created = await svc.entities.Person.create({ full_name: personName, contact_email: personEmail, created_day: new Date().toISOString().slice(0, 10) });
           personId = created.id;
           await base44.auth.updateMe({ person_id: personId });
           // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)

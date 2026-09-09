@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import { incPersonsCounter } from "@/lib/businessCounters";
+import { fetchMyPerson, getOrCreateMyPerson } from "@/lib/personApi";
 
 const SESSION_TYPES = [
   { value: "palestra", label: "Palestra" },
@@ -68,20 +68,10 @@ export default function CFPSubmit() {
     enabled: !!cfp?.event_id,
   });
 
-  // Person do usuário (cria se não existir)
+  // Person do usuário (via backend — Lote 4)
   const { data: person } = useQuery({
     queryKey: ["my-person", user?.person_id, user?.email],
-    queryFn: async () => {
-      if (user?.person_id) {
-        const list = await base44.entities.Person.filter({ id: user.person_id });
-        if (list[0]) return list[0];
-      }
-      if (user?.email) {
-        const byEmail = await base44.entities.Person.filter({ contact_email: user.email });
-        if (byEmail[0]) return byEmail[0];
-      }
-      return null;
-    },
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 
@@ -110,15 +100,10 @@ export default function CFPSubmit() {
 
   const ensurePerson = async () => {
     if (person) return person;
-    const created = await base44.entities.Person.create({
-      full_name: user.full_name || user.email,
-      contact_email: user.email,
-      created_day: new Date().toISOString().slice(0, 10),
-    });
-    await base44.auth.updateMe({ person_id: created.id });
-    // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
-    try { await incPersonsCounter(created?.created_date); } catch {}
-    return created;
+    // Lote 4 — create via backend (contador idempotente server-side)
+    const personId = await getOrCreateMyPerson();
+    await base44.auth.updateMe({ person_id: personId });
+    return { id: personId, full_name: user.full_name || user.email, contact_email: user.email };
   };
 
   const saveMutation = useMutation({

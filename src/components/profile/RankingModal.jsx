@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPersonsByIds } from "@/lib/personApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Trophy, RefreshCw, Medal } from "lucide-react";
@@ -47,10 +48,15 @@ export default function RankingModal({ open, onClose, myParticipants = [] }) {
     enabled: open,
   });
 
+  // Lote 4 — Persons via backend (somente as dos eventos acessíveis ao usuário)
+  const personIds = useMemo(
+    () => [...new Set(participants.map((p) => p.person_id).filter(Boolean))],
+    [participants]
+  );
   const { data: persons = [] } = useQuery({
-    queryKey: ["ranking-persons", refreshKey],
-    queryFn: () => base44.entities.Person.filter({ is_active: true }),
-    enabled: open,
+    queryKey: ["ranking-persons", eventIds.join(","), personIds.join(","), refreshKey],
+    queryFn: () => fetchPersonsByIds(eventIds, personIds),
+    enabled: open && personIds.length > 0 && eventIds.length > 0,
   });
 
   const ranking = useMemo(

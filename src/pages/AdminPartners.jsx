@@ -254,9 +254,13 @@ function RepresentativesDialog({ partner, onClose }) {
     },
   });
 
+  // Lote 4 — Persons via backend (gate canManagePartnerData)
   const { data: allPersons = [] } = useQuery({
-    queryKey: ["persons_for_rep"],
-    queryFn: () => base44.entities.Person.list("-full_name", 200),
+    queryKey: ["persons_for_rep", partner.id],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getPartnerPersons', { partnerId: partner.id });
+      return res.data?.persons || [];
+    },
   });
 
   const filteredPersons = allPersons.filter((p) =>

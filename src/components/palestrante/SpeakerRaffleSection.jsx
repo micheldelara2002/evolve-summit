@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchSpeakerFeedback } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Ticket, Trophy } from "lucide-react";
 import RaffleModal from "@/components/raffle/RaffleModal";
@@ -27,16 +28,15 @@ export default function SpeakerRaffleSection({ event, myParticipant, user }) {
 
   const sessionIds = sessions.map((s) => s.id);
 
-  // Presenças nas sessões do speaker
-  const { data: attendances = [] } = useQuery({
-    queryKey: ["speaker-raffle-attendances", sessionIds.join(",")],
-    queryFn: async () => {
-      if (!sessionIds.length) return [];
-      const all = await base44.entities.SessionAttendance.filter({ event_id: event.id, is_present: true });
-      return all.filter((a) => sessionIds.includes(a.session_id));
-    },
+  // Presenças nas sessões do speaker (via backend — Lote 4)
+  const { data: feedback } = useQuery({
+    queryKey: ["speaker-session-feedback", sessionIds.join(",")],
+    queryFn: () => fetchSpeakerFeedback(sessionIds),
     enabled: sessionIds.length > 0,
   });
+  const attendances = (feedback?.attendances || []).filter(
+    (a) => a.is_present !== false && sessionIds.includes(a.session_id)
+  );
 
   // Resolve participant records únicos
   const participantIds = [...new Set(attendances.map((a) => a.participant_id))];

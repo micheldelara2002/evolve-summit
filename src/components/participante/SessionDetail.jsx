@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { sendEmail } from "@/lib/apiClient";
 import { processAction } from "@/lib/scoringEngine";
-import { fetchMyPerson, fetchPersonsByIds, manageAttendance } from "@/lib/personApi";
+import { fetchMyPerson, fetchPersonsByIds, manageAttendance, manageSessionReview } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, BookUser,
@@ -368,12 +368,12 @@ function RatingSection({ session, participant, isReadOnly }) {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
 
-  const { data: existingReviews = [] } = useQuery({
+  const { data: reviewData } = useQuery({
     queryKey: ["session-reviews", session.id, participant?.id],
-    queryFn: () => base44.entities.SessionReview.filter({ session_id: session.id, participant_id: participant?.id }),
+    queryFn: () => manageSessionReview({ sessionId: session.id, action: "get" }),
     enabled: !!participant?.id,
   });
-  const myReview = existingReviews[0];
+  const myReview = reviewData?.review || null;
 
   useEffect(() => {
     if (myReview) {
@@ -385,19 +385,8 @@ function RatingSection({ session, participant, isReadOnly }) {
   const submitMut = useMutation({
     mutationFn: () => {
       const safeComment = comment.trim() ? sanitizeText(comment.trim()) : undefined;
-      if (myReview) {
-        return base44.entities.SessionReview.update(myReview.id, {
-          rating,
-          comment: safeComment,
-        });
-      }
-      return base44.entities.SessionReview.create({
-        event_id: session.event_id,
-        session_id: session.id,
-        participant_id: participant?.id,
-        rating,
-        comment: safeComment,
-      });
+      // Lote 4 — upsert server-side (participante resolvido no backend)
+      return manageSessionReview({ sessionId: session.id, action: "save", rating, comment: safeComment });
     },
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["session-reviews", session.id, participant?.id] });

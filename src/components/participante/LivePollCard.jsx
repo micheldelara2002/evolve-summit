@@ -13,6 +13,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { manageAttendance } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Radio, CheckCircle2, BarChart3, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -22,13 +23,13 @@ export default function LivePollCard({ session, participant }) {
   const queryClient = useQueryClient();
   const personId = participant?.person_id;
 
-  // Presença confirmada? (SessionAttendance — fora deste lote, acesso SDK direto permitido)
-  const { data: attendances = [] } = useQuery({
+  // Presença confirmada? (manageSessionAttendance status — Lote 4, acesso SDK direto removido)
+  const { data: attStatus } = useQuery({
     queryKey: ["session-attendance-poll", session.id, participant?.id],
-    queryFn: () => base44.entities.SessionAttendance.filter({ session_id: session.id, participant_id: participant?.id }),
+    queryFn: () => manageAttendance({ sessionId: session.id, participantId: participant.id, action: "status" }),
     enabled: !!participant?.id,
   });
-  const isPresent = attendances.some((a) => a.is_present !== false);
+  const isPresent = !!attStatus?.isPresent;
 
   const participantPollsKey = ["session-polls-participant", session.id];
   usePollRealtime(session.id, participantPollsKey);

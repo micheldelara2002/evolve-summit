@@ -75,3 +75,20 @@ export async function listPartnerPersons(partnerId) {
   const data = await invoke("getPartnerPersons", { partnerId });
   return data?.persons || [];
 }
+
+/** Partner's leads for an event (partner-gated read). */
+export async function fetchPartnerLeads(partnerId, eventId) {
+  const data = await invoke("getMyLeads", { partnerId, eventId });
+  return data?.leads || [];
+}
+
+/** Participant's own session review: action "get" | "save". */
+export async function manageSessionReview({ sessionId, action, rating, comment }) {
+  return invoke("saveSessionReview", { sessionId, action, rating, comment });
+}
+
+/** Create-or-get own person id (signup/CFP flows). Returns person_id. */
+export async function getOrCreateMyPerson() {
+  const data = await invoke("getOrCreatePerson", {});
+  return data?.person_id || null;
+}
