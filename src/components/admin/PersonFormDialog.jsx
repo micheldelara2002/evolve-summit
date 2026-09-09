@@ -4,13 +4,14 @@
  */
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { saveManagedPerson } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { sanitizeText } from "@/utils/sanitize";
-import { incPersonsCounter } from "@/lib/businessCounters";
+
 import { toast } from "sonner";
 
 const FIELDS = [
@@ -33,10 +34,11 @@ const EMPTY = {
 
 /**
  * @param {object|null} person  — null = nova pessoa; objeto = edição
+ * @param {string} [eventId] — evento de contexto (gestores criam/editam Persons do evento)
  * @param {function} onClose
  * @param {function} onSaved(person)  — chamado com o objeto Person salvo
  */
-export default function PersonFormDialog({ person, onClose, onSaved }) {
+export default function PersonFormDialog({ person, eventId, onClose, onSaved }) {
   const [form, setForm] = useState(person ? { ...person } : { ...EMPTY });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
@@ -57,15 +59,8 @@ export default function PersonFormDialog({ person, onClose, onSaved }) {
       const cleanForm = Object.fromEntries(
         Object.entries(form).map(([k, v]) => [k, typeof v === "string" ? sanitizeText(v) : v])
       );
-      let saved;
-      if (person?.id) {
-        await base44.entities.Person.update(person.id, cleanForm);
-        saved = { ...person, ...cleanForm };
-      } else {
-        saved = await base44.entities.Person.create({ ...cleanForm, created_day: new Date().toISOString().slice(0, 10) });
-        // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
-        try { await incPersonsCounter(saved?.created_date); } catch {}
-      }
+      // Lote 4 — create/update via backend (admin OU gestor do evento; contador idempotente)
+      const saved = await saveManagedPerson({ eventId, personId: person?.id, data: cleanForm });
       onSaved(saved);
     } catch (err) {
       toast.error("Erro: " + err.message);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPersonsByIds } from "@/lib/personApi";
 import { MessageSquare, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PersonAvatar from "../PersonAvatar";
@@ -36,10 +37,7 @@ export default function GlobalConnectionsTab({ eventIds, eventMap, myPerson, myP
   )];
   const { data: persons = [] } = useQuery({
     queryKey: ["rede_persons_by_global_connections", connectionPersonIds.join(",")],
-    queryFn: async () => {
-      if (!connectionPersonIds.length) return [];
-      return base44.entities.Person.filter({ id: { $in: connectionPersonIds }, is_active: true });
-    },
+    queryFn: () => fetchPersonsByIds(eventIds, connectionPersonIds),
     enabled: connectionPersonIds.length > 0,
   });
   const personMap = new Map(persons.map((p) => [p.id, p]));

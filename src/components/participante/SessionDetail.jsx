@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { sendEmail } from "@/lib/apiClient";
 import { processAction } from "@/lib/scoringEngine";
-import { incLeadsCounter } from "@/lib/businessCounters";
+import { fetchMyPerson, fetchPersonsByIds, manageAttendance } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, BookUser,
@@ -62,7 +62,7 @@ function SpeakerCard({ session }) {
       const parts = await base44.entities.Participant.filter({ id: session.speaker_id });
       const sp = parts[0];
       if (!sp?.person_id) return null;
-      const persons = await base44.entities.Person.filter({ id: sp.person_id });
+      const persons = await fetchPersonsByIds([session.event_id], [sp.person_id]);
       return persons[0] ?? null;
     },
     enabled: !!session.speaker_id,
@@ -135,11 +135,8 @@ function MaterialSection({ session, participant }) {
   // Buscar person para pegar contact_email
   const { data: person } = useQuery({
     queryKey: ["participant-person", participant?.person_id],
-    queryFn: async () => {
-      if (!participant?.person_id) return null;
-      const list = await base44.entities.Person.filter({ id: participant.person_id });
-      return list[0] ?? null;
-    },
+    // Lote 4 — própria Person via backend (evita SDK direto em Person travada)
+    queryFn: () => fetchMyPerson(),
     enabled: !!participant?.person_id,
   });
 
@@ -517,59 +514,23 @@ export default function SessionDetail({ session, track, room, participant, isRea
   const queryClient = useQueryClient();
   const participantId = participant?.id;
 
-  const { data: attendances = [], isLoading: loadingAttendance } = useQuery({
+  // Lote 4 — presença via backend (dedupe, capacidade, Lead e contadores no servidor)
+  const { data: attendanceState, isLoading: loadingAttendance } = useQuery({
     queryKey: ["session-attendance", session.id, participantId],
-    queryFn: () => base44.entities.SessionAttendance.filter({ session_id: session.id, participant_id: participantId }),
+    queryFn: () => manageAttendance({ sessionId: session.id, participantId, action: "status" }),
     enabled: !!participantId,
   });
 
-  const isPresent = attendances.some((a) => a.is_present !== false);
+  const isPresent = !!attendanceState?.isPresent;
 
   const togglePresenceMut = useMutation({
     mutationFn: async () => {
-      if (isPresent) {
-        const att = attendances.find((a) => a.is_present !== false);
-        if (att) await base44.entities.SessionAttendance.update(att.id, { is_present: false });
-      } else {
-        // Re-check server-side antes de criar — previne duplicatas de presença
-        // (cache stale, duplo-clique rápido, ou múltiplas abas)
-        const fresh = await base44.entities.SessionAttendance.filter({
-          session_id: session.id, participant_id: participantId,
-        });
-        if (fresh.some((a) => a.is_present !== false)) {
-          queryClient.invalidateQueries({ queryKey: ["session-attendance", session.id, participantId] });
-          return;
-        }
-        // Verificar capacidade da sessão (null/0 = sem limite, ex: eventos online)
-        if (session.capacity && session.capacity > 0) {
-          const allPresent = await base44.entities.SessionAttendance.filter({
-            session_id: session.id, is_present: true,
-          });
-          if (allPresent.length >= session.capacity) {
-            throw new Error("A sessão está lotada. Não é possível registrar presença.");
-          }
-        }
-        await base44.entities.SessionAttendance.create({
-          event_id: session.event_id,
-          session_id: session.id,
-          participant_id: participantId,
-          person_id: participant?.person_id,
-          is_present: true,
-          registered_at: new Date().toISOString(),
-        });
-        if (session.speaker_name) {
-          base44.entities.Lead.create({
-            event_id: session.event_id,
-            participant_id: participantId,
-            participant_name: participant?.full_name || "",
-            participant_email: participant?.email || "",
-            source: "session",
-            notes: `Presença na sessão: ${session.title}`,
-            created_day: new Date().toISOString().slice(0, 10),
-          })
-            .then((lead) => incLeadsCounter(session.event_id, lead?.created_date, ""))
-            .catch(() => {});
-        }
+      await manageAttendance({
+        sessionId: session.id,
+        participantId,
+        action: isPresent ? "unregister" : "register",
+      });
+      if (!isPresent) {
         await processAction({
           eventId: session.event_id,
           participantId,

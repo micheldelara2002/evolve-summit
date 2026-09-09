@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson, saveMyPerson } from "@/lib/personApi";
 import { useAuth } from "@/lib/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -123,26 +124,10 @@ export default function UserProfile() {
 
   const { data: person, isLoading } = useQuery({
     queryKey: ["my_person", user?.person_id, user?.email],
-    queryFn: async () => {
-      if (user?.person_id) {
-        const list = await base44.entities.Person.filter({ id: user.person_id });
-        return list[0] ?? null;
-      }
-      if (user?.email) {
-        // Legacy/manual accounts may have a Person/Participant record but no
-        // User.person_id. Resolve through the user's own participant first,
-        // then fall back to the Person email index, and repair the identity link.
-        const participants = await base44.entities.Participant.filter({ email: user.email, is_deleted: false });
-        const participantPersonId = participants.find((p) => p.person_id)?.person_id;
-        if (participantPersonId) {
-          const list = await base44.entities.Person.filter({ id: participantPersonId });
-          if (list[0]) return list[0];
-        }
-        const list = await base44.entities.Person.filter({ contact_email: user.email });
-        return list[0] ?? null;
-      }
-      return null;
-    },
+    // Lote 4 — leitura da própria Person via backend (RLS Person admin-only).
+    // O backend resolve por person_id, contact_email ou Participant; o link de
+    // identidade continua sendo reparado abaixo via updateMe.
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 
@@ -176,7 +161,7 @@ export default function UserProfile() {
     try {
       const { file_url } = await uploadFile(file);
       if (person?.id) {
-        await base44.entities.Person.update(person.id, { photo_url: file_url });
+        await saveMyPerson({ photo_url: file_url });
       }
       await base44.auth.updateMe({ photo_url: file_url });
       setAvatarUrl(file_url);

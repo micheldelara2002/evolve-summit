@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPersonsByIds } from "@/lib/personApi";
 import { Check, X, Loader2, Inbox, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,10 +30,7 @@ export default function RequestsTab({ eventId, myPerson, myParticipant, user, is
   )];
   const { data: persons = [] } = useQuery({
     queryKey: ["rede_persons_by_requests", eventId, requestPersonIds.join(",")],
-    queryFn: async () => {
-      if (!requestPersonIds.length) return [];
-      return base44.entities.Person.filter({ id: { $in: requestPersonIds }, is_active: true });
-    },
+    queryFn: () => fetchPersonsByIds([eventId], requestPersonIds),
     enabled: requestPersonIds.length > 0,
   });
   const personMap = new Map(persons.map((p) => [p.id, p]));

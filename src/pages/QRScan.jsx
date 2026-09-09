@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import QRScanner from "@/components/participante/QRScanner";
@@ -22,10 +23,7 @@ export default function QRScan() {
   // P0: Server-side filter by email — returns 0 or 1 record, not all Persons
   const { data: myPerson, isLoading: personLoading } = useQuery({
     queryKey: ["my_person_qr", user?.email],
-    queryFn: async () => {
-      const matches = await base44.entities.Person.filter({ contact_email: user?.email });
-      return matches[0] || null;
-    },
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 

@@ -9,6 +9,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { motion } from "framer-motion";
 import {
   Calendar, ShoppingBag, Trophy, Briefcase,
@@ -75,10 +76,7 @@ export default function EventoParticipante() {
   // User's person_id lookup
   const { data: myPerson } = useQuery({
     queryKey: ["my_person_for_event", user?.email],
-    queryFn: async () => {
-      const list = await base44.entities.Person.filter({ contact_email: user?.email, is_active: true });
-      return list[0] || null;
-    },
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 

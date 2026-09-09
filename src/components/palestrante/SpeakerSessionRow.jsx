@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchSpeakerFeedback } from "@/lib/personApi";
 import { uploadFile } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
@@ -142,10 +143,11 @@ function PerguntasTab({ session, myParticipant }) {
 
 // ── Tab: Avaliações (anonimizadas) ────────────────────────────────────────────
 function AvaliacoesTab({ session }) {
-  const { data: reviews = [] } = useQuery({
-    queryKey: ["speaker-reviews-detail", session.id],
-    queryFn: () => base44.entities.SessionReview.filter({ session_id: session.id }),
+  const { data: feedback } = useQuery({
+    queryKey: ["speaker-session-feedback", session.id],
+    queryFn: () => fetchSpeakerFeedback([session.id]),
   });
+  const reviews = feedback?.reviews || [];
 
   if (!reviews.length) {
     return <p className="text-sm text-muted-foreground py-3 text-center">Nenhuma avaliação ainda.</p>;
@@ -257,10 +259,11 @@ function MentoriasTab({ session, myParticipant }) {
 
 // ── Tab: Leads (presenças) ────────────────────────────────────────────────────
 function LeadsTab({ session }) {
-  const { data: attendances = [] } = useQuery({
-    queryKey: ["speaker-leads-session", session.id],
-    queryFn: () => base44.entities.SessionAttendance.filter({ session_id: session.id, is_present: true }),
+  const { data: feedback } = useQuery({
+    queryKey: ["speaker-session-feedback", session.id],
+    queryFn: () => fetchSpeakerFeedback([session.id]),
   });
+  const attendances = (feedback?.attendances || []).filter((a) => a.is_present);
 
   const participantIds = [...new Set(attendances.map((a) => a.participant_id))];
 

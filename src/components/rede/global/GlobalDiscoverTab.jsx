@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPersonsByIds } from "@/lib/personApi";
 import { Search, UserPlus, Check, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,10 +64,7 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
   const participantPersonIds = useMemo(() => dedupEntries.map((e) => e.person_id), [dedupEntries]);
   const { data: persons = [] } = useQuery({
     queryKey: ["rede_persons_by_participants", participantPersonIds.join(",")],
-    queryFn: async () => {
-      if (!participantPersonIds.length) return [];
-      return base44.entities.Person.filter({ id: { $in: participantPersonIds }, is_active: true });
-    },
+    queryFn: () => fetchPersonsByIds(eventIds, participantPersonIds),
     enabled: participantPersonIds.length > 0,
   });
 

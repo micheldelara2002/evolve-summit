@@ -4,6 +4,7 @@
  */
 import { base44 } from "@/api/base44Client";
 import { sanitizeText } from "@/utils/sanitize";
+import { fetchPersonsByIds } from "@/lib/personApi";
 
 /** Ordena dois IDs para garantir unicidade do par. */
 export function sortPersonIds(a, b) {
@@ -23,9 +24,9 @@ async function findUserIdByEmail(email) {
 }
 
 /** Busca Person por ID (para notificar o requester ao aceitar). */
-async function getPersonById(personId) {
+async function getPersonById(personId, eventId) {
   try {
-    const persons = await base44.entities.Person.filter({ id: personId, is_active: true });
+    const persons = await fetchPersonsByIds([eventId], [personId]);
     return persons?.[0] || null;
   } catch {
     return null;
@@ -121,7 +122,7 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
 
   if (result.ok && result.reason === "accepted") {
     const safeAccepterName = sanitizeText(accepterPerson.full_name);
-    const requesterPerson = await getPersonById(request.requester_person_id);
+    const requesterPerson = await getPersonById(request.requester_person_id, eventId);
     if (requesterPerson) {
       await sendDirectNotification({
         eventId,

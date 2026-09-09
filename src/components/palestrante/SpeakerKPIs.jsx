@@ -3,6 +3,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchSpeakerFeedback } from "@/lib/personApi";
 import { Mic, Star, BookUser, CheckCircle2 } from "lucide-react";
 import { normalizeRating } from "@/lib/rankingUtils";
 
@@ -37,17 +38,13 @@ export default function SpeakerKPIs({ speakerParticipants, events, personId, use
 
   const sessionIds = sessions.map((s) => s.id);
 
-  // Reviews das sessões do palestrante — query direcionada por session_id ($in)
-  const { data: reviews = [] } = useQuery({
-    queryKey: ["speaker-reviews-kpi", sessionIds.join(",")],
-    queryFn: async () => {
-      if (!sessionIds.length) return [];
-      return base44.entities.SessionReview.filter({
-        session_id: { $in: sessionIds },
-      });
-    },
+  // Reviews das sessões do palestrante — autorização server-side (Lote 4)
+  const { data: feedback } = useQuery({
+    queryKey: ["speaker-session-feedback", sessionIds.join(",")],
+    queryFn: () => fetchSpeakerFeedback(sessionIds),
     enabled: sessionIds.length > 0,
   });
+  const reviews = feedback?.reviews || [];
 
   // Mentorias do palestrante — query direcionada por mentor_participant_id ($in)
   const { data: mentorships = [] } = useQuery({

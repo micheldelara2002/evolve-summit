@@ -7,6 +7,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { useAuth } from "@/lib/AuthContext";
 import { Handshake, Lock, Calendar, Users, Trophy, QrCode, Award, Bell } from "lucide-react";
 import { isAdmin, isPartnerManager } from "@/lib/access";
@@ -43,14 +44,7 @@ export default function PainelParceiro() {
   // Resolve person do usuário
   const { data: myPerson } = useQuery({
     queryKey: ["my_person_partner", user?.person_id, user?.email],
-    queryFn: async () => {
-      if (user?.person_id) {
-        const list = await base44.entities.Person.filter({ id: user.person_id });
-        if (list[0]) return list[0];
-      }
-      const list = await base44.entities.Person.filter({ contact_email: user?.email, is_active: true });
-      return list[0] || null;
-    },
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { useAuth } from "@/lib/AuthContext";
 import { UserPlus, Inbox, Users, MessageSquare } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,14 +49,7 @@ export default function RedeGlobalView() {
 
   const { data: myPerson, isLoading: loadingPerson } = useQuery({
     queryKey: ["my_person_rede_global", user?.person_id, user?.email],
-    queryFn: async () => {
-      if (user?.person_id) {
-        const list = await base44.entities.Person.filter({ id: user.person_id });
-        if (list[0]) return list[0];
-      }
-      const byEmail = await base44.entities.Person.filter({ contact_email: user.email, is_active: true });
-      return byEmail[0] || null;
-    },
+    queryFn: () => fetchMyPerson(),
     enabled: !!user,
   });
 

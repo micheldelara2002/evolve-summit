@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -25,12 +26,8 @@ export default function PainelPalestrante() {
   // Resolve person do usuário
   const { data: myPerson } = useQuery({
     queryKey: ["my_person_speaker", user?.person_id],
-    queryFn: async () => {
-      if (!user?.person_id) return null;
-      const list = await base44.entities.Person.filter({ id: user.person_id });
-      return list[0] ?? null;
-    },
-    enabled: !!user?.person_id,
+    queryFn: () => fetchMyPerson(),
+    enabled: !!user,
   });
 
   // Participações como speaker — scoped por email e person_id

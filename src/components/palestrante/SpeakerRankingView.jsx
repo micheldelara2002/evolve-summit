@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchSpeakerFeedback } from "@/lib/personApi";
 import { Star, TrendingUp, BarChart3, Eye } from "lucide-react";
 import { buildSessionMetrics, normalizeRating } from "@/lib/rankingUtils";
 
@@ -41,29 +42,15 @@ export default function SpeakerRankingView({ speakerParticipants }) {
 
   const sessionIds = sessions.map((s) => s.id);
 
-  // Reviews das sessões — query direcionada por session_id ($in)
-  const { data: reviews = [] } = useQuery({
-    queryKey: ["speaker-ranking-reviews", sessionIds.join(",")],
-    queryFn: async () => {
-      if (!sessionIds.length) return [];
-      return base44.entities.SessionReview.filter({
-        session_id: { $in: sessionIds },
-      });
-    },
+  // Feedback (avaliações + presenças) das próprias sessões do palestrante —
+  // autorização server-side (Lote 4)
+  const { data: feedback } = useQuery({
+    queryKey: ["speaker-session-feedback", sessionIds.join(",")],
+    queryFn: () => fetchSpeakerFeedback(sessionIds),
     enabled: sessionIds.length > 0,
   });
-
-  // Presenças das sessões — query direcionada por session_id ($in)
-  const { data: attendances = [] } = useQuery({
-    queryKey: ["speaker-ranking-attendances", sessionIds.join(",")],
-    queryFn: async () => {
-      if (!sessionIds.length) return [];
-      return base44.entities.SessionAttendance.filter({
-        session_id: { $in: sessionIds },
-      });
-    },
-    enabled: sessionIds.length > 0,
-  });
+  const reviews = feedback?.reviews || [];
+  const attendances = feedback?.attendances || [];
 
   // Eventos do palestrante — query direcionada por id ($in)
   const { data: events = [] } = useQuery({

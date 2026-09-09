@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPersonsByIds } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Briefcase, Plus, Lock } from "lucide-react";
 import { t } from "@/lib/i18n";
@@ -23,10 +24,7 @@ export default function JobBoardView({ eventId, myPerson, myParticipant, user, i
   const personIds = [...new Set(jobs.map((j) => j.person_id).filter(Boolean))];
   const { data: persons = [] } = useQuery({
     queryKey: ["job_persons", eventId, personIds.join(",")],
-    queryFn: () => {
-      if (!personIds.length) return [];
-      return base44.entities.Person.filter({ id: { $in: personIds } });
-    },
+    queryFn: () => fetchPersonsByIds([eventId], personIds),
     enabled: jobs.length > 0 && personIds.length > 0,
   });
 

@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { processAction } from "@/lib/scoringEngine";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import { sanitizeText } from "@/utils/sanitize";
-import { incPersonsCounter } from "@/lib/businessCounters";
+import { fetchMyPerson, saveMyPerson } from "@/lib/personApi";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -75,12 +75,8 @@ export default function UserProfileEdit() {
   // Carregar Person vinculada ao user
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["my_person", user?.person_id],
-    queryFn: async () => {
-      if (!user?.person_id) return null;
-      const list = await base44.entities.Person.filter({ id: user.person_id });
-      return list[0] ?? null;
-    },
-    enabled: !!user?.person_id,
+    queryFn: () => fetchMyPerson(),
+    enabled: !!user,
   });
 
   // Carregar documentos
@@ -125,16 +121,12 @@ export default function UserProfileEdit() {
 
       let personId = person?.id;
 
-      if (personId) {
-        await base44.entities.Person.update(personId, payload);
-      } else {
-        // Criar Person novo
-        const created = await base44.entities.Person.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
-        personId = created.id;
-        // Vincular ao user
+      // Create-or-update via backend (valida posse; contador global idempotente)
+      const savedPerson = await saveMyPerson(payload);
+      personId = savedPerson?.id;
+      if (!person?.id) {
+        // Vincular ao user (Person recém-criada)
         await base44.auth.updateMe({ person_id: personId });
-        // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
-        try { await incPersonsCounter(created?.created_date); } catch {}
       }
 
       // Sincronização de nome em mão única: person.full_name → users.name
@@ -149,8 +141,7 @@ export default function UserProfileEdit() {
       // Trigger completude_perfil for all events the user is participating in
       try {
         if (personId) {
-          const updatedPersons = await base44.entities.Person.filter({ id: personId });
-          const updatedPerson = updatedPersons[0];
+          const updatedPerson = savedPerson;
           const completeness = calcCompleteness(updatedPerson);
           if (completeness > 0) {
             const participants = await base44.entities.Participant.filter({ person_id: personId, is_deleted: false });
@@ -195,11 +186,9 @@ export default function UserProfileEdit() {
       Object.keys(form).forEach((key) => {
         payload[key] = typeof form[key] === "string" ? sanitizeText(form[key].trim()) : (form[key] ?? "");
       });
-      const created = await base44.entities.Person.create({ ...payload, created_day: new Date().toISOString().slice(0, 10) });
-      personId = created.id;
+      const created = await saveMyPerson(payload);
+      personId = created?.id;
       await base44.auth.updateMe({ person_id: personId, full_name: payload.full_name });
-      // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
-      try { await incPersonsCounter(created?.created_date); } catch {}
       await refreshUser();
       queryClient.invalidateQueries({ queryKey: ["my_person"] });
     }

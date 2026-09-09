@@ -10,7 +10,7 @@ import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { processAction } from "@/lib/scoringEngine";
-import { incLeadsCounter } from "@/lib/businessCounters";
+import { saveBoothLead } from "@/lib/personApi";
 import { Building2, Globe, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function PartnerVisitModal({ partnerId, eventId, personId, participantId, person, isReadOnly, onClose }) {
@@ -64,22 +64,8 @@ export default function PartnerVisitModal({ partnerId, eventId, personId, partic
 
   const confirmMut = useMutation({
     mutationFn: async () => {
-      const lead = await base44.entities.Lead.create({
-        event_id: eventId,
-        partner_id: partnerId,
-        participant_id: participantId,
-        person_id: personId,
-        participant_name: person?.full_name || "",
-        participant_email: person?.contact_email || "",
-        source: "booth_scan",
-        visited_at: new Date().toISOString(),
-        created_day: new Date().toISOString().slice(0, 10),
-        person_phone: person?.phone || "",
-        person_linkedin: person?.linkedin || "",
-        person_company: person?.company || "",
-        person_job_title: person?.job_title || "",
-      });
-      await incLeadsCounter(eventId, lead?.created_date, partnerId);
+      // Lote 4 — Lead criado no servidor (valida posse + contadores atômicos)
+      await saveBoothLead({ eventId, partnerId, participantId, personId });
       // Trigger scoring engine (best-effort — lead is already saved)
       try {
         await processAction({ eventId, participantId, personId, acao: "visita_estande", refId: partnerId });

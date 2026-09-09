@@ -8,6 +8,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { searchPersons, saveManagedPerson } from "@/lib/personApi";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { logAudit } from "@/lib/audit";
@@ -500,13 +501,9 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
     if (!searchQ.trim()) return;
     setSearching(true);
     const q = searchQ.trim().toLowerCase();
-    // Search Person global
-    const all = await base44.entities.Person.list("-full_name", 500);
-    const results = all.filter(
-      (p) =>
-        p.full_name?.toLowerCase().includes(q) ||
-        p.contact_email?.toLowerCase().includes(q)
-    );
+    // Search Person global — via backend (admin OU gestor do evento) — Lote 4
+    const all = await searchPersons(eventId, q);
+    const results = all;
     // Document search: only if query has digits, scoped to persons already loaded
     let extra = [];
     const digits = q.replace(/\D/g, "");
@@ -563,6 +560,7 @@ function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, 
     return (
       <PersonFormDialog
         person={null}
+        eventId={eventId}
         onClose={() => setStep("search")}
         onSaved={handlePersonCreated}
       />
@@ -663,16 +661,20 @@ function EditParticipantDataDialog({ participant, eventId, user, onClose, onSucc
     e.preventDefault();
     setSaving(true);
     await updateParticipant(eventId, participant.id, { ...form, cpf: form.cpf.replace(/\D/g, "") });
-    // If linked to a Person, sync name/email/phone to Person global
+    // If linked to a Person, sync name/email/phone to Person global (via backend — Lote 4)
     if (participant.person_id) {
-      await base44.entities.Person.update(participant.person_id, {
-        full_name: form.full_name,
-        contact_email: form.email,
-        phone: form.phone,
-        company: form.company,
-        job_title: form.job_title,
-        bio: form.bio,
-        linkedin: form.linkedin,
+      await saveManagedPerson({
+        eventId,
+        personId: participant.person_id,
+        data: {
+          full_name: form.full_name,
+          contact_email: form.email,
+          phone: form.phone,
+          company: form.company,
+          job_title: form.job_title,
+          bio: form.bio,
+          linkedin: form.linkedin,
+        },
       });
     }
     logAudit({ event_id: eventId, action: "update", entity_type: "Participant", entity_id: participant.id, user });

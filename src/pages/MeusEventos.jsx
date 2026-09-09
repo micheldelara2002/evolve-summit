@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { base44 } from "@/api/base44Client";
+import { fetchMyPerson } from "@/lib/personApi";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calendar, ChevronRight, Clock, Lock, Users } from "lucide-react";
@@ -115,9 +116,9 @@ export default function MeusEventos() {
   };
 
   // 1. Buscar Person vinculada ao user (não-admin) — scoped por email
-  const { data: persons = [], isLoading: loadingPersons } = useQuery({
+  const { data: myPerson = null, isLoading: loadingPersons } = useQuery({
     queryKey: ["my_person", user?.id],
-    queryFn: () => base44.entities.Person.filter({ contact_email: user?.email, is_active: true }),
+    queryFn: () => fetchMyPerson(),
     enabled: !!user && !admin,
   });
 
@@ -129,7 +130,7 @@ export default function MeusEventos() {
   });
 
   // 3. Buscar participações vinculadas via person_id — scoped (não-admin)
-  const personIds = persons.map((p) => p.id);
+  const personIds = myPerson?.id ? [myPerson.id] : [];
   const { data: participantsByPerson = [], isLoading: loadingByPerson } = useQuery({
     queryKey: ["my_participants_person", personIds.join(",")],
     queryFn: () => {
