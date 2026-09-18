@@ -1,0 +1,41 @@
+{
+  "name": "PlatformSetting",
+  "type": "object",
+  "description": "Configura\u00e7\u00e3o global da plataforma (singleton por 'key'). Ex: key 'commission' \u2192 { 'default_commission_percent': 5 }. Escrita apenas via managePayouts (backend function); acesso direto via SDK somente para admin.",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Chave da configura\u00e7\u00e3o (ex: 'commission')"
+    },
+    "value_json": {
+      "type": "string",
+      "description": "Valor da configura\u00e7\u00e3o serializado em JSON"
+    }
+  },
+  "required": [
+    "key",
+    "value_json"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

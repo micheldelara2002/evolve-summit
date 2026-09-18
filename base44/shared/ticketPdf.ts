@@ -19,10 +19,25 @@ export type TicketPdfInput = {
   pricePaid: number;
   hashCode: string;
   appUrl: string;
+  // Recibo (opcional) — dados do pagamento + recebedor. A NF fica a cargo do
+  // emissor de nota do organizador (CNPJ dele).
+  paidAt?: string;
+  paymentMethod?: string;
+  receiverName?: string;
+  receiverDoc?: string;
+};
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  card: 'Cartão',
+  credit_card: 'Cartão de crédito',
+  pix: 'Pix',
+  boleto: 'Boleto',
+  free: 'Gratuito',
 };
 
 export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint8Array> {
-  const doc = new jsPDF({ unit: 'pt', format: [380, 600] });
+  const hasReceipt = !!(opts.paidAt || opts.paymentMethod || opts.receiverName || opts.receiverDoc);
+  const doc = new jsPDF({ unit: 'pt', format: [380, hasReceipt ? 750 : 600] });
 
   // Header band
   doc.setFillColor(15, 23, 42);
@@ -103,6 +118,39 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
   doc.setTextColor(100, 116, 139);
   doc.text(`Acesse o app: ${opts.appUrl}`, 190, 560, { align: 'center', maxWidth: 340 });
 
+  // Seção RECIBO — valor, data, forma de pagamento e recebedor (organizador).
+  if (hasReceipt) {
+    let ry = 615;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(30, 595, 350, 595);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text('RECIBO', 30, ry);
+    doc.setTextColor(15, 23, 42);
+    ry += 16;
+    doc.setFont('helvetica', 'normal');
+    if (opts.paidAt) {
+      try {
+        doc.text(`Data do pagamento: ${new Date(opts.paidAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`, 30, ry, { maxWidth: 320 });
+      } catch {
+        doc.text(`Data do pagamento: ${String(opts.paidAt)}`, 30, ry, { maxWidth: 320 });
+      }
+      ry += 13;
+    }
+    if (opts.paymentMethod) {
+      doc.text(`Forma de pagamento: ${PAYMENT_METHOD_LABELS[opts.paymentMethod] || opts.paymentMethod}`, 30, ry, { maxWidth: 320 });
+      ry += 13;
+    }
+    if (opts.receiverName) {
+      doc.text(`Recebedor: ${String(opts.receiverName).slice(0, 60)}`, 30, ry, { maxWidth: 320 });
+      ry += 13;
+    }
+    if (opts.receiverDoc) {
+      doc.text(`CNPJ: ${String(opts.receiverDoc)}`, 30, ry, { maxWidth: 320 });
+    }
+  }
+
   return doc.output('arraybuffer') as Uint8Array;
 }
 
@@ -111,6 +159,23 @@ const APP_URL = 'https://evolve-summit.base44.app';
 // Entrega os ingressos: gera PDF (com QR), faz upload, armazena pdf_url no Ticket
 // e envia por email ao titular. Idempotente — pula ingressos que já têm pdf_url.
 export async function deliverTickets(svc: any, event: any, order: any, tickets: any[], orderItems: any[]): Promise<void> {
+  // Dados do recibo: pagamento (data/método) + recebedor (conta conectada
+  // do organizador vinculada ao evento).
+  let receipt: any = {};
+  try {
+    const payment = (await svc.entities.Payment.filter({ order_id: order.id }))[0] || null;
+    const payoutAccount = event?.payout_account_id
+      ? ((await svc.entities.PayoutAccount.filter({ id: event.payout_account_id }))[0] || null)
+      : null;
+    receipt = {
+      paidAt: payment?.succeeded_at || order?.created_date || '',
+      paymentMethod: payment?.payment_method || '',
+      receiverName: payoutAccount?.legal_name || '',
+      receiverDoc: payoutAccount?.legal_document_number || '',
+    };
+  } catch (err: any) {
+    console.error('[deliverTickets] receipt data failed:', err?.message || err);
+  }
   const itemByOrderItem = new Map<string, any>();
   for (const it of orderItems) itemByOrderItem.set(it.id, it);
   for (const ticket of tickets) {
@@ -128,6 +193,10 @@ export async function deliverTickets(svc: any, event: any, order: any, tickets: 
         pricePaid: item.unit_price,
         hashCode: ticket.hash_code,
         appUrl: APP_URL,
+        paidAt: receipt.paidAt,
+        paymentMethod: receipt.paymentMethod,
+        receiverName: receipt.receiverName,
+        receiverDoc: receipt.receiverDoc,
       });
       let fileUrl = '';
       try {

@@ -83,6 +83,8 @@ export default async function(req: Request): Promise<Response> {
           amountCents: refundAmountCents,
           reason: reason || "requested_by_customer",
           idempotencyKey: idemKey,
+          reverseTransfer: !!payment.destination_account_id,
+          refundApplicationFee: !!payment.destination_account_id,
         });
       } catch (err: any) {
         console.error('[requestRefund] cancel_item Stripe failed:', err?.message || err);
@@ -140,6 +142,8 @@ export default async function(req: Request): Promise<Response> {
         amountCents: isPartial ? refundAmountCents : undefined,
         reason: reason || "requested_by_customer",
         idempotencyKey: `refund_${payment.id}_${refundType}`,
+        reverseTransfer: !!payment.destination_account_id,
+        refundApplicationFee: !!payment.destination_account_id,
       });
     } catch (err: any) {
       console.error('[requestRefund] Stripe refund failed:', err?.message || err);

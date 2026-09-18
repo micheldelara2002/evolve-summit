@@ -48,6 +48,18 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'Ingressos não estão à venda para este evento.' }, { status: 400 });
     }
 
+    // Stripe Connect: evento vinculado a uma conta conectada do organizador?
+    // Se vinculado mas sem verificação concluída, bloqueamos a venda com mensagem
+    // clara (o destination charge falharia no Stripe de qualquer forma).
+    let destinationAccountId = '';
+    if (event.payout_account_id) {
+      const payoutAccount = (await svc.entities.PayoutAccount.filter({ id: event.payout_account_id, is_deleted: false }))[0];
+      if (!payoutAccount || !payoutAccount.stripe_account_id || !payoutAccount.charges_enabled) {
+        return Response.json({ error: 'O recebedor deste evento ainda não concluiu a verificação da conta de recebimento. Vendas temporariamente indisponíveis.' }, { status: 400 });
+      }
+      destinationAccountId = payoutAccount.stripe_account_id;
+    }
+
     const now = new Date();
 
     // Fetch all lots + ticket types referenced.
@@ -212,6 +224,20 @@ export default async function(req: Request): Promise<Response> {
 
     // Create Stripe PaymentIntent.
     const amountCents = toCents(totals.total);
+    // Comissão da plataforma (destination charges): override do evento,
+    // senão padrão global; 0 se nada configurado. Retida automaticamente
+    // pelo Stripe antes do valor chegar ao organizador.
+    let applicationFeeCents = 0;
+    if (destinationAccountId) {
+      let platformCommissionPercent = 0;
+      try {
+        const commissionSetting = (await svc.entities.PlatformSetting.filter({ key: 'commission' }))[0];
+        platformCommissionPercent = Number(JSON.parse(commissionSetting?.value_json || '{}').default_commission_percent) || 0;
+      } catch {}
+      const commissionPercent = event.commission_percent != null ? Number(event.commission_percent) : platformCommissionPercent;
+      const pct = Math.min(100, Math.max(0, commissionPercent || 0));
+      applicationFeeCents = Math.min(Math.round(amountCents * pct / 100), amountCents);
+    }
     let intent;
     try {
       intent = await createPaymentIntent({
@@ -219,6 +245,8 @@ export default async function(req: Request): Promise<Response> {
         currency: 'BRL',
         orderId: order.id,
         eventId,
+        destinationAccountId: destinationAccountId || undefined,
+        applicationFeeCents,
       });
     } catch (err: any) {
       // Rollback: release reservations + cancel order.
@@ -244,6 +272,8 @@ export default async function(req: Request): Promise<Response> {
       client_secret: intent.client_secret,
       refunded_amount: 0,
       fulfillment_status: 'pending',
+      destination_account_id: destinationAccountId,
+      application_fee_amount: applicationFeeCents ? applicationFeeCents / 100 : 0,
     });
 
     // Increment coupon uses (atomic, conditional guard).

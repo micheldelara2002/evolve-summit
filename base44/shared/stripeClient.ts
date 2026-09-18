@@ -36,6 +36,10 @@ export async function createPaymentIntent(opts: {
   orderId: string;
   eventId: string;
   metadata?: Record<string, string>;
+  // Stripe Connect (destination charge): organizador recebe direto,
+  // a plataforma retém a comissão via application_fee_amount.
+  destinationAccountId?: string;
+  applicationFeeCents?: number;
 }): Promise<any> {
   const { amountCents, currency, orderId, eventId, metadata } = opts;
   const params = new URLSearchParams();
@@ -46,6 +50,12 @@ export async function createPaymentIntent(opts: {
   params.append("metadata[event_id]", eventId);
   params.append("metadata[base44_app_id]", secrets.get("BASE44_APP_ID") || "");
   if (metadata) for (const k of Object.keys(metadata)) params.append(`metadata[${k}]`, metadata[k]);
+  if (opts.destinationAccountId) {
+    params.append("transfer_data[destination]", opts.destinationAccountId);
+    if (opts.applicationFeeCents && opts.applicationFeeCents > 0) {
+      params.append("application_fee_amount", String(opts.applicationFeeCents));
+    }
+  }
   return stripeRequest("/payment_intents", params, `pi_create_${orderId}`);
 }
 
@@ -61,12 +71,18 @@ export async function createRefund(opts: {
   amountCents?: number; // partial if provided
   reason?: string;
   idempotencyKey: string;
+  // Destination charges: reverte a transferência ao organizador e devolve a
+  // comissão da plataforma proporcionalmente ao valor estornado.
+  reverseTransfer?: boolean;
+  refundApplicationFee?: boolean;
 }): Promise<any> {
   const { paymentIntentId, amountCents, reason, idempotencyKey } = opts;
   const params = new URLSearchParams();
   params.append("payment_intent", paymentIntentId);
   if (amountCents) params.append("amount", String(amountCents));
   if (reason) params.append("reason", reason);
+  if (opts.reverseTransfer) params.append("reverse_transfer", "true");
+  if (opts.refundApplicationFee) params.append("refund_application_fee", "true");
   params.append("metadata[base44_app_id]", secrets.get("BASE44_APP_ID") || "");
   return stripeRequest("/refunds", params, idempotencyKey);
 }
@@ -90,4 +106,62 @@ export async function constructStripeEvent(body: string, signature: string, secr
   const tolerance = 300; // 5 min
   if (Math.abs(Date.now() / 1000 - parseInt(t, 10)) > tolerance) throw new Error("Stripe signature timestamp out of tolerance");
   return JSON.parse(body);
+}
+
+// ===== Stripe Connect (destination charges) =====
+
+// Cria uma conta conectada Express do organizador (organizador paga as taxas
+// padrão do Stripe direto — Stripe-managed pricing; zero tarifa para a plataforma).
+export async function createConnectedAccount(opts: {
+  email: string;
+  legalName: string;
+}): Promise<any> {
+  const params = new URLSearchParams();
+  params.append("type", "express");
+  params.append("email", opts.email);
+  params.append("business_type", "company");
+  params.append("business_profile[name]", opts.legalName);
+  params.append("company[name]", opts.legalName);
+  params.append("metadata[base44_app_id]", secrets.get("BASE44_APP_ID") || "");
+  return stripeRequest("/accounts", params, `acct_create_${opts.email}`);
+}
+
+// Gera um Account Link (onboarding hospedado pelo Stripe). Link de uso único:
+// cada clique pede um novo.
+export async function createAccountLink(opts: {
+  accountId: string;
+  refreshUrl: string;
+  returnUrl: string;
+}): Promise<any> {
+  const params = new URLSearchParams();
+  params.append("account", opts.accountId);
+  params.append("refresh_url", opts.refreshUrl);
+  params.append("return_url", opts.returnUrl);
+  params.append("type", "account_onboarding");
+  return stripeRequest("/account_links", params);
+}
+
+export async function retrieveConnectedAccount(accountId: string): Promise<any> {
+  const res = await fetch(`${STRIPE_API}/accounts/${accountId}`, {
+    headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+  return data;
+}
+
+// Reserva de saldo mínimo na conta conectada (o Stripe retém esse valor e não
+// repassa ao banco — amortece estornos pós-saque) + recuperação automática de
+// saldo negativo nas próximas vendas.
+export async function updateConnectedAccountPayoutSettings(opts: {
+  accountId: string;
+  minimumBalanceCents: number;
+  debitNegativeBalances: boolean;
+}): Promise<any> {
+  const params = new URLSearchParams();
+  if (opts.minimumBalanceCents > 0) {
+    params.append("settings[payouts][minimum_balance]", String(opts.minimumBalanceCents));
+  }
+  params.append("settings[payouts][debit_negative_balances]", opts.debitNegativeBalances ? "true" : "false");
+  return stripeRequest(`/accounts/${opts.accountId}`, params);
 }

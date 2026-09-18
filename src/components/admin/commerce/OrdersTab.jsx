@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShoppingBag, ChevronDown, ChevronUp, RotateCcw, CheckCircle2, Clock, XCircle, QrCode } from "lucide-react";
+import { ShoppingBag, ChevronDown, ChevronUp, RotateCcw, CheckCircle2, Clock, XCircle, QrCode, Download } from "lucide-react";
+import { downloadSalesCsv } from "@/lib/salesExport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +42,14 @@ export default function OrdersTab({ eventId, user }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-primary" /> Pedidos</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-primary" /> Pedidos</h3>
+        {orders.length > 0 && (
+          <Button size="sm" variant="outline" onClick={() => downloadSalesCsv(eventId, orders)}>
+            <Download className="w-3.5 h-3.5" /> CSV
+          </Button>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>

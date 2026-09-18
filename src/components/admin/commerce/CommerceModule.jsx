@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Ticket, Tag, ShieldCheck, Receipt, ShoppingBag } from "lucide-react";
+import { Banknote, Ticket, Tag, ShieldCheck, Receipt, ShoppingBag } from "lucide-react";
 import TicketTypesLotsTab from "./TicketTypesLotsTab";
 import CouponsTab from "./CouponsTab";
 import RefundPolicyTab from "./RefundPolicyTab";
 import TransactionsTab from "./TransactionsTab";
 import OrdersTab from "./OrdersTab";
+import PayoutTab from "./payout/PayoutTab";
 
 const TABS = [
   { id: "lots", label: "Tipos & Lotes", icon: Ticket },
@@ -12,6 +13,7 @@ const TABS = [
   { id: "policy", label: "Política de Estorno", icon: ShieldCheck },
   { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "transactions", label: "Transações", icon: Receipt },
+  { id: "payout", label: "Recebimento", icon: Banknote },
 ];
 
 export default function CommerceModule({ eventId, hasAccess, user }) {
@@ -41,6 +43,7 @@ export default function CommerceModule({ eventId, hasAccess, user }) {
       {tab === "policy" && <RefundPolicyTab eventId={eventId} hasAccess={hasAccess} user={user} />}
       {tab === "orders" && <OrdersTab eventId={eventId} user={user} />}
       {tab === "transactions" && <TransactionsTab eventId={eventId} user={user} />}
+      {tab === "payout" && <PayoutTab eventId={eventId} />}
     </div>
   );
 }

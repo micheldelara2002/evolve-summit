@@ -9,7 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Calendar, ChevronRight, Clock, Lock, Users } from "lucide-react";
+import { Banknote, Calendar, ChevronRight, Clock, Lock, Users } from "lucide-react";
 import StatusBadge from "@/components/admin/StatusBadge";
 import ListSkeleton from "@/components/ui/ListSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -93,6 +93,12 @@ function ManagedEventCard({ event, index }) {
       <div className="flex-1 min-w-0">
         <p className="font-display font-semibold text-base truncate">{event.name}</p>
         <p className="text-xs text-muted-foreground mt-1">Gerenciar participantes deste evento</p>
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/manage-event/${event.id}/payout`); }}
+          className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors touch-manipulation select-none"
+        >
+          <Banknote className="w-3 h-3" /> Receber minhas vendas
+        </button>
       </div>
       <div className="shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
         <ChevronRight className="w-5 h-5" />

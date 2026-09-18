@@ -72,7 +72,8 @@
         "pending_retry",
         "failed"
       ],
-      "default": "pending"
+      "default": "pending",
+      "description": "Estado do fulfillment de participantes/ingressos"
     },
     "error_reason": {
       "type": "string",
@@ -81,6 +82,15 @@
     "succeeded_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "destination_account_id": {
+      "type": "string",
+      "description": "P0.4 \u2014 ID da conta Stripe Connect (acct_...) do organizador que recebeu esta venda via destination charge. Vazio = venda recebida na conta da plataforma."
+    },
+    "application_fee_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "P0.4 \u2014 Comiss\u00e3o da plataforma retida nesta venda (BRL), via application_fee do destination charge."
     },
     "is_deleted": {
       "type": "boolean",

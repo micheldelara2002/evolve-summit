@@ -55,6 +55,7 @@ const EventTickets = lazy(() => import("@/pages/EventTickets"));
 const CheckoutPage = lazy(() => import("@/pages/Checkout"));
 const MyTickets = lazy(() => import("@/pages/MyTickets"));
 const Bilheteria = lazy(() => import("@/pages/Bilheteria"));
+const EventPayout = lazy(() => import("@/pages/EventPayout"));
 
 function EventRedirect() {
   const { eventId } = useParams();
@@ -106,6 +107,7 @@ const AuthenticatedApp = () => {
           <Route path="/profile/edit" element={<UserProfileEdit />} />
           <Route path="/my-events" element={<MeusEventos />} />
           <Route path="/manage-event/:eventId/people" element={<EventPeopleManage />} />
+          <Route path="/manage-event/:eventId/payout" element={<EventPayout />} />
           <Route path="/network" element={<Rede />} />
           <Route path="/qr-scan" element={<QRScan />} />
           <Route path="/event/:eventId" element={<EventoParticipante />} />

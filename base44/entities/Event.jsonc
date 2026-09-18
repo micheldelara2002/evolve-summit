@@ -75,6 +75,14 @@
       "type": "string",
       "description": "Pol\u00edtica de estorno do evento (JSON: {full_refund_until_days, partial_refund_percent, no_refund_within_days, allow_manual_override})"
     },
+    "commission_percent": {
+      "type": "number",
+      "description": "P0.4 \u2014 Override da comiss\u00e3o da plataforma para este evento (0\u2013100, sobre o valor bruto do ingresso). null/vazio = herda o padr\u00e3o da plataforma (PlatformSetting 'commission')."
+    },
+    "payout_account_id": {
+      "type": "string",
+      "description": "P0.4 \u2014 ID da PayoutAccount (conta Stripe Connect do organizador) que recebe as vendas deste evento. Vazio = vendas caem na conta da plataforma (admin)."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false,
