@@ -91,8 +91,23 @@ function TicketRow({ ticket, eventId }) {
     setDownloading(true);
     try {
       const res = await getTicketPdf(ticket.id);
-      if (res?.file_url) window.open(res.file_url, "_blank");
-      else throw new Error("PDF indisponível.");
+      // Ingresso legado com link armazenado — abre direto.
+      if (res?.file_url) {
+        window.open(res.file_url, "_blank");
+      } else if (res?.file_base64) {
+        // PDF gerado sob demanda — decodifica e dispara o download.
+        const bin = atob(res.file_base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = res.filename || `ingresso-${ticket.hash_code}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        throw new Error("PDF indisponível.");
+      }
     } catch (e) {
       toast({ title: "Erro ao baixar ingresso", description: e.message, variant: "destructive" });
     }

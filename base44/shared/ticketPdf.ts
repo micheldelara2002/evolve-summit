@@ -151,7 +151,7 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
     }
   }
 
-  return doc.output('arraybuffer') as Uint8Array;
+  return new Uint8Array(doc.output('arraybuffer') as ArrayBuffer);
 }
 
 const APP_URL = 'https://evolve-summit.base44.app';
@@ -198,27 +198,34 @@ export async function deliverTickets(svc: any, event: any, order: any, tickets: 
         receiverName: receipt.receiverName,
         receiverDoc: receipt.receiverDoc,
       });
-      let fileUrl = '';
+      // Upload de arquivos gerados no backend não é suportado pela integração
+      // (exige multipart) — o PDF vai como anexo base64 do próprio e-mail.
+      let b64 = '';
       try {
-        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-        const up: any = await svc.integrations.Core.UploadFile({ file: blob });
-        fileUrl = up?.file_url || '';
-        if (fileUrl) await svc.entities.Ticket.update(ticket.id, { pdf_url: fileUrl });
-      } catch (upErr: any) {
-        console.error('[deliverTickets] upload failed:', upErr?.message || upErr);
+        let s = '';
+        for (let i = 0; i < pdfBytes.length; i += 0x8000) {
+          s += String.fromCharCode(...pdfBytes.subarray(i, i + 0x8000));
+        }
+        b64 = btoa(s);
+      } catch (encErr: any) {
+        console.error('[deliverTickets] base64 encode failed:', encErr?.message || encErr);
       }
       if (item.holder_email) {
         const body =
           `Olá ${item.holder_name},\n\nSeu ingresso para "${event?.name || 'Evento'}" foi confirmado!\n\n` +
           `Titular: ${item.holder_name}\nTipo: ${item.ticket_type_name}\nValor: R$ ${Number(item.unit_price).toFixed(2)}\n` +
           `Código: ${ticket.hash_code}\n\n` +
-          (fileUrl ? `Baixe seu ingresso (com QR code para o check-in):\n${fileUrl}\n\n` : '') +
+          `O ingresso em PDF (com QR code para o check-in) está anexado a este e-mail.\n\n` +
           `Acesse o app: ${APP_URL}\n\nEvolve Summit`;
-        await svc.integrations.Core.SendEmail({
+        const emailPayload: any = {
           to: item.holder_email,
           subject: `Ingresso — ${event?.name || 'Evento'}`,
           body,
-        });
+        };
+        if (b64) {
+          emailPayload.attachments = [{ filename: `ingresso-${ticket.hash_code}.pdf`, content: b64 }];
+        }
+        await svc.integrations.Core.SendEmail(emailPayload);
       }
     } catch (err: any) {
       console.error('[deliverTickets] failed for ticket', ticket.id, err?.message || err);

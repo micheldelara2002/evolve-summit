@@ -81,21 +81,25 @@ export default async function(req: Request): Promise<Response> {
       receiverDoc: receipt.receiverDoc,
     });
 
-    let fileUrl = '';
+    // Upload de arquivos gerados no backend não é suportado pela integração
+    // (exige multipart) — devolvemos o PDF em base64 e o frontend monta o
+    // download. pdf_url é usado apenas para ingressos legados que já têm link.
+    let b64 = '';
     try {
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const up: any = await svc.integrations.Core.UploadFile({ file: blob });
-      fileUrl = up?.file_url || '';
+      let s = '';
+      for (let i = 0; i < pdfBytes.length; i += 0x8000) {
+        s += String.fromCharCode(...pdfBytes.subarray(i, i + 0x8000));
+      }
+      b64 = btoa(s);
     } catch (err: any) {
-      console.error('[getTicketPdf] upload failed:', err?.message || err);
+      console.error('[getTicketPdf] base64 encode failed:', err?.message || err);
     }
-    if (!fileUrl) return Response.json({ error: "Falha ao gerar o PDF do ingresso." }, { status: 500 });
+    if (!b64) return Response.json({ error: "Falha ao gerar o PDF do ingresso." }, { status: 500 });
 
-    try { await svc.entities.Ticket.update(ticket.id, { pdf_url: fileUrl }); } catch (err: any) {
-      console.error('[getTicketPdf] pdf_url persist failed:', err?.message || err);
-    }
-
-    return Response.json({ file_url: fileUrl });
+    return Response.json({
+      file_base64: b64,
+      filename: `ingresso-${ticket.hash_code}.pdf`,
+    });
   } catch (error: any) {
     console.error('[getTicketPdf]', error?.message || error);
     return Response.json({ error: error?.message || "Erro interno." }, { status: 500 });
