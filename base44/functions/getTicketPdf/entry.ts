@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { generateTicketPdfBytes } from "../../shared/ticketPdf.ts";
+import { generateTicketPdfBytes, buildTicketPdfExtras } from "../../shared/ticketPdf.ts";
 
 // Download do PDF do ingresso (com QR + recibo financeiro) pelo titular ou
 // comprador. Se o PDF ainda não foi gerado no fulfillment, gera sob demanda,
@@ -9,7 +9,7 @@ import { generateTicketPdfBytes } from "../../shared/ticketPdf.ts";
 //
 // Payload: { ticketId }
 
-const APP_URL = 'https://evolve-summit.base44.app';
+const APP_URL = 'https://app.evolveinst.com';
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -65,10 +65,14 @@ export default async function(req: Request): Promise<Response> {
       console.error('[getTicketPdf] receipt data failed:', err?.message || err);
     }
 
+    const extras = await buildTicketPdfExtras(svc, event);
     const pdfBytes = await generateTicketPdfBytes({
       eventName: event.name || 'Evento',
       eventDate: event.start_date,
       eventLocation: event.location,
+      eventLogoUrl: extras.eventLogoUrl,
+      sponsors: extras.sponsors,
+      refundPolicyLines: extras.refundPolicyLines,
       holderName: ticket.holder_name,
       ticketTypeName: ticket.ticket_type_name || item?.ticket_type_name || 'Ingresso',
       lotName: '',

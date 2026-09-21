@@ -23,7 +23,9 @@ export type RefundPolicy = {
 // Resolve the effective refund policy: event override merges over global default.
 export function resolveRefundPolicy(eventOverride: any, globalConfig: any): RefundPolicy {
   const global = (globalConfig && globalConfig.refund_policy) || {};
-  const override = (eventOverride && eventOverride.refund_policy) || {};
+  // eventOverride é a política do evento já parseada ({full_refund_until_days, ...})
+  // — não um wrapper {refund_policy}. Default: global cobre o que faltar.
+  const override = eventOverride || {};
   return {
     ...DEFAULT_GLOBAL_REFUND_POLICY,
     ...global,
