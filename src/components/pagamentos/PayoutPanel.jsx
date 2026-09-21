@@ -35,7 +35,13 @@ export default function PayoutPanel({ eventId, eventName }) {
   return (
     <div className="space-y-5">
       {data?.account ? (
-        <PayoutStatusCard eventId={eventId} account={data.account} commission={data.commission} onChanged={invalidate} />
+        <PayoutStatusCard
+          eventId={eventId}
+          account={data.account}
+          commission={data.commission}
+          rules={data.rules}
+          onChanged={invalidate}
+        />
       ) : (
         <PayoutOnboardingCard eventId={eventId} onChanged={invalidate} />
       )}

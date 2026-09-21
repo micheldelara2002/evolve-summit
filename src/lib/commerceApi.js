@@ -51,6 +51,9 @@ export const getPaymentStatus = (paymentId) =>
 export const getMyOrders = (orderId) =>
   invoke("getMyOrders", orderId ? { orderId } : {});
 
+// PDF do ingresso (QR + recibo) — gera sob demanda se ainda não existir.
+export const getTicketPdf = (ticketId) => invoke("getTicketPdf", { ticketId });
+
 // ===== Refund =====
 export const requestRefund = (paymentId, reason, refundType = "full", manualApprove = false) =>
   invoke("requestRefund", { paymentId, reason, refundType, manualApprove });

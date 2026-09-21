@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Receipt, RotateCcw, AlertCircle, CheckCircle2, Clock, XCircle } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { requestRefund } from "@/lib/commerceApi";
+import { getEventOrders, requestRefund } from "@/lib/commerceApi";
 import { useToast } from "@/components/ui/use-toast";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 
@@ -27,10 +26,13 @@ export default function TransactionsTab({ eventId, user }) {
   const [manualApprove, setManualApprove] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const { data: payments = [], isLoading } = useQuery({
-    queryKey: ["commerce", "payments", eventId],
-    queryFn: () => base44.entities.Payment.filter({ event_id: eventId }),
+  // Payment tem RLS (comprador/admin) — leitura via getEventOrders, que autoriza
+  // admin OU gerente/equipe do evento.
+  const { data, isLoading } = useQuery({
+    queryKey: ["commerce", "orders", eventId],
+    queryFn: () => getEventOrders(eventId),
   });
+  const payments = data?.payments || [];
 
   const sorted = [...payments].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
 
@@ -43,7 +45,7 @@ export default function TransactionsTab({ eventId, user }) {
       setRefundTarget(null);
       setRefundReason("");
       setManualApprove(false);
-      qc.invalidateQueries({ queryKey: ["commerce", "payments", eventId] });
+      qc.invalidateQueries({ queryKey: ["commerce", "orders", eventId] });
     } catch (e) {
       toast({ title: "Erro no estorno", description: e.message, variant: "destructive" });
     }

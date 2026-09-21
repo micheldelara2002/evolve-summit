@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Ticket, Calendar, QrCode, MapPin } from "lucide-react";
+import { ArrowLeft, Ticket, Calendar, QrCode, MapPin, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getMyOrders } from "@/lib/commerceApi";
+import { getMyOrders, getTicketPdf } from "@/lib/commerceApi";
+import { useToast } from "@/components/ui/use-toast";
 
 const STATUS_LABEL = {
   pending: "Pendente",
@@ -80,8 +82,22 @@ export default function MyTickets() {
 
 function TicketRow({ ticket, eventId }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState(false);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(ticket.hash_code)}`;
   const cancelled = ticket.status === "cancelled" || ticket.status === "refunded";
+
+  const downloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const res = await getTicketPdf(ticket.id);
+      if (res?.file_url) window.open(res.file_url, "_blank");
+      else throw new Error("PDF indisponível.");
+    } catch (e) {
+      toast({ title: "Erro ao baixar ingresso", description: e.message, variant: "destructive" });
+    }
+    setDownloading(false);
+  };
   return (
     <div className="p-4 flex items-center gap-4">
       <div className="shrink-0">
@@ -99,9 +115,14 @@ function TicketRow({ ticket, eventId }) {
         <p className="text-[11px] text-muted-foreground mt-0.5">Código: {ticket.hash_code}</p>
       </div>
       {!cancelled && (
-        <Button size="sm" variant="outline" onClick={() => navigate(`/event/${eventId}`)}>
-          <Calendar className="w-3.5 h-3.5 mr-1" /> Entrar
-        </Button>
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <Button size="sm" variant="outline" onClick={() => navigate(`/event/${eventId}`)}>
+            <Calendar className="w-3.5 h-3.5 mr-1" /> Entrar
+          </Button>
+          <Button size="sm" variant="outline" onClick={downloadPdf} disabled={downloading}>
+            <Download className="w-3.5 h-3.5 mr-1" /> {downloading ? "Gerando…" : "PDF"}
+          </Button>
+        </div>
       )}
     </div>
   );

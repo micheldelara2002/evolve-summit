@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ExternalLink, Landmark, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ExternalLink, Landmark, RefreshCw, ScrollText, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +21,7 @@ function fmtCnpj(v) {
 }
 
 // Status da conta conectada + pendências do Stripe + reserva para estornos.
-export default function PayoutStatusCard({ eventId, account, commission, onChanged }) {
+export default function PayoutStatusCard({ eventId, account, commission, rules, onChanged }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState("");
   const [reserve, setReserve] = useState("0");
@@ -111,13 +111,10 @@ export default function PayoutStatusCard({ eventId, account, commission, onChang
           <Button size="sm" variant="outline" onClick={refresh} disabled={busy === "refresh"}>
             <RefreshCw className={`w-3.5 h-3.5 ${busy === "refresh" ? "animate-spin" : ""}`} /> Atualizar status
           </Button>
-          {commission && (
-            <p className="text-[11px] text-muted-foreground">
-              Comissão da plataforma: {commission.effective}% por venda, retida automaticamente.
-            </p>
-          )}
         </div>
       </section>
+
+      <ReceivingRulesCard commission={commission} rules={rules} account={account} />
 
       <section className="p-5 rounded-xl bg-card border border-border space-y-3">
         <div className="flex items-center gap-2">
@@ -138,5 +135,41 @@ export default function PayoutStatusCard({ eventId, account, commission, onChang
         </div>
       </section>
     </div>
+  );
+}
+
+// Regras de recebimento — somente leitura, definidas pela plataforma (admin).
+function ReceivingRulesCard({ commission, rules, account }) {
+  if (!rules && !commission) return null;
+  return (
+    <section className="p-5 rounded-xl bg-card border border-border space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ScrollText className="w-5 h-5 text-primary" />
+          <h3 className="text-sm font-semibold">Regras de recebimento</h3>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border shrink-0">
+          Somente leitura · definidas pela plataforma
+        </span>
+      </div>
+      <ul className="space-y-2 text-xs text-muted-foreground">
+        <li>
+          <strong className="text-foreground">Comissão da plataforma:</strong>{" "}
+          {rules?.commission_percent ?? commission?.effective}% de cada venda, retida automaticamente antes do repasse.
+        </li>
+        <li>
+          <strong className="text-foreground">Taxas do Stripe:</strong>{" "}
+          {rules?.stripe_fees || "As taxas de processamento do Stripe saem do saldo da conta do organizador a cada venda."}
+        </li>
+        <li>
+          <strong className="text-foreground">Reserva para estornos:</strong>{" "}
+          R$ {Number(account?.reserve_amount || 0).toFixed(2)} mantidos retidos na conta (gerenciados por você, acima).
+        </li>
+        <li>
+          <strong className="text-foreground">Repasse ao banco:</strong>{" "}
+          {rules?.payout_schedule || "O Stripe repassa automaticamente ao banco da empresa, conforme o cronograma da conta conectada."}
+        </li>
+      </ul>
+    </section>
   );
 }
