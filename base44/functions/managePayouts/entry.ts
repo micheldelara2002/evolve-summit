@@ -166,9 +166,17 @@ export default async function(req: Request): Promise<Response> {
           }
         }
         const platformDefault = await getPlatformCommission(svc);
+        const commission = commissionPayload(event, platformDefault);
         return Response.json({
           account: account ? sanitizeAccount(account) : null,
-          commission: commissionPayload(event, platformDefault),
+          commission,
+          // Regras completas de recebimento — SOMENTE LEITURA para o organizador
+          // (a edição de comissão/override é exclusiva do admin).
+          rules: {
+            commission_percent: commission.effective,
+            stripe_fees: "As taxas de processamento do Stripe saem do saldo da conta do organizador a cada venda.",
+            payout_schedule: "O Stripe repassa automaticamente ao banco da empresa, conforme o cronograma da conta conectada.",
+          },
           event: { id: event.id, name: event.name, status: event.status, manager_name: event.manager_name || "" },
         });
       }

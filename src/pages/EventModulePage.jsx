@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { getEventSessions } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -45,9 +46,10 @@ function PeopleContent({ eventId, hasAccess }) {
     queryKey: ["participants", eventId],
     queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
   });
+  // Session tem RLS admin-only — leitura via getEventSessions (admin OU gerente/equipe).
   const { data: sessions = [] } = useQuery({
     queryKey: ["sessions", eventId],
-    queryFn: () => base44.entities.Session.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => getEventSessions(eventId),
   });
   return (
     <PessoasTab
@@ -65,13 +67,13 @@ function PeopleContent({ eventId, hasAccess }) {
 function RankingContent({ eventId }) {
   const { data: sessions = [] } = useQuery({
     queryKey: ["sessions", eventId],
-    queryFn: () => base44.entities.Session.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => getEventSessions(eventId),
   });
   return <SessionRankingSection eventId={eventId} sessions={sessions} />;
 }
 
 export default function EventModulePage({ module }) {
-  const { eventId, hasAccess, user } = useOutletContext();
+  const { event, eventId, hasAccess, user } = useOutletContext();
   const navigate = useNavigate();
 
   return (
@@ -104,7 +106,7 @@ export default function EventModulePage({ module }) {
       {module === "certificates" && <CertificadosTab eventId={eventId} user={user} />}
       {module === "cfp" && <CallForPapersTab eventId={eventId} hasAccess={hasAccess} user={user} />}
       {module === "premiacao" && <PremiacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />}
-      {module === "tickets" && <CommerceModule eventId={eventId} hasAccess={hasAccess} user={user} />}
+      {module === "tickets" && <CommerceModule eventId={eventId} hasAccess={hasAccess} user={user} event={event} />}
     </div>
   );
 }

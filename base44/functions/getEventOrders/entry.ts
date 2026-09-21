@@ -79,7 +79,12 @@ export default async function(req: Request): Promise<Response> {
       };
     });
 
-    return Response.json({ orders: detailed, total: detailed.length });
+    // payments: registros completos de Payment (RLS admin/buyer bloqueia leitura
+    // direta pelo gerente — a aba Transações usa esta lista).
+    const sortedPayments = [...payments].sort(
+      (a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
+    );
+    return Response.json({ orders: detailed, total: detailed.length, payments: sortedPayments });
   } catch (error: any) {
     console.error('[getEventOrders]', error?.message || error);
     return Response.json({ error: error.message }, { status: 500 });

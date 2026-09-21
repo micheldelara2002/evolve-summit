@@ -45,7 +45,23 @@ export default function EventsList() {
     },
   });
 
-  const scoped = filterEventsByAccess(events, user);
+  const admin = isAdmin(user);
+
+  // Gerente/equipe (EventMembership manager/team) veem apenas os próprios eventos.
+  const { data: myMemberships = [] } = useQuery({
+    queryKey: ["my-manage-memberships", user?.id],
+    queryFn: () =>
+      base44.entities.EventMembership.filter({
+        user_id: user.id,
+        is_active: true,
+        is_deleted: false,
+        role: { $in: ["manager", "team"] },
+      }),
+    enabled: !!user?.id && !admin,
+  });
+  const managedIds = new Set(myMemberships.map((m) => m.event_id));
+
+  const scoped = filterEventsByAccess(events, user, managedIds);
   const filtered = scoped.filter((e) =>
     e.name?.toLowerCase().includes(search.toLowerCase())
   );
@@ -112,27 +128,29 @@ export default function EventsList() {
                   </div>
                 </Link>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="flex-shrink-0">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => navigate(`/events/${event.id}`)}>
-                      <Eye className="w-4 h-4 mr-2" /> Ver
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate(`/events/${event.id}/edit`)}>
-                      <Pencil className="w-4 h-4 mr-2" /> {t("common.edit")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => setDeleteTarget(event)}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" /> {t("common.delete")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {admin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="flex-shrink-0">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => navigate(`/events/${event.id}`)}>
+                        <Eye className="w-4 h-4 mr-2" /> Ver
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate(`/events/${event.id}/edit`)}>
+                        <Pencil className="w-4 h-4 mr-2" /> {t("common.edit")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => setDeleteTarget(event)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> {t("common.delete")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </motion.div>
           ))}

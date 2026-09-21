@@ -62,6 +62,10 @@
       "format": "date-time",
       "description": "Quando foi utilizado no check-in"
     },
+    "pdf_url": {
+      "type": "string",
+      "description": "URL do PDF do ingresso (com QR + recibo), gerado no fulfillment ou sob demanda via getTicketPdf"
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

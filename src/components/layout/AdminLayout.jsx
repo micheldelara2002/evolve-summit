@@ -1,4 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { t } from "@/lib/i18n";
 import { isAdmin, isPartnerManager } from "@/lib/access";
@@ -34,7 +36,27 @@ const PARTNER_MANAGER_NAV = [
 export default function AdminLayout() {
   const { pathname } = useLocation();
   const { user } = useAuth();
-  const navItems = isAdmin(user) ? ADMIN_NAV : isPartnerManager(user) ? PARTNER_MANAGER_NAV : USER_NAV;
+
+  // Gerente/equipe de evento (membership manager/team) acessa a gestão (/events).
+  const { data: manageMemberships = [] } = useQuery({
+    queryKey: ["manage-memberships", user?.id],
+    queryFn: () =>
+      base44.entities.EventMembership.filter({
+        user_id: user.id,
+        is_active: true,
+        is_deleted: false,
+        role: { $in: ["manager", "team"] },
+      }),
+    enabled: !!user?.id && !isAdmin(user),
+    staleTime: 60_000,
+  });
+  const isEventManager = !isAdmin(user) && manageMemberships.length > 0;
+  const EVENTS_MANAGE_ITEM = { path: "/events", icon: Calendar, label: "Gestão de Eventos" };
+  const navItems = isAdmin(user)
+    ? ADMIN_NAV
+    : isPartnerManager(user)
+      ? (isEventManager ? [...PARTNER_MANAGER_NAV, EVENTS_MANAGE_ITEM] : PARTNER_MANAGER_NAV)
+      : (isEventManager ? [...USER_NAV, EVENTS_MANAGE_ITEM] : USER_NAV);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

@@ -8,6 +8,7 @@ import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import AccountDeletedScreen from "@/components/AccountDeletedScreen";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
+import EventManageRoute from "@/components/EventManageRoute";
 
 // Auth pages
 import Login from "@/pages/Login";
@@ -39,7 +40,6 @@ const AdminPartners = lazy(() => import("@/pages/AdminPartners"));
 const UserProfile = lazy(() => import("@/pages/UserProfile"));
 const UserProfileEdit = lazy(() => import("@/pages/UserProfileEdit"));
 const MeusEventos = lazy(() => import("@/pages/MeusEventos"));
-const EventPeopleManage = lazy(() => import("@/pages/EventPeopleManage"));
 const EventoParticipante = lazy(() => import("@/pages/EventoParticipante"));
 const PainelPalestrante = lazy(() => import("@/pages/PainelPalestrante"));
 const PainelParceiro = lazy(() => import("@/pages/PainelParceiro"));
@@ -55,12 +55,21 @@ const EventTickets = lazy(() => import("@/pages/EventTickets"));
 const CheckoutPage = lazy(() => import("@/pages/Checkout"));
 const MyTickets = lazy(() => import("@/pages/MyTickets"));
 const Bilheteria = lazy(() => import("@/pages/Bilheteria"));
-const EventPayout = lazy(() => import("@/pages/EventPayout"));
 
 function EventRedirect() {
   const { eventId } = useParams();
   const location = useLocation();
   return <Navigate to={`/event/${eventId}${location.search}`} replace />;
+}
+
+// Legacy /manage-event/* → gestão do evento (/events/...). Preserva a query
+// string (ex.: ?stripe_return=1 do retorno do onboarding do Stripe).
+function ManageEventRedirect({ to }) {
+  const { eventId } = useParams();
+  const location = useLocation();
+  const target = to.replace(":eventId", eventId);
+  const sep = target.includes("?") ? "&" : "?";
+  return <Navigate to={`${target}${location.search ? sep + location.search.slice(1) : ""}`} replace />;
 }
 
 const AuthenticatedApp = () => {
@@ -106,8 +115,8 @@ const AuthenticatedApp = () => {
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/profile/edit" element={<UserProfileEdit />} />
           <Route path="/my-events" element={<MeusEventos />} />
-          <Route path="/manage-event/:eventId/people" element={<EventPeopleManage />} />
-          <Route path="/manage-event/:eventId/payout" element={<EventPayout />} />
+          <Route path="/manage-event/:eventId/people" element={<ManageEventRedirect to="/events/:eventId/people" />} />
+          <Route path="/manage-event/:eventId/payout" element={<ManageEventRedirect to="/events/:eventId/tickets?tab=payout" />} />
           <Route path="/network" element={<Rede />} />
           <Route path="/qr-scan" element={<QRScan />} />
           <Route path="/event/:eventId" element={<EventoParticipante />} />
@@ -126,8 +135,11 @@ const AuthenticatedApp = () => {
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>
             <Route path="/business" element={<BusinessDashboard />} />
-            <Route path="/events" element={<EventsList />} />
             <Route path="/events/new" element={<EventCreate />} />
+          </Route>
+          {/* Gestão de eventos — admin OU gerente/equipe (EventMembership manager/team) */}
+          <Route element={<EventManageRoute />}>
+            <Route path="/events" element={<EventsList />} />
             <Route path="/events/:eventId" element={<EventDetail />}>
               <Route index element={<EventModulesHome />} />
               <Route path="people" element={<EventModulePage module="people" />} />
@@ -146,12 +158,14 @@ const AuthenticatedApp = () => {
               <Route path="cfp" element={<EventModulePage module="cfp" />} />
               <Route path="premiacao" element={<EventModulePage module="premiacao" />} />
               <Route path="tickets" element={<EventModulePage module="tickets" />} />
+              <Route path="notifications/metrics" element={<NotificationMetrics />} />
             </Route>
+          </Route>
+          <Route element={<AdminRoute />}>
             <Route path="/events/:eventId/edit" element={<EventEdit />} />
             <Route path="/audit" element={<AuditLog />} />
             <Route path="/notifications" element={<AdminNotifications />} />
             <Route path="/notifications/metrics" element={<NotificationMetrics />} />
-            <Route path="/events/:eventId/notifications/metrics" element={<NotificationMetrics />} />
             <Route path="/people" element={<AdminPeoplePlaceholder />} />
           </Route>
           {/* Partner management — admin + partner_manager (in-page guard) */}

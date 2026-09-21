@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Banknote, Ticket, Tag, ShieldCheck, Receipt, ShoppingBag } from "lucide-react";
+import { isAdmin } from "@/lib/access";
 import TicketTypesLotsTab from "./TicketTypesLotsTab";
 import CouponsTab from "./CouponsTab";
 import RefundPolicyTab from "./RefundPolicyTab";
 import TransactionsTab from "./TransactionsTab";
 import OrdersTab from "./OrdersTab";
 import PayoutTab from "./payout/PayoutTab";
+import PayoutPanel from "@/components/pagamentos/PayoutPanel";
 
 const TABS = [
   { id: "lots", label: "Tipos & Lotes", icon: Ticket },
@@ -16,8 +18,13 @@ const TABS = [
   { id: "payout", label: "Recebimento", icon: Banknote },
 ];
 
-export default function CommerceModule({ eventId, hasAccess, user }) {
-  const [tab, setTab] = useState("lots");
+export default function CommerceModule({ eventId, hasAccess, user, event }) {
+  // Suporta deep-link ?tab=payout (retorno do onboarding Stripe /manage-event redirect).
+  const [tab, setTab] = useState(() => {
+    const initial = new URLSearchParams(window.location.search).get("tab");
+    return TABS.some((x) => x.id === initial) ? initial : "lots";
+  });
+  const admin = isAdmin(user);
 
   return (
     <div className="space-y-4">
@@ -43,7 +50,10 @@ export default function CommerceModule({ eventId, hasAccess, user }) {
       {tab === "policy" && <RefundPolicyTab eventId={eventId} hasAccess={hasAccess} user={user} />}
       {tab === "orders" && <OrdersTab eventId={eventId} user={user} />}
       {tab === "transactions" && <TransactionsTab eventId={eventId} user={user} />}
-      {tab === "payout" && <PayoutTab eventId={eventId} />}
+      {/* Recebimento: admin edita comissão/vinculação; gerente vê regras (somente
+          leitura) e gerencia a própria conta Stripe + reserva + exportação. */}
+      {tab === "payout" &&
+        (admin ? <PayoutTab eventId={eventId} /> : <PayoutPanel eventId={eventId} eventName={event?.name} />)}
     </div>
   );
 }

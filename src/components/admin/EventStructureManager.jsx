@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
+import { getEventSessions } from "@/lib/participantApi";
 import { logAudit } from "@/lib/audit";
 import { t } from "@/lib/i18n";
 import EntityTable from "@/components/admin/EntityTable";
@@ -37,17 +39,19 @@ export default function EventStructureManager({ eventId, hasAccess, user, module
   const [trackDeleteConfirm, setTrackDeleteConfirm] = useState(null);
   const [trackBlockMsg, setTrackBlockMsg] = useState(null);
 
+  // Track/Room/Session têm RLS admin-only — leitura/escrita via manageEventConfig
+  // (autoriza admin OU gerente/equipe do evento); sessões via getEventSessions.
   const { data: tracks = [] } = useQuery({
     queryKey: ["tracks", eventId],
-    queryFn: () => base44.entities.Track.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("Track", eventId),
   });
   const { data: rooms = [] } = useQuery({
     queryKey: ["rooms", eventId],
-    queryFn: () => base44.entities.Room.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => listEventConfig("Room", eventId),
   });
   const { data: sessions = [] } = useQuery({
     queryKey: ["sessions", eventId],
-    queryFn: () => base44.entities.Session.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => getEventSessions(eventId),
   });
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
@@ -63,11 +67,11 @@ export default function EventStructureManager({ eventId, hasAccess, user, module
         if (spk) finalData.speaker_name = spk.full_name;
       }
       if (id) {
-        await base44.entities[eName].update(id, finalData);
+        await updateEventConfig(eName, eventId, id, finalData);
         return { id, action: "update" };
       } else {
-        const created = await base44.entities[eName].create({ ...finalData, event_id: eventId, is_deleted: false });
-        return { id: created.id, action: "create" };
+        const created = await createEventConfig(eName, eventId, { ...finalData, is_deleted: false });
+        return { id: created?.id, action: "create" };
       }
     },
     onSuccess: (res, { type }) => {
@@ -91,7 +95,7 @@ export default function EventStructureManager({ eventId, hasAccess, user, module
         const linked = sessions.some((s) => s.room_id === id);
         if (linked) throw new Error("Não é possível excluir: já existe sessão cadastrada nesta sala.");
       }
-      await base44.entities[ENTITY_MAP[type]].update(id, { is_deleted: true });
+      await deleteEventConfig(ENTITY_MAP[type], eventId, id);
       return { type, id };
     },
     onSuccess: ({ type, id }) => {

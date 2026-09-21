@@ -13,9 +13,10 @@ export function canManageEvent(user, eventId) {
   return isAdmin(user);
 }
 
-export function filterEventsByAccess(events, user) {
+export function filterEventsByAccess(events, user, managedEventIds = new Set()) {
   if (isAdmin(user)) return events;
-  return events.filter((e) => e.manager_id === user?.id);
+  // Não-admin: apenas eventos com EventMembership ativa de gestão (manager/team).
+  return events.filter((e) => managedEventIds.has(e.id));
 }
 
 // ── Partner access helpers ──────────────────────────────────────

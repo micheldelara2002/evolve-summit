@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/AuthContext";
+import { isAdmin } from "@/lib/access";
 import { useParams, useNavigate, Link, Outlet } from "react-router-dom";
 import { t } from "@/lib/i18n";
 import { useEventAccess } from "@/hooks/useEventAccess";
@@ -56,7 +57,7 @@ export default function EventDetail() {
             <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: event.color_accent }} />
           </div>
         </div>
-        {hasAccess && (
+        {isAdmin(user) && (
           <Link to={`/events/${eventId}/edit`}>
             <Button variant="outline" size="sm" className="gap-1 shrink-0">
               <Pencil className="w-4 h-4" />

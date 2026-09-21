@@ -9,7 +9,21 @@ Deno.serve(async (req) => {
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
 
-    const { eventId, participantId, tipo, template, customTemplateId, sessionId } = await req.json();
+    const { action, eventId, participantId, tipo, template, customTemplateId, sessionId } = await req.json();
+
+    // list: certificados emitidos do evento — admin OU gerente/equipe.
+    // (Certificate tem RLS admin-only; a listagem passa por aqui.)
+    if (action === 'list') {
+      if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
+      const listAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      if (!listAuth.authorized) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      const certificates = await base44.asServiceRole.entities.Certificate.filter(
+        { event_id: eventId, is_deleted: false },
+        '-created_date',
+        1000
+      );
+      return Response.json({ certificates });
+    }
 
     if (!eventId || !participantId || !tipo) {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });

@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess } from "../../shared/commerceFulfillment.ts";
@@ -34,9 +35,12 @@ export default async function(req: Request): Promise<Response> {
     const payment = payments[0];
     if (!payment) return Response.json({ error: "Pagamento não encontrado." }, { status: 404 });
 
-    // Authorization: buyer or admin.
+    // Authorization: buyer, admin, or event manager/team (gestão do evento).
     if (payment.buyer_user_id !== user.id && !isAdmin) {
-      return Response.json({ error: "Sem permissão." }, { status: 403 });
+      const mgrAuth = await verifyEventMembership(base44, user, payment.event_id, EVENT_MANAGER_ROLES);
+      if (!mgrAuth.authorized) {
+        return Response.json({ error: "Sem permissão." }, { status: 403 });
+      }
     }
 
     if (payment.status !== "succeeded") {

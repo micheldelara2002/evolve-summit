@@ -9,6 +9,9 @@ const ALLOWED_ENTITIES = new Set([
   'CertificateTemplate',
   'AwardConfig',
   'CallForPapers',
+  'Track',
+  'Room',
+  'Session',
 ]);
 
 const PUBLIC_READ_ENTITIES = new Set(['Badge', 'StoreItem', 'AwardConfig', 'CallForPapers']);
@@ -20,6 +23,9 @@ const READABLE_FIELDS = {
   CertificateTemplate: ['id', 'event_id', 'name', 'tipo', 'background_url', 'field_configs', 'is_active', 'is_deleted', 'description', 'created_date', 'updated_date'],
   AwardConfig: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'criteria_config', 'assigned_reviewer_ids', 'is_active', 'is_deleted', 'created_date', 'updated_date'],
   CallForPapers: ['id', 'event_id', 'title', 'description', 'start_date', 'end_date', 'form_config', 'is_active', 'is_deleted', 'created_date', 'updated_date'],
+  Track: ['id', 'event_id', 'name', 'description', 'color', 'is_deleted', 'created_date', 'updated_date'],
+  Room: ['id', 'event_id', 'name', 'capacity', 'floor', 'block', 'description', 'is_deleted', 'created_date', 'updated_date'],
+  Session: ['id', 'event_id', 'track_id', 'room_id', 'title', 'description', 'speaker_id', 'speaker_name', 'start_time', 'end_time', 'capacity', 'session_type', 'material_url', 'submission_id', 'is_deleted', 'created_date', 'updated_date'],
 };
 
 const PUBLIC_READ_FIELDS = {

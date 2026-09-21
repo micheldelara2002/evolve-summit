@@ -86,6 +86,7 @@ export default function AdminHome() {
         isSpeaker: mine.some((p) => p.role_in_event === "speaker") || memberships.some((m) => m.role === "speaker"),
         isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep") || memberships.some((m) => m.role === "partner_rep"),
         isReviewer: memberships.some((m) => m.role === "reviewer"),
+        isEventManager: memberships.some((m) => m.role === "manager" || m.role === "team"),
         hasSubmissions: mySubs.length > 0,
       };
     },
@@ -109,7 +110,12 @@ export default function AdminHome() {
 
   // ── Admin-only sections ────────────────────────────────────────────────────
   const operationsCards = admin ? OPERATIONS_CARDS : [];
-  const managementCards = admin ? MANAGEMENT_CARDS : [];
+  // "Gestão de Eventos" também para gerente/equipe com membership manager/team.
+  const managementCards = admin
+    ? MANAGEMENT_CARDS
+    : participantRoles?.isEventManager
+      ? [MANAGEMENT_CARDS[0]]
+      : [];
 
   const sections = [
     { title: "Minha área", cards: myAreaCards },
