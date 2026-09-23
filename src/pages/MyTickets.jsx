@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Ticket, Calendar, QrCode, MapPin, Download } from "lucide-react";
+import { ArrowLeft, Ticket, Calendar, QrCode, MapPin, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMyOrders, getTicketPdf } from "@/lib/commerceApi";
+import RetryFulfillmentButton from "@/components/admin/commerce/RetryFulfillmentButton";
 import { useToast } from "@/components/ui/use-toast";
 
 const STATUS_LABEL = {
@@ -16,6 +17,7 @@ const STATUS_LABEL = {
 
 export default function MyTickets() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["my-orders"],
     queryFn: () => getMyOrders(),
@@ -71,6 +73,17 @@ export default function MyTickets() {
                     <div className="p-4 text-sm text-muted-foreground">Pagamento em processamento…</div>
                   )}
                 </div>
+                {order.payment?.fulfillment_status === "pending_retry" && (
+                  <div className="p-4 flex items-center justify-between gap-3 bg-destructive/5 border-t border-border">
+                    <p className="text-xs text-destructive flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Pagamento confirmado — emissão dos ingressos pendente
+                    </p>
+                    <RetryFulfillmentButton
+                      paymentId={order.payment.id}
+                      onDone={() => qc.invalidateQueries({ queryKey: ["my-orders"] })}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

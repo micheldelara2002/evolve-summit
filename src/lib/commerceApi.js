@@ -61,6 +61,9 @@ export const requestRefund = (paymentId, reason, refundType = "full", manualAppr
 export const requestRefundItems = (paymentId, order_item_ids, reason = "", manualApprove = false) =>
   invoke("requestRefund", { paymentId, reason, refundType: "cancel_item", manualApprove, order_item_ids });
 
+// ===== Fulfillment retry (comprador/gestor/admin) =====
+export const retryFulfillment = (paymentId) => invoke("retryFulfillment", { paymentId });
+
 // ===== Sales analytics (admin/gerente) =====
 export const getSalesMetrics = (filters) => invoke("getSalesMetrics", filters);
 export const getEventSalesSummary = (eventId) => invoke("getEventSalesSummary", { eventId });

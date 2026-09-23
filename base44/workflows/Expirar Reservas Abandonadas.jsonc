@@ -1,0 +1,44 @@
+{
+  "name": "Expirar Reservas Abandonadas",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "expire_stale_reservations",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "expirar_reservas": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "expireStaleReservations"
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Expirar reservas abandonadas",
+            "description": "A cada 5 minutos"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "America/Sao_Paulo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "description": "Expira checkouts abandonados (janela de 15 min), consulta o Stripe antes de cancelar e devolve os ingressos reservados ao estoque dos lotes."
+}

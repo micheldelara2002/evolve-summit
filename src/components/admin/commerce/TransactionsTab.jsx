@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { getEventOrders, requestRefund } from "@/lib/commerceApi";
 import { useToast } from "@/components/ui/use-toast";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
+import RetryFulfillmentButton from "@/components/admin/commerce/RetryFulfillmentButton";
 
 const STATUS_META = {
   pending: { label: "Pendente", icon: Clock, cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
@@ -89,8 +90,14 @@ export default function TransactionsTab({ eventId, user }) {
                   </span>
                 </div>
                 {p.fulfillment_status === "pending_retry" && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-destructive">
-                    <AlertCircle className="w-3.5 h-3.5" /> Fulfillment pendente — intervenção manual necessária
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-destructive">
+                      <AlertCircle className="w-3.5 h-3.5" /> Fulfillment pendente — emissão dos ingressos falhou
+                    </div>
+                    <RetryFulfillmentButton
+                      paymentId={p.id}
+                      onDone={() => qc.invalidateQueries({ queryKey: ["commerce", "orders", eventId] })}
+                    />
                   </div>
                 )}
                 {p.status === "succeeded" && pendingRefunds.has(p.id) ? (

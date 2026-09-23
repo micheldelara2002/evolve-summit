@@ -4,6 +4,7 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess } from "../../shared/commerceFulfillment.ts";
+import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -104,7 +105,7 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: evalFree.reason, decision: evalFree.decision }, { status: 403 });
       }
 
-      await svc.entities.RefundRequest.create({
+      const refundRequest = await svc.entities.RefundRequest.create({
         order_id: order.id,
         payment_id: payment.id,
         event_id: order.event_id,
@@ -132,7 +133,9 @@ export default async function(req: Request): Promise<Response> {
         for (const t of affected) if (t.holder_email) emails.add(t.holder_email);
         for (const to of emails) {
           try {
-            await svc.integrations.Core.SendEmail({
+            // Idempotente por marcador: chamadas repetidas não reenviam.
+            await sendTransactionalEmail(svc, {
+              dedupeKey: `free_cancel:${refundRequest.id}:${to}`,
               to,
               subject: `Cancelamento de ingresso — ${event?.name || "Evento"}`,
               body:

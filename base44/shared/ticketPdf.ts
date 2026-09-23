@@ -11,6 +11,7 @@
 
 import { jsPDF } from 'npm:jspdf@4.2.1';
 import { DEFAULT_GLOBAL_REFUND_POLICY } from './commercePolicy.ts';
+import { sendTransactionalEmail } from './transactionalEmail.ts';
 
 export type TicketSponsor = {
   name: string;
@@ -464,15 +465,14 @@ export async function deliverTickets(svc: any, event: any, order: any, tickets: 
           `Código: ${ticket.hash_code}\n\n` +
           `O ingresso em PDF (com QR code para o check-in) está anexado a este e-mail.\n\n` +
           `Acesse o app: ${APP_URL}\n\nEvolve Summit`;
-        const emailPayload: any = {
+        // Idempotente por marcador: replays de webhook/retentativas não reenviam.
+        await sendTransactionalEmail(svc, {
+          dedupeKey: `ticket_delivery:${ticket.id}`,
           to: item.holder_email,
           subject: `Ingresso — ${event?.name || 'Evento'}`,
           body,
-        };
-        if (b64) {
-          emailPayload.attachments = [{ filename: `ingresso-${ticket.hash_code}.pdf`, content: b64 }];
-        }
-        await svc.integrations.Core.SendEmail(emailPayload);
+          attachments: b64 ? [{ filename: `ingresso-${ticket.hash_code}.pdf`, content: b64 }] : undefined,
+        });
       }
     } catch (err: any) {
       console.error('[deliverTickets] failed for ticket', ticket.id, err?.message || err);

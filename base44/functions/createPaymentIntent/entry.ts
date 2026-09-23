@@ -256,15 +256,9 @@ export default async function(req: Request): Promise<Response> {
       } catch (err: any) {
         console.error('[createPaymentIntent] free fulfillment error:', err?.message || err);
       }
+      // P2 — o uso do cupom é contabilizado dentro do fulfillOrder (idempotente,
+      // com marker no pedido) — não aqui na criação.
       try { await ensureCompanionInvites(base44, svc, orderItems); } catch {}
-      if (coupon && totals.coupon_valid) {
-        try {
-          await svc.entities.Coupon.updateMany(
-            { id: coupon.id, uses_count: { $lt: coupon.max_uses || Number.MAX_SAFE_INTEGER } },
-            { $inc: { uses_count: 1 } }
-          );
-        } catch {}
-      }
       return Response.json({
         free: true,
         order_id: order.id,
@@ -329,15 +323,8 @@ export default async function(req: Request): Promise<Response> {
       application_fee_amount: applicationFeeCents ? applicationFeeCents / 100 : 0,
     });
 
-    // Increment coupon uses (atomic, conditional guard).
-    if (coupon && totals.coupon_valid) {
-      try {
-        await svc.entities.Coupon.updateMany(
-          { id: coupon.id, uses_count: { $lt: coupon.max_uses || Number.MAX_SAFE_INTEGER } },
-          { $inc: { uses_count: 1 } }
-        );
-      } catch {}
-    }
+    // P2 — o uso do cupom é contabilizado no fulfillment (pagamento confirmado,
+    // dentro do fulfillOrder): checkouts abandonados não consomem cupom.
 
     return Response.json({
       client_secret: intent.client_secret,

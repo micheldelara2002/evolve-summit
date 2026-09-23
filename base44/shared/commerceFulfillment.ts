@@ -66,6 +66,29 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
   const createdTickets: any[] = [];
   const event = (await svc.entities.Event.filter({ id: order.event_id }))[0];
 
+  // P2 — Uso do cupom contabilizado no pagamento confirmado (nunca na criação do
+  // pedido). Marker atômico no Order: retentativas de fulfillment não contam duas
+  // vezes; o estorno integral reseta o marker e devolve o uso.
+  if (order.coupon_id) {
+    try {
+      const marked = await svc.entities.Order.updateMany(
+        { id: order.id, coupon_uses_counted: { $ne: true } },
+        { $set: { coupon_uses_counted: true } }
+      );
+      if (marked && marked.updated) {
+        const coupon = (await svc.entities.Coupon.filter({ id: order.coupon_id }))[0];
+        if (coupon) {
+          await svc.entities.Coupon.updateMany(
+            { id: coupon.id, uses_count: { $lt: coupon.max_uses || Number.MAX_SAFE_INTEGER } },
+            { $inc: { uses_count: 1 } }
+          );
+        }
+      }
+    } catch (err: any) {
+      console.error("[fulfillOrder] coupon count failed:", err?.message || err);
+    }
+  }
+
   try {
     for (const item of orderItems) {
       // Idempotency per item: skip if ticket already issued for this order_item.
@@ -221,6 +244,25 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
     refunded_amount: refundAmountBRL,
   });
   await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
+
+  // P2 — Estorno integral devolve o uso do cupom ao invés contabilizado
+  // (marker reseta; um novo pagamento do pedido contaria o uso de novo).
+  if (!isPartial && order.coupon_id) {
+    try {
+      const unmarked = await svc.entities.Order.updateMany(
+        { id: order.id, coupon_uses_counted: true },
+        { $set: { coupon_uses_counted: false } }
+      );
+      if (unmarked && unmarked.updated) {
+        await svc.entities.Coupon.updateMany(
+          { id: order.coupon_id, uses_count: { $gt: 0 } },
+          { $inc: { uses_count: -1 } }
+        );
+      }
+    } catch (err: any) {
+      console.error("[processRefundSuccess] coupon return failed:", err?.message || err);
+    }
+  }
 
   try {
     await svc.entities.AuditLog.create({
