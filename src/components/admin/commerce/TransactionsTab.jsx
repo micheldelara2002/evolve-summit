@@ -35,6 +35,7 @@ export default function TransactionsTab({ eventId, user }) {
     queryFn: () => getEventOrders(eventId),
   });
   const payments = data?.payments || [];
+  const orderById = new Map((data?.orders || []).map((o) => [o.id, o]));
 
   const sorted = [...payments].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
 
@@ -76,6 +77,8 @@ export default function TransactionsTab({ eventId, user }) {
             const meta = STATUS_META[p.status] || STATUS_META.pending;
             const Icon = meta.icon;
             const needsAttention = p.fulfillment_status === "pending_retry" || p.status === "failed";
+            const ord = orderById.get(p.order_id);
+            const ticketTypes = [...new Set((ord?.items || []).map((i) => i.ticket_type_name).filter(Boolean))].join(", ");
             return (
               <div key={p.id} className={`p-3 rounded-xl bg-card border ${needsAttention ? "border-destructive/30" : "border-border"} space-y-2`}>
                 <div className="flex items-start justify-between gap-2">
@@ -84,11 +87,28 @@ export default function TransactionsTab({ eventId, user }) {
                     <p className="text-[11px] text-muted-foreground">
                       {new Date(p.created_date).toLocaleString("pt-BR")} · {p.payment_method || "—"}
                     </p>
+                    {(ord?.buyer_name || ticketTypes) && (
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {ord?.buyer_name || "—"}{ticketTypes ? ` · ${ticketTypes}` : ""}
+                      </p>
+                    )}
                   </div>
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
                     <Icon className="w-3 h-3" /> {meta.label}
                   </span>
                 </div>
+                {Number(p.amount) > 0 && (
+                  <div className="text-[11px] text-muted-foreground space-y-0.5">
+                    <div className="flex flex-wrap gap-x-3">
+                      <span>Comissão plataforma: R$ {Number(p.application_fee_amount || 0).toFixed(2)}</span>
+                      <span>Taxa Stripe: R$ {Number(p.stripe_fee_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <p className="text-foreground font-medium">Líquido organizador: R$ {Number(p.net_amount ?? 0).toFixed(2)}</p>
+                    {!p.stripe_fee_amount && (
+                      <p className="text-[10px]">* taxa Stripe 0,00 = venda legada anterior à captura automática</p>
+                    )}
+                  </div>
+                )}
                 {p.fulfillment_status === "pending_retry" && (
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-[11px] text-destructive">
@@ -129,7 +149,7 @@ export default function TransactionsTab({ eventId, user }) {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setRefundTarget(null)}>
           <div className="bg-card rounded-2xl border border-border p-5 w-full max-w-sm space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold">Estornar transação</h3>
-            <p className="text-sm text-muted-foreground">R$ {Number(refundTarget.amount).toFixed(2)} · {refundTarget.intent_id}</p>
+            <p className="text-sm text-muted-foreground">R$ {Number(refundTarget.amount).toFixed(2)} · {refundTarget.payment_method || "—"}</p>
             <div>
               <Label>Motivo (opcional)</Label>
               <Input value={refundReason} onChange={(e) => setRefundReason(e.target.value)} placeholder="Motivo do estorno" />

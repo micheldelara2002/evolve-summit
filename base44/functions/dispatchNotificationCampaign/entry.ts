@@ -574,16 +574,32 @@ Deno.serve(async (req) => {
 
     const svc = base44.asServiceRole;
 
-    // === Logical guard: campaign.status = "processing" ===
-    // NOT a lock. Without CAS/UNIQUE/atomic-lock, two concurrent workers can
-    // both read "pending" and both set "processing". This is an application-
-    // level guard to prevent accidental re-dispatch via UI, NOT a concurrency
-    // safety mechanism. Risco residual: duplicate processing se dois workers
-    // executam simultaneamente.
-    await svc.entities.NotificationCampaign.update(campaign.id, {
-      status: "processing",
-    });
+    // === Lock atômico da campanha (compare-and-swap em status) ===
+    // updateMany condicional = CAS: só um worker consegue virar status para
+    // "processing" a partir de draft/scheduled (novo envio) ou
+    // partially_sent/failed (retry de pendentes). Concorrentes recebem 409 —
+    // sem duplicate processing. "processing" (em curso) e "sent"/"canceled"
+    // não são reassumíveis.
+    const claim = await svc.entities.NotificationCampaign.updateMany(
+      { id: campaign.id, status: { $in: ["draft", "scheduled", "partially_sent", "failed"] } },
+      { $set: { status: "processing" } }
+    );
     stats.queries++;
+    if (!claim || !claim.updated) {
+      return Response.json({ error: 'Envio já em andamento ou já concluído.' }, { status: 409 });
+    }
+    // Auditoria da assunção do lock: quem assumiu o envio e quando.
+    try {
+      await svc.entities.AuditLog.create({
+        action: 'status_change',
+        entity_type: 'NotificationCampaign',
+        entity_id: campaign.id,
+        details: JSON.stringify({ type: 'dispatch_lock_acquired' }),
+        event_id: campaign.scope_event_id || '',
+        user_id: user.id,
+      });
+      stats.queries++;
+    } catch {}
 
     // === Phase 1: Resolve audience + create recipients as "pending" ===
     // Batched: O(batch) memory. No User.list() global. No global recipients Set.
@@ -626,9 +642,8 @@ Deno.serve(async (req) => {
       stats.queries++;
       if (batch.length === 0) break;
 
-      // Mark as "processing" — best-effort, NOT a lock.
-      // Two workers could both grab this batch (no atomic claim exists in Base44).
-      // Risco residual: duplicate-send (ambos marcam como "sent").
+      // Mark as "processing" — sinal de work-in-progress. O lock atômico da
+      // campanha (CAS acima) garante que apenas um worker percorre esta fila.
       await svc.entities.NotificationRecipient.bulkUpdate(
         batch.map((r: any) => ({ id: r.id, delivery_status: "processing" }))
       );

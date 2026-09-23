@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { sanitizePayments } from "../../shared/paymentSanitizer.ts";
 
 // Visão detalhada de vendas de um evento: pedidos pagos com itens, titulares,
 // ticket_id, hash_code, status e comprador (buyer_name/email). "Quem comprou
@@ -73,15 +74,15 @@ export default async function(req: Request): Promise<Response> {
         created_date: o.created_date,
         payment_status: payment?.status || '',
         payment_method: payment?.payment_method || '',
-        intent_id: payment?.intent_id || '',
         payment_id: payment?.id || '',
         items: oItems,
       };
     });
 
-    // payments: registros completos de Payment (RLS admin/buyer bloqueia leitura
-    // direta pelo gerente — a aba Transações usa esta lista).
-    const sortedPayments = [...payments].sort(
+    // payments: visão sanitizada de Payment (whitelist — sem client_secret,
+    // intent_id ou IDs internos do Stripe; RLS admin/buyer bloqueia leitura
+    // direta pelo gerente, então a aba Transações usa esta lista).
+    const sortedPayments = sanitizePayments(payments).sort(
       (a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
     );
     return Response.json({ orders: detailed, total: detailed.length, payments: sortedPayments });

@@ -72,6 +72,17 @@ export async function retrievePaymentIntent(intentId: string): Promise<any> {
   return res.json();
 }
 
+// Recupera um Charge com balance_transaction expandido (leitura da taxa do
+// Stripe debitada na venda — usada no webhook para gravar stripe_fee_amount).
+export async function retrieveChargeWithBalance(chargeId: string): Promise<any> {
+  const res = await fetch(`${STRIPE_API}/charges/${chargeId}?expand[]=balance_transaction`, {
+    headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+  return data;
+}
+
 export async function createRefund(opts: {
   paymentIntentId: string;
   amountCents?: number; // partial if provided

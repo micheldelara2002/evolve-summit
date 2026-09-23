@@ -34,6 +34,7 @@ export default function OrdersTab({ eventId, user }) {
     queryFn: () => getEventOrders(eventId),
   });
   const orders = data?.orders || [];
+  const payByOrder = new Map((data?.payments || []).map((p) => [p.order_id, p]));
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["commerce", "orders", eventId] });
@@ -64,6 +65,7 @@ export default function OrdersTab({ eventId, user }) {
             const meta = ORDER_STATUS[o.status] || ORDER_STATUS.pending;
             const Icon = meta.icon;
             const canRefund = o.payment_status === "succeeded" && (o.status === "paid" || o.status === "partially_refunded");
+            const pay = payByOrder.get(o.id);
             return (
               <div key={o.id} className="rounded-xl bg-card border border-border overflow-hidden">
                 <button
@@ -92,6 +94,11 @@ export default function OrdersTab({ eventId, user }) {
                       {o.coupon_code && <span>Cupom: {o.coupon_code}</span>}
                       <span>Pagamento: {o.payment_status || "—"}</span>
                       {o.payment_method && <span>Método: {o.payment_method}</span>}
+                      {pay && Number(pay.amount) > 0 && (
+                        <span>
+                          Comissão plataforma: R$ {Number(pay.application_fee_amount || 0).toFixed(2)} · Taxa Stripe: R$ {Number(pay.stripe_fee_amount || 0).toFixed(2)} · Líquido organizador: R$ {Number(pay.net_amount ?? 0).toFixed(2)}
+                        </span>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       {o.items.map((it) => {

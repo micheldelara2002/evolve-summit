@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from "base44:runtime";
-import { constructStripeEvent } from "../../shared/stripeClient.ts";
+import { constructStripeEvent, retrieveChargeWithBalance } from "../../shared/stripeClient.ts";
 import { fulfillOrder, releaseReservations, processRefundSuccess } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
@@ -47,6 +47,23 @@ export default async function(req: Request): Promise<Response> {
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false });
+
+      // Captura a taxa do Stripe desta venda (balance_transaction do charge) —
+      // best-effort, nunca bloqueia o fulfillment; gravação idempotente (só
+      // preenche se ainda não foi). Usada no cálculo do líquido do organizador.
+      try {
+        const chargeId = pi.latest_charge;
+        if (chargeId && !payment.stripe_fee_amount) {
+          const charge = await retrieveChargeWithBalance(String(chargeId));
+          const feeCents = charge?.balance_transaction?.fee;
+          if (typeof feeCents === "number") {
+            await svc.entities.Payment.update(payment.id, { stripe_fee_amount: feeCents / 100 });
+          }
+        }
+      } catch (feeErr: any) {
+        console.error('[stripeWebhook] stripe fee capture failed:', feeErr?.message || feeErr);
+      }
+
       // Idempotent fulfillment.
       const result = await fulfillOrder(svc, payment, order, orderItems);
 
