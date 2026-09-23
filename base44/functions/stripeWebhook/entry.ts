@@ -6,8 +6,11 @@ import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
 //   payment_intent.succeeded  → idempotent fulfillment (participants + tickets + email)
-//   payment_intent.payment_failed → release reservations, mark failed
-//   charge.refunded            → cancel participants + tickets (full or partial)
+//   payment_intent.payment_failed → registra o erro; pedido/reservas seguem de pé
+//                                  (o cliente pode tentar pagar de novo — sem oversell)
+//   payment_intent.canceled  → libera reservas, marca pagamento expirado + pedido cancelado
+//   charge.refunded          → ÚNICO gravador de refunded_amount (valor autoritativo
+//                              do Stripe); cancela ingressos/participantes + confirma a RefundRequest
 //
 // Auth: webhook is unauthenticated (Stripe calls it); authenticity validated via
 // HMAC signature with STRIPE_WEBHOOK_SECRET. Service role is used for all DB writes.
@@ -59,13 +62,32 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (evt.type === "payment_intent.payment_failed") {
+      // Cartão recusado NÃO cancela o pedido nem libera reservas: o cliente
+      // continua na tela de pagamento e pode tentar de novo com o MESMO pedido.
+      // Cancelar aqui liberaria o lugar para outro comprador e causaria oversell
+      // se a tentativa seguinte passasse. Cancelamento/liberação só ocorrem quando
+      // o PaymentIntent chega a 'canceled' (abaixo ou polling de status).
       const pi = evt.data.object;
       const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
       const payment = payments[0];
-      if (payment) {
-        await svc.entities.Payment.update(payment.id, { status: "failed", error_reason: pi.last_payment_error?.message || "payment failed" });
+      if (payment && payment.status === "pending") {
+        await svc.entities.Payment.update(payment.id, {
+          error_reason: pi.last_payment_error?.message || "payment failed",
+        });
+      }
+      return Response.json({ received: true });
+    }
+
+    if (evt.type === "payment_intent.canceled") {
+      // Intent cancelado (abandono, expiry futura, checkout reaberto): aqui sim
+      // libera as reservas e encerra o pedido.
+      const pi = evt.data.object;
+      const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
+      const payment = payments[0];
+      if (payment && payment.status !== "succeeded") {
         const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
         await releaseReservations(svc, orderItems);
+        await svc.entities.Payment.update(payment.id, { status: "expired" });
         await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
       }
       return Response.json({ received: true });
@@ -92,6 +114,22 @@ export default async function(req: Request): Promise<Response> {
         }
       } catch {}
       await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
+
+      // Confirma a solicitação correspondente (requestRefund apenas dispara o
+      // estorno no Stripe — o webhook é quem processa).
+      try {
+        const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id, is_deleted: false });
+        const latest = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
+        if (latest && latest.status !== "processed" && latest.status !== "failed") {
+          await svc.entities.RefundRequest.update(latest.id, {
+            status: "processed",
+            processed_at: new Date().toISOString(),
+            amount_refunded: latest.amount_requested || refundAmountBRL,
+          });
+        }
+      } catch (reqErr: any) {
+        console.error('[stripeWebhook] refund request confirm failed:', reqErr?.message || reqErr);
+      }
       return Response.json({ received: true, refundAmount: refundAmountBRL, partial: isPartial });
     }
 

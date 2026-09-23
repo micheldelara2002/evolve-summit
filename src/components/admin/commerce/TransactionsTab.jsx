@@ -25,6 +25,7 @@ export default function TransactionsTab({ eventId, user }) {
   const [refundReason, setRefundReason] = useState("");
   const [manualApprove, setManualApprove] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [pendingRefunds, setPendingRefunds] = useState(() => new Set());
 
   // Payment tem RLS (comprador/admin) — leitura via getEventOrders, que autoriza
   // admin OU gerente/equipe do evento.
@@ -41,7 +42,13 @@ export default function TransactionsTab({ eventId, user }) {
     setProcessing(true);
     try {
       const res = await requestRefund(refundTarget.id, refundReason, "full", manualApprove);
-      toast({ title: res.refund_status === "succeeded" ? "Estorno processado." : "Estorno solicitado.", description: res.reason });
+      // Pedido pago: o webhook confirma em instantes (status muda aqui sozinho);
+      // pedido gratuito: cancelamento já processado localmente.
+      if (!res.free) setPendingRefunds((prev) => new Set(prev).add(refundTarget.id));
+      toast({
+        title: res.free ? "Ingresso gratuito cancelado." : "Estorno solicitado.",
+        description: res.free ? res.reason : "A confirmação aparece aqui em instantes.",
+      });
       setRefundTarget(null);
       setRefundReason("");
       setManualApprove(false);
@@ -86,13 +93,17 @@ export default function TransactionsTab({ eventId, user }) {
                     <AlertCircle className="w-3.5 h-3.5" /> Fulfillment pendente — intervenção manual necessária
                   </div>
                 )}
-                {p.status === "succeeded" && (
+                {p.status === "succeeded" && pendingRefunds.has(p.id) ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-500 pt-1">
+                    <Clock className="w-3.5 h-3.5" /> Estorno solicitado — aguardando confirmação
+                  </div>
+                ) : p.status === "succeeded" ? (
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="outline" onClick={() => { setRefundTarget(p); setManualApprove(false); }}>
                       <RotateCcw className="w-3.5 h-3.5" /> Estornar
                     </Button>
                   </div>
-                )}
+                ) : null}
               </div>
             );
           })}

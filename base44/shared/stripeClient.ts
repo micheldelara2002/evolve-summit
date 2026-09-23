@@ -59,6 +59,12 @@ export async function createPaymentIntent(opts: {
   return stripeRequest("/payment_intents", params, `pi_create_${orderId}`);
 }
 
+// Cancela um PaymentIntent (checkout reaberto/abandonado) — impossibilita o
+// pagamento de intenções antigas que não devem mais ser pagas.
+export async function cancelPaymentIntent(intentId: string): Promise<any> {
+  return stripeRequest(`/payment_intents/${intentId}/cancel`, new URLSearchParams());
+}
+
 export async function retrievePaymentIntent(intentId: string): Promise<any> {
   const res = await fetch(`${STRIPE_API}/payment_intents/${intentId}`, {
     headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },

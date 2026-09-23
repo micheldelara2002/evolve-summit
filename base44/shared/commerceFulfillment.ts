@@ -212,10 +212,13 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
     await svc.entities.SalesLot.updateMany({ id: ticket.lot_id }, { $inc: { quantity_sold: -1 } });
   }
 
+  // refundAmountBRL é o valor CUMULATIVO e autoritativo do Stripe
+  // (charge.amount_refunded/100) — atribuído, nunca somado: eventos repetidos
+  // do webhook/retries sempre convergem para o mesmo valor (idempotente).
   const newStatus = isPartial ? "partially_refunded" : "refunded";
   await svc.entities.Payment.update(payment.id, {
     status: newStatus,
-    refunded_amount: (payment.refunded_amount || 0) + refundAmountBRL,
+    refunded_amount: refundAmountBRL,
   });
   await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
 

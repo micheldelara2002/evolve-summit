@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
-import { createPaymentIntent } from "../../shared/stripeClient.ts";
+import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
@@ -16,8 +16,9 @@ import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfi
 //   - Lot reservation uses conditional updateMany with a $lte guard on quantity_reserved.
 //     If the guard fails (someone else grabbed the last tickets), the order is aborted
 //     and any reservations already made are rolled back.
-//   - Idempotency: an idempotent Order is created per intent; duplicate calls create
-//     separate orders (no double-charge because each has its own PaymentIntent).
+//   - Single active order: a duplicate call reuses the buyer's pending order for the
+//     same event — old PaymentIntents are cancelled in Stripe, so two orders are
+//     never payable at the same time (no double-charge on reload/two tabs).
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -61,6 +62,51 @@ export default async function(req: Request): Promise<Response> {
     }
 
     const now = new Date();
+
+    // ===== Pedido único ativo: reusa o pedido pendente anterior =====
+    // Se existir um pedido 'pending' anterior do mesmo comprador neste evento,
+    // ele é reaproveitado: PaymentIntents antigos são cancelados no Stripe (nunca
+    // dois pedidos pagáveis), reservas antigas são liberadas e itens antigos
+    // invalidados. Se um PaymentIntent antigo já teve sucesso, o pedido antigo
+    // fica intacto (o webhook vai fulfillá-lo) e um novo pedido é criado.
+    let reusableOrder: any = null;
+    const prevOrders = await svc.entities.Order.filter({ buyer_user_id: user.id, event_id: eventId, status: 'pending', is_deleted: false });
+    if (prevOrders.length > 0) {
+      prevOrders.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
+      const prev = prevOrders[0];
+      const prevPayments = await svc.entities.Payment.filter({ order_id: prev.id, status: 'pending' });
+      let alreadyPaid = false;
+      for (const pp of prevPayments) {
+        if (String(pp.intent_id || '').startsWith('free_')) {
+          try { await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' }); } catch {}
+          continue;
+        }
+        try {
+          await cancelPaymentIntent(pp.intent_id);
+          await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' });
+        } catch (err: any) {
+          if (/succeeded|captured/i.test(String(err?.message || ''))) {
+            alreadyPaid = true; // pedido antigo foi pago — o webhook vai fulfillá-lo
+          } else {
+            console.error('[createPaymentIntent] cancel old intent failed:', err?.message || err);
+            try { await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' }); } catch {}
+          }
+        }
+      }
+      if (!alreadyPaid) {
+        const prevItems = await svc.entities.OrderItem.filter({ order_id: prev.id, is_deleted: false });
+        for (const it of prevItems) {
+          try {
+            await svc.entities.SalesLot.updateMany(
+              { id: it.lot_id, quantity_reserved: { $gte: 1 } },
+              { $inc: { quantity_reserved: -1 } }
+            );
+          } catch {}
+          try { await svc.entities.OrderItem.update(it.id, { is_deleted: true }); } catch {}
+        }
+        reusableOrder = prev;
+      }
+    }
 
     // Fetch all lots + ticket types referenced.
     const lotIds = [...new Set(items.map((i: any) => i.lot_id))];
@@ -147,8 +193,8 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: totals.coupon_message || 'Cupom inválido.' }, { status: 400 });
     }
 
-    // Create Order.
-    const order = await svc.entities.Order.create({
+    // Create Order — ou reusa o pedido pendente anterior (mesmo comprador/evento).
+    const orderPayload = {
       buyer_user_id: user.id,
       buyer_person_id: buyerPersonId || '',
       buyer_name: user.full_name || '',
@@ -163,7 +209,14 @@ export default async function(req: Request): Promise<Response> {
       currency: 'BRL',
       reserved_until: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min to pay
       fulfillment_status: 'pending',
-    });
+    };
+    let order;
+    if (reusableOrder) {
+      await svc.entities.Order.update(reusableOrder.id, orderPayload);
+      order = { ...reusableOrder, ...orderPayload, id: reusableOrder.id };
+    } else {
+      order = await svc.entities.Order.create(orderPayload);
+    }
 
     // Create OrderItems.
     const orderItems = [];

@@ -165,10 +165,16 @@ function RefundModal({ order, user, onClose, onSuccess, toast }) {
     try {
       if (allSelected) {
         const res = await requestRefund(order.payment_id, reason, "full", manualApprove);
-        toast({ title: res.refund_status === "succeeded" ? "Estorno processado." : "Estorno solicitado.", description: res.reason });
+        toast({
+          title: res.free ? "Ingresso gratuito cancelado." : "Estorno solicitado.",
+          description: res.free ? res.reason : "A confirmação aparece aqui em instantes.",
+        });
       } else {
         const res = await requestRefundItems(order.payment_id, refundableItems.filter((i) => selected.has(i.id)).map((i) => i.id), reason, manualApprove);
-        toast({ title: res.refund_status === "succeeded" ? "Estorno processado." : "Estorno solicitado.", description: `${res.cancelled_items} ingresso(s) estornado(s).` });
+        toast({
+          title: res.free ? "Ingresso(s) gratuito(s) cancelado(s)." : "Estorno solicitado.",
+          description: `${res.cancelled_items} ingresso(s)${res.free ? " cancelado(s)." : " — a confirmação aparece aqui em instantes."}`,
+        });
       }
       onSuccess();
       onClose();
