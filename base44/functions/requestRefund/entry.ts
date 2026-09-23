@@ -95,6 +95,20 @@ export default async function(req: Request): Promise<Response> {
       itemIds = refundable.map((i: any) => i.id);
     }
 
+    // ===== Trava pós-check-in: ingresso utilizado NÃO pode ser estornado =====
+    // Vale para qualquer refundType e inclusive para manualApprove (admin não
+    // contorna) — remover o check-in é pré-requisito manual antes do estorno.
+    const orderTickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
+    const usedTickets = refundType === "cancel_item"
+      ? orderTickets.filter((t: any) => t.status === "used" && itemIds && itemIds.includes(t.order_item_id))
+      : orderTickets.filter((t: any) => t.status === "used");
+    if (usedTickets.length > 0) {
+      const msg = refundType === "cancel_item"
+        ? "Ingresso já utilizado — não é possível estornar após o credenciamento."
+        : "O pedido contém ingresso(s) já utilizado(s) — não é possível estornar após o credenciamento. Estorne apenas os ingressos não utilizados (seleção por ingresso).";
+      return Response.json({ error: msg }, { status: 403 });
+    }
+
     // ===== Pedidos 100% gratuitos: cancelamento local + e-mail (sem Stripe) =====
     const isFree = payment.provider === "free" ||
       String(payment.intent_id || "").startsWith("free_") ||
@@ -222,6 +236,13 @@ export default async function(req: Request): Promise<Response> {
     if (refund.status === "failed") {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
       return Response.json({ error: "Estorno falhou no Stripe.", refund_status: refund.status }, { status: 502 });
+    }
+
+    // Grava o ID do Refund do Stripe na solicitação — o webhook charge.refunded
+    // casa o reembolso específico por este ID (não por ordenação temporal),
+    // evitando associação errada com estornos concorrentes.
+    try { await svc.entities.RefundRequest.update(refundRequest.id, { stripe_refund_id: refund.id }); } catch (upErr: any) {
+      console.error('[requestRefund] refund id link failed:', upErr?.message || upErr);
     }
 
     // Refund criado no Stripe — a confirmação (ingressos, participantes,

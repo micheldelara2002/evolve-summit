@@ -142,7 +142,7 @@ export default function TransactionsTab({ eventId, user }) {
         onOpenChange={(v) => !v && setRefundTarget(null)}
         onConfirm={handleRefund}
         title="Confirmar estorno"
-        description={refundTarget ? `Estorno de R$ ${Number(refundTarget.amount).toFixed(2)}. A política do evento será avaliada automaticamente.` : ""}
+        description={refundTarget ? `Estorno de R$ ${Number(refundTarget.amount).toFixed(2)}. Os ingressos serão cancelados e os participantes removidos do evento. A política do evento definirá o valor devolvido (100% a 0%).` : ""}
         confirmLabel={processing ? "Processando…" : "Estornar"}
       />
       {refundTarget && (
@@ -150,6 +150,9 @@ export default function TransactionsTab({ eventId, user }) {
           <div className="bg-card rounded-2xl border border-border p-5 w-full max-w-sm space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold">Estornar transação</h3>
             <p className="text-sm text-muted-foreground">R$ {Number(refundTarget.amount).toFixed(2)} · {refundTarget.payment_method || "—"}</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
+              Ao confirmar, os ingressos deste pedido serão cancelados e os participantes removidos do evento. O valor devolvido segue a política de prazo (100% a 0%).
+            </p>
             <div>
               <Label>Motivo (opcional)</Label>
               <Input value={refundReason} onChange={(e) => setRefundReason(e.target.value)} placeholder="Motivo do estorno" />

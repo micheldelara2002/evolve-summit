@@ -91,38 +91,52 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
 
   try {
     for (const item of orderItems) {
-      // Idempotency per item: skip if ticket already issued for this order_item.
+      // Idempotency per item: skip if ticket already issued AND participant linked.
       const existingTicket = await svc.entities.Ticket.filter({ order_item_id: item.id, is_deleted: false });
-      if (existingTicket.length > 0) {
-        createdTickets.push(existingTicket[0]);
-        continue;
-      }
-      // Ensure Person for the holder.
-      const personId = await ensurePerson(svc, item.holder_name, item.holder_email, item.holder_phone);
+      let ticket = existingTicket[0];
+      if (!ticket) {
+        // Ensure Person for the holder.
+        const personId = await ensurePerson(svc, item.holder_name, item.holder_email, item.holder_phone);
 
-      // Create Participant in the event (registration_status 'paid').
-      const existingPart = await svc.entities.Participant.filter({
-        event_id: order.event_id, person_id: personId, is_deleted: false,
-      });
-      let participantId: string;
-      if (existingPart.length > 0 && existingPart[0].registration_status !== "cancelled") {
-        // Already a participant — mark confirmed/paid if not already.
-        participantId = existingPart[0].id;
-        if (existingPart[0].registration_status !== "confirmed") {
-          await svc.entities.Participant.update(participantId, { registration_status: "confirmed" });
-        }
-      } else if (existingPart.length > 0 && existingPart[0].registration_status === "cancelled") {
-        // Reactivate a cancelled registration.
-        participantId = existingPart[0].id;
-        await svc.entities.Participant.update(participantId, { registration_status: "confirmed", is_deleted: false, created_day: new Date().toISOString().slice(0, 10) });
-        try { await incUniqueParticipant(svc, order.event_id, new Date().toISOString()); } catch {}
-      } else {
+        // Issue Ticket FIRST (participant linked right after): a retry never
+        // duplicates the Participant — the ticket existence check above guards it.
+        ticket = await svc.entities.Ticket.create({
+          order_id: order.id,
+          order_item_id: item.id,
+          event_id: order.event_id,
+          ticket_type_id: item.ticket_type_id,
+          ticket_type_name: item.ticket_type_name,
+          lot_id: item.lot_id,
+          person_id: personId,
+          participant_id: "",
+          holder_name: item.holder_name,
+          holder_email: item.holder_email,
+          hash_code: generateTicketHash(),
+          status: "issued",
+        });
+
+        // Link ticket back to the order item.
+        await svc.entities.OrderItem.update(item.id, { ticket_id: ticket.id });
+
+        // Confirm lot: reserved → sold (atomic).
+        await svc.entities.SalesLot.updateMany(
+          { id: item.lot_id },
+          { $inc: { quantity_reserved: -1, quantity_sold: 1 } }
+        );
+      }
+      createdTickets.push(ticket);
+
+      // 1 ingresso = 1 Participant — cada ingresso tem seu PRÓPRIO registro na
+      // lista de participantes do evento (nunca reutiliza o registro de outro
+      // ingresso): estornar um ingresso cancela só a inscrição dele, e a mesma
+      // pessoa pode ter N entradas se tiver N ingressos.
+      if (!ticket.participant_id) {
         const part = await svc.entities.Participant.create({
           event_id: order.event_id,
           full_name: item.holder_name,
           email: item.holder_email,
           phone: item.holder_phone || "",
-          person_id: personId,
+          person_id: ticket.person_id,
           role_in_event: "attendee",
           registration_status: "confirmed",
           checkin_status: "pending",
@@ -130,36 +144,10 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
           is_eligible: true,
           is_deleted: false,
         });
-        participantId = part.id;
+        await svc.entities.Ticket.update(ticket.id, { participant_id: part.id });
         try { await incUniqueParticipant(svc, order.event_id, part.created_date); } catch {}
         try { await incParticipantsByRole(svc, order.event_id, "attendee", part.created_date); } catch {}
       }
-
-      // Issue Ticket.
-      const ticket = await svc.entities.Ticket.create({
-        order_id: order.id,
-        order_item_id: item.id,
-        event_id: order.event_id,
-        ticket_type_id: item.ticket_type_id,
-        ticket_type_name: item.ticket_type_name,
-        lot_id: item.lot_id,
-        person_id: personId,
-        participant_id: participantId,
-        holder_name: item.holder_name,
-        holder_email: item.holder_email,
-        hash_code: generateTicketHash(),
-        status: "issued",
-      });
-      createdTickets.push(ticket);
-
-      // Link ticket back to the order item.
-      await svc.entities.OrderItem.update(item.id, { ticket_id: ticket.id });
-
-      // Confirm lot: reserved → sold (atomic).
-      await svc.entities.SalesLot.updateMany(
-        { id: item.lot_id },
-        { $inc: { quantity_reserved: -1, quantity_sold: 1 } }
-      );
     }
 
     // Mark order fulfilled.
@@ -216,9 +204,10 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
   const targetItemIds = orderItemIds && orderItemIds.length > 0 ? new Set(orderItemIds) : null;
   const relevantTickets = targetItemIds ? tickets.filter((t: any) => targetItemIds.has(t.order_item_id)) : tickets;
 
-  // For full refund: cancel all. For partial: we cancel proportionally (simplest: cancel
-  // the items whose unit_price sums to ~refundAmount; here we cancel all and mark order
-  // partially_refunded — full cancel is the supported primary path).
+  // Regra-mestre: TODO estorno cancela os ingressos/participantes afetados. Full/partial
+  // (por valor) cancelam todos; cancel_item cancela apenas os itens selecionados, cada
+  // um com seu próprio participante (1 ingresso = 1 registro). O VALOR devolvido varia
+  // pela política de prazo (100%–0%) e é independente do cancelamento da participação.
   for (const ticket of relevantTickets) {
     if (ticket.status === "cancelled" || ticket.status === "refunded") continue;
     await svc.entities.Ticket.update(ticket.id, { status: "refunded" });

@@ -150,10 +150,12 @@ export default function OrdersTab({ eventId, user }) {
 function RefundModal({ order, user, onClose, onSuccess, toast }) {
   const [reason, setReason] = useState("");
   const [manualApprove, setManualApprove] = useState(false);
-  const [selected, setSelected] = useState(() => new Set(order.items.filter((i) => !i.refunded).map((i) => i.id)));
+  const [selected, setSelected] = useState(() => new Set(order.items.filter((i) => !i.refunded && i.ticket_status !== "used").map((i) => i.id)));
   const [processing, setProcessing] = useState(false);
 
-  const refundableItems = order.items.filter((i) => !i.refunded);
+  // Usados (check-in feito) nunca são estornáveis; também não entram na seleção.
+  const refundableItems = order.items.filter((i) => !i.refunded && i.ticket_status !== "used");
+  const usedItems = order.items.filter((i) => !i.refunded && i.ticket_status === "used");
   const allSelected = refundableItems.length > 0 && refundableItems.every((i) => selected.has(i.id));
   const selectedCount = refundableItems.filter((i) => selected.has(i.id)).length;
   const refundAmount = refundableItems.filter((i) => selected.has(i.id)).reduce((s, i) => s + Number(i.unit_price || 0), 0);
@@ -170,7 +172,10 @@ function RefundModal({ order, user, onClose, onSuccess, toast }) {
     if (selectedCount === 0) return;
     setProcessing(true);
     try {
-      if (allSelected) {
+      // Só usa o caminho 'full' se TODOS os ingressos do pedido forem estornáveis
+      // (sem usados e sem já estornados) — senão vai por seleção de itens, que o
+      // backend consegue processar sem tocar nos ingressos utilizados.
+      if (allSelected && usedItems.length === 0 && order.items.length === refundableItems.length) {
         const res = await requestRefund(order.payment_id, reason, "full", manualApprove);
         toast({
           title: res.free ? "Ingresso gratuito cancelado." : "Estorno solicitado.",
@@ -212,10 +217,27 @@ function RefundModal({ order, user, onClose, onSuccess, toast }) {
               </label>
             ))
           )}
+          {usedItems.length > 0 && (
+            <div className="space-y-1 pt-1">
+              {usedItems.map((it) => (
+                <div key={it.id} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+                  <QrCode className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{it.holder_name}</p>
+                    <p className="text-[10px] text-muted-foreground">{it.ticket_type_name} · R$ {Number(it.unit_price).toFixed(2)}</p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0">Usado — não dá para estornar</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground">
           {allSelected ? "Estorno completo do pedido" : `Estorno de ${selectedCount} ingresso(s) — R$ ${refundAmount.toFixed(2)}`}
+        </p>
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
+          Ao confirmar, o(s) ingresso(s) selecionado(s) será(ão) cancelado(s) e a(s) inscrição(ões) removida(s) do evento. O valor devolvido segue a política de prazo (100% a 0%).
         </p>
 
         <div>

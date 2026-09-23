@@ -83,6 +83,17 @@ export async function retrieveChargeWithBalance(chargeId: string): Promise<any> 
   return data;
 }
 
+// Recupera um Charge com a lista de refunds expandida — usada pelo webhook
+// charge.refunded para casar o reembolso específico (por ID) com a RefundRequest.
+export async function retrieveChargeWithRefunds(chargeId: string): Promise<any> {
+  const res = await fetch(`${STRIPE_API}/charges/${chargeId}?expand[]=refunds.data`, {
+    headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+  return data;
+}
+
 export async function createRefund(opts: {
   paymentIntentId: string;
   amountCents?: number; // partial if provided

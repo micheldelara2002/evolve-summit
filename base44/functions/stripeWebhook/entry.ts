@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from "base44:runtime";
-import { constructStripeEvent, retrieveChargeWithBalance } from "../../shared/stripeClient.ts";
+import { constructStripeEvent, retrieveChargeWithBalance, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
 import { fulfillOrder, releaseReservations, processRefundSuccess } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
@@ -102,10 +102,19 @@ export default async function(req: Request): Promise<Response> {
       const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
       const payment = payments[0];
       if (payment && payment.status !== "succeeded") {
-        const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
-        await releaseReservations(svc, orderItems);
         await svc.entities.Payment.update(payment.id, { status: "expired" });
-        await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
+        // Só encerra o pedido se NÃO houver outra transação viva (pending ou
+        // succeeded) nele — ex.: checkout reaberto criou um novo PaymentIntent
+        // sobre o MESMO pedido; derrubar o pedido aqui cancelaria uma compra em
+        // andamento (corrida de webhooks). Reservas seguem presas enquanto o
+        // novo intent estiver aberto.
+        const siblings = await svc.entities.Payment.filter({ order_id: payment.order_id, is_deleted: false });
+        const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (p.status === "pending" || p.status === "succeeded"));
+        if (!hasLiveSibling) {
+          const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
+          await releaseReservations(svc, orderItems);
+          await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
+        }
       }
       return Response.json({ received: true });
     }
@@ -121,27 +130,40 @@ export default async function(req: Request): Promise<Response> {
 
       const refundAmountBRL = (charge.amount_refunded || 0) / 100;
       const isPartial = (charge.amount_refunded || 0) < (charge.amount || 0);
-      // Per-item: se houver RefundRequest cancel_item, cancela só esses itens.
-      let orderItemIds: string[] | undefined = undefined;
-      try {
-        const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id });
-        const latest = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
-        if (latest && latest.refund_type === "cancel_item" && Array.isArray(latest.order_item_ids) && latest.order_item_ids.length > 0) {
-          orderItemIds = latest.order_item_ids;
+
+      // Associa o estorno à solicitação PELO ID do Refund do Stripe (não por
+      // ordenação temporal): estornos por item concorrentes cancelam os itens
+      // certos. IDs do evento vêm em charge.refunds.data; se ausentes, recupera
+      // o charge na API. Fallback legado: solicitação mais recente.
+      let refundIds: string[] = ((charge.refunds && charge.refunds.data) || []).map((r: any) => r.id);
+      if (refundIds.length === 0) {
+        try {
+          const fullCharge = await retrieveChargeWithRefunds(charge.id);
+          refundIds = ((fullCharge.refunds && fullCharge.refunds.data) || []).map((r: any) => r.id);
+        } catch (expErr: any) {
+          console.error('[stripeWebhook] charge refunds lookup failed:', expErr?.message || expErr);
         }
-      } catch {}
+      }
+      const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id, is_deleted: false });
+      let matched = reqs.find((r: any) => r.stripe_refund_id && refundIds.includes(r.stripe_refund_id));
+      if (!matched) {
+        matched = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
+      }
+      // Per-item: se a solicitação casada for cancel_item, cancela só esses itens.
+      const orderItemIds = matched && matched.refund_type === "cancel_item"
+        && Array.isArray(matched.order_item_ids) && matched.order_item_ids.length > 0
+        ? matched.order_item_ids
+        : undefined;
       await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
 
       // Confirma a solicitação correspondente (requestRefund apenas dispara o
       // estorno no Stripe — o webhook é quem processa).
       try {
-        const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id, is_deleted: false });
-        const latest = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
-        if (latest && latest.status !== "processed" && latest.status !== "failed") {
-          await svc.entities.RefundRequest.update(latest.id, {
+        if (matched && matched.status !== "processed" && matched.status !== "failed") {
+          await svc.entities.RefundRequest.update(matched.id, {
             status: "processed",
             processed_at: new Date().toISOString(),
-            amount_refunded: latest.amount_requested || refundAmountBRL,
+            amount_refunded: matched.amount_requested || refundAmountBRL,
           });
         }
       } catch (reqErr: any) {
