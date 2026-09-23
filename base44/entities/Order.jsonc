@@ -1,7 +1,7 @@
 {
   "name": "Order",
   "type": "object",
-  "description": "Pedido de compra de ingressos. status: pending (carrinho/checkout), paid (confirmado), cancelled, refunded. total em BRL. buyer l\u00ea os pr\u00f3prios pedidos.",
+  "description": "Pedido de compra de ingressos. status: pending (carrinho/checkout), paid (confirmado), cancelled, refunded, partially_refunded. total em BRL. buyer l\u00ea os pr\u00f3prios pedidos.",
   "properties": {
     "buyer_user_id": {
       "type": "string",
@@ -56,6 +56,11 @@
     "coupon_code": {
       "type": "string",
       "description": "C\u00f3digo do cupom aplicado (snapshot)"
+    },
+    "coupon_uses_counted": {
+      "type": "boolean",
+      "default": false,
+      "description": "P2 \u2014 Marker at\u00f4mico: o uso do cupom deste pedido j\u00e1 foi contabilizado no Coupon.uses_count (no fulfillment do pagamento confirmado \u2014 nunca na cria\u00e7\u00e3o do pedido). Retentativas de fulfillment n\u00e3o contam duas vezes; o estorno integral reseta o marker e devolve o uso."
     },
     "currency": {
       "type": "string",

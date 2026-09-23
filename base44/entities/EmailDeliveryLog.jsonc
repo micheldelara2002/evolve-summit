@@ -1,0 +1,51 @@
+{
+  "name": "EmailDeliveryLog",
+  "type": "object",
+  "description": "Marcador de entrega de e-mails transacionais (P2 \u2014 idempot\u00eancia). Registro criado AP\u00d3S o envio bem-sucedido; a exist\u00eancia de um 'key' bloqueia reenvios (replays de webhook, retries, chamadas repetidas). Uso exclusivo do backend (service role) \u2014 nunca escrito diretamente pelo cliente.",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Chave de deduplica\u00e7\u00e3o do evento de envio (ex: 'ticket_delivery:<ticket_id>', 'free_cancel:<refund_request_id>:<email>')"
+    },
+    "recipient": {
+      "type": "string",
+      "description": "E-mail do destinat\u00e1rio"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Assunto enviado (snapshot, para auditoria)"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora do envio"
+    }
+  },
+  "required": [
+    "key",
+    "recipient",
+    "sent_at"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
