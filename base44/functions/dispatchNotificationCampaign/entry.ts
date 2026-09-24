@@ -88,15 +88,21 @@ async function participantsToRecipients(svc: any, parts: any[]): Promise<Recipie
   }
   if (emailVariants.size === 0) return [];
 
-  const users = await svc.entities.User.filter(
-    { email: { $in: Array.from(emailVariants) }, account_status: { $ne: "deleted" } },
-    "id", emailVariants.size
-  );
+  // Lookup fatiado (chunks de BATCH_SIZE): respeita o limite por query quando o
+  // batch de participantes traz mais e-mails que o máximo suportado.
+  const variants = Array.from(emailVariants);
   const usersByEmail = new Map<string, any>();
-  for (const u of users) {
-    if (u.email) {
-      const key = String(u.email).toLowerCase();
-      if (!usersByEmail.has(key)) usersByEmail.set(key, u);
+  for (let i = 0; i < variants.length; i += BATCH_SIZE) {
+    const chunk = variants.slice(i, i + BATCH_SIZE);
+    const users = await svc.entities.User.filter(
+      { email: { $in: chunk }, account_status: { $ne: "deleted" } },
+      "id", chunk.length
+    );
+    for (const u of users) {
+      if (u.email) {
+        const key = String(u.email).toLowerCase();
+        if (!usersByEmail.has(key)) usersByEmail.set(key, u);
+      }
     }
   }
 
