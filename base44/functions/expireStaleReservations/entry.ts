@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { cancelPaymentIntent, retrievePaymentIntent } from "../../shared/stripeClient.ts";
-import { releaseReservations, FULFILLING_STALE_MS } from "../../shared/commerceFulfillment.ts";
+import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge } from "../../shared/stripeClient.ts";
+import { releaseReservations, FULFILLING_STALE_MS, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -24,7 +24,14 @@ import { releaseReservations, FULFILLING_STALE_MS } from "../../shared/commerceF
 // fulfillment não concluiu são comparados com os ingressos emitidos × itens do
 // pedido — emissão pela metade (crash intermediário) vira 'pending_retry'
 // (visível na aba de transações com retry); emissão completa com status
-// esquecido é concluída para 'fulfilled'.
+// esquecido é concluída para 'fulfilled' (completa = cada item com ingresso
+// E cada ingresso com participante vinculado).
+//
+// Também roda o RECONCILER DE ESTORNOS: RefundRequests 'pending' há mais de
+// 15 min consultam o refund no Stripe pelo stripe_refund_id — 'succeeded' é
+// processado com a mesma lógica idempotente do webhook (cobertura quando o
+// webhook charge.refunded não chega); 'failed'/'canceled' marca a falha e
+// devolve a reserva do teto de estorno.
 //
 // Chamado pelo workflow agendado "Expirar Reservas Abandonadas" (sem usuário
 // autenticado). Chamadas diretas autenticadas exigem admin.
@@ -34,6 +41,7 @@ import { releaseReservations, FULFILLING_STALE_MS } from "../../shared/commerceF
 
 const MAX_ORDERS_PER_RUN = 50;
 const MAX_RECONCILE_PER_RUN = 25;
+const MAX_REFUND_RECONCILE_PER_RUN = 25;
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -109,26 +117,48 @@ export default async function(req: Request): Promise<Response> {
             try {
               await cancelPaymentIntent(p.intent_id);
             } catch (err: any) {
-              if (/succeeded|captured/i.test(String(err?.message || ''))) {
-                keepAlive = true; // pagou entre a consulta e o cancelamento — webhook cuida
-                break;
-              }
+              // CRÍTICO — cancelamento NÃO confirmado (Pix confirmado e em
+              // 'processing' segundos antes, falha de rede, erro imprevisto):
+              // o intent ainda pode ser pago. NÃO marca o pagamento nem
+              // encerra o pedido — mantém tudo para a próxima varredura.
+              console.error('[expireStaleReservations] cancel intent failed, keeping order alive:', err?.message || err);
+              keepAlive = true;
+              break;
             }
           }
         }
-        await svc.entities.Payment.update(p.id, {
-          status: 'expired',
-          error_reason: 'Checkout abandonado (reserva expirada).',
-        });
+        // Expiração do pagamento via CAS (vale para free e Stripe): só marca
+        // se ainda estiver 'pending'. Falha no CAS = outro caminho (webhook/
+        // re-checkout/pagamento confirmado) já moveu o estado — não
+        // sobrescreve; o pedido fica para reavaliação na próxima varredura.
+        const payClaim = await svc.entities.Payment.updateMany(
+          { id: p.id, status: 'pending' },
+          { $set: { status: 'expired', error_reason: 'Checkout abandonado (reserva expirada).' } }
+        );
+        if (!payClaim || !payClaim.updated) {
+          keepAlive = true;
+          break;
+        }
       }
       if (keepAlive) { keptAlive++; continue; }
+
+      // Encerramento EXATAMENTE-UMA-VEZ (P0): CAS no pedido com o status E o
+      // reserved_until lidos NA VARREDURA — qualquer mudança concorrente no
+      // pedido (re-checkout estendeu a reserva, webhook promoveu a paid, o
+      // caminho canceled do webhook já encerrou) faz a transição falhar e o
+      // job pula o pedido nesta execução. Só quem executa pending→cancelled
+      // devolve as reservas — nunca duas vezes (anti-oversell).
+      const orderClaim = await svc.entities.Order.updateMany(
+        { id: order.id, status: 'pending', reserved_until: order.reserved_until },
+        { $set: { status: 'cancelled' } }
+      );
+      if (!orderClaim || !orderClaim.updated) continue;
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
       await releaseReservations(svc, orderItems);
       for (let k = 0; k < orderItems.length; k++) {
         try { await svc.entities.OrderItem.update(orderItems[k].id, { is_deleted: true }); } catch {}
       }
-      await svc.entities.Order.update(order.id, { status: 'cancelled' });
       try {
         await svc.entities.AuditLog.create({
           action: 'status_change',
@@ -161,7 +191,14 @@ export default async function(req: Request): Promise<Response> {
         const items = await svc.entities.OrderItem.filter({ order_id: p.order_id, is_deleted: false });
         if (items.length === 0) continue; // pedido reutilizado sem itens — nada a comparar
         const tickets = await svc.entities.Ticket.filter({ order_id: p.order_id, is_deleted: false });
-        if (tickets.length >= items.length) {
+        // Emissão completa = CADA item tem ingresso E CADA ingresso tem
+        // participante vinculado (CRÍTICO: crash entre criar o ingresso e
+        // vincular o participante deixaria um titular com ingresso válido
+        // ausente da lista de participantes — jamais selar como 'fulfilled').
+        const complete = tickets.length >= items.length &&
+          items.every((it: any) => tickets.some((t: any) => t.order_item_id === it.id && t.participant_id)) &&
+          tickets.every((t: any) => !!t.participant_id);
+        if (complete) {
           // Emissão completa com status esquecido (crash antes do update final).
           try {
             await svc.entities.Payment.update(p.id, { fulfillment_status: 'fulfilled' });
@@ -173,13 +210,90 @@ export default async function(req: Request): Promise<Response> {
         try {
           await svc.entities.Payment.update(p.id, {
             fulfillment_status: 'pending_retry',
-            error_reason: 'Emissão incompleta detectada pelo reconciler agendado (crash intermediário).',
+            error_reason: 'Emissão incompleta detectada pelo reconciler agendado (ingresso sem participante vinculado ou emissão pela metade).',
           });
           reconcileFlagged++;
         } catch {}
       }
     } catch (recErr: any) {
       console.error('[expireStaleReservations] reconcile failed:', recErr?.message || recErr);
+    }
+
+    // ===== Reconciler de estornos: webhook charge.refunded não chegou =====
+    // RefundRequests 'pending' há mais de 15 min com refund criado no Stripe:
+    // consulta o refund pelo stripe_refund_id — 'succeeded' é processado
+    // localmente com a MESMA lógica idempotente do webhook (o dinheiro voltou,
+    // ingressos/participantes têm que refletir); 'failed'/'canceled' marca a
+    // solicitação como falha e devolve a reserva do teto de estorno.
+    let refundsReconciled = 0;
+    let refundsFailed = 0;
+    try {
+      const refundCutoff = Date.now() - 15 * 60 * 1000;
+      const pendingReqs = await svc.entities.RefundRequest.filter({ status: 'pending', is_deleted: false });
+      for (let i = 0; i < pendingReqs.length; i++) {
+        if (refundsReconciled + refundsFailed >= MAX_REFUND_RECONCILE_PER_RUN) break;
+        const req = pendingReqs[i];
+        // Sem refund no Stripe (ainda não disparado) — só o webhook pode casar.
+        if (!req.stripe_refund_id) continue;
+        // Janela de cortesia: webhook pode ainda chegar.
+        if (req.created_date && new Date(req.created_date).getTime() > refundCutoff) continue;
+
+        let payment: any, order: any, refunded: any;
+        try {
+          payment = (await svc.entities.Payment.filter({ id: req.payment_id }))[0];
+          order = (await svc.entities.Order.filter({ id: req.order_id }))[0];
+          if (!payment || !order) continue;
+          refunded = await retrieveRefundWithCharge(req.stripe_refund_id);
+        } catch (lookupErr: any) {
+          console.error('[expireStaleReservations] refund lookup failed:', req.id, lookupErr?.message || lookupErr);
+          continue;
+        }
+        // Segurança: refund de outro PaymentIntent — não processa.
+        if (refunded.payment_intent !== payment.intent_id) {
+          console.error('[expireStaleReservations] refund/payment mismatch:', req.id);
+          continue;
+        }
+
+        if (refunded.status === 'succeeded') {
+          await applyConfirmedStripeRefund(
+            svc, payment, order, req,
+            Number(refunded.charge?.amount_refunded) || 0,
+            Number(refunded.charge?.amount) || 0
+          );
+          try {
+            await svc.entities.AuditLog.create({
+              action: 'status_change',
+              entity_type: 'RefundRequest',
+              entity_id: req.id,
+              details: JSON.stringify({ type: 'refund_reconciled_offline', stripe_refund_id: req.stripe_refund_id }),
+              event_id: order.event_id,
+              user_id: req.requested_by_user_id,
+            });
+          } catch {}
+          refundsReconciled++;
+        } else if (refunded.status === 'failed' || refunded.status === 'canceled') {
+          try {
+            await svc.entities.RefundRequest.update(req.id, {
+              status: 'failed',
+              rejection_reason: 'Estorno não concluído no Stripe (detectado pelo reconciler agendado).',
+            });
+            // Devolve a reserva do teto (pré-incrementada no requestRefund).
+            const reservedBRL = Number(req.amount_requested) || 0;
+            if (reservedBRL > 0) {
+              await svc.entities.Payment.updateMany(
+                { id: req.payment_id, refunded_amount: { $gte: reservedBRL } },
+                { $inc: { refunded_amount: -reservedBRL } }
+              );
+            }
+          } catch (failErr: any) {
+            console.error('[expireStaleReservations] refund fail mark failed:', req.id, failErr?.message || failErr);
+          }
+          refundsFailed++;
+        }
+        // status 'pending' no Stripe → ainda processando; próxima varredura.
+      }
+    } catch (refundErr: any) {
+      console.error('[expireStaleReservations] refund reconcile failed:', refundErr?.message || refundErr);
     }
 
     return Response.json({
@@ -189,6 +303,8 @@ export default async function(req: Request): Promise<Response> {
       kept_alive: keptAlive,
       reconcile_flagged: reconcileFlagged,
       reconcile_completed: reconcileCompleted,
+      refunds_reconciled: refundsReconciled,
+      refunds_failed: refundsFailed,
       remaining: Math.max(0, staleOrders.length - limit),
     });
   } catch (error: any) {

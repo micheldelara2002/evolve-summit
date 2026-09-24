@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { retrievePaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, releaseReservations, ensureCompanionInvites, captureStripeFee } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, ensureCompanionInvites, captureStripeFee, expirePaymentOnce } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Polling fallback for payment status — used when the client (Pix flow) doesn't
@@ -71,20 +71,13 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (piStatus === "canceled") {
-      // Regra de 'pagamento vivo' (igual ao webhook/job de expiração): só
-      // encerra o pedido se NÃO houver outra transação viva nele — um
-      // re-checkout pode ter criado um novo PaymentIntent sobre o MESMO pedido.
-      const siblings = await svc.entities.Payment.filter({ order_id: payment.order_id, is_deleted: false });
-      const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (
-        p.status === "pending" || p.status === "succeeded" ||
-        p.fulfillment_status === "pending_retry" || p.fulfillment_status === "fulfilled"
-      ));
-      await svc.entities.Payment.update(paymentId, { status: "expired" });
-      if (!hasLiveSibling) {
-        const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
-        await releaseReservations(svc, orderItems);
-        await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
-      }
+      // Encerra o pagamento EXATAMENTE UMA VEZ (P0): CAS duplo
+      // (pending→expired + pending→cancelled) dentro de expirePaymentOnce — a
+      // sobreposição deste polling com o webhook payment_intent.canceled NÃO
+      // devolve a mesma reserva duas vezes (anti-oversell). Um checkout
+      // reaberto (novo PaymentIntent vivo no mesmo pedido) mantém o pedido e
+      // as reservas de pé.
+      await expirePaymentOnce(svc, payment);
       return Response.json({ status: "expired" });
     }
 

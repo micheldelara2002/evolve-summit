@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from "base44:runtime";
 import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
-import { fulfillOrder, releaseReservations, processRefundSuccess, captureStripeFee } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
@@ -85,30 +85,17 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (evt.type === "payment_intent.canceled") {
-      // Intent cancelado (abandono, expiry futura, checkout reaberto): aqui sim
-      // libera as reservas e encerra o pedido.
+      // Intent cancelado (abandono, expiry futura, checkout reaberto): encerra
+      // o pagamento EXATAMENTE UMA VEZ — CAS duplo (pending→expired no Payment,
+      // pending→cancelled no Order) dentro de expirePaymentOnce. Entregas
+      // duplicadas deste evento NÃO devolvem a mesma reserva duas vezes
+      // (anti-oversell); um checkout reaberto (novo PaymentIntent vivo no
+      // mesmo pedido) mantém o pedido e as reservas de pé.
       const pi = evt.data.object;
       const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
-      if (payment && payment.status !== "succeeded") {
-        await svc.entities.Payment.update(payment.id, { status: "expired" });
-        // Só encerra o pedido se NÃO houver outra transação viva (pending ou
-        // succeeded) nele — ex.: checkout reaberto criou um novo PaymentIntent
-        // sobre o MESMO pedido; derrubar o pedido aqui cancelaria uma compra em
-        // andamento (corrida de webhooks). Reservas seguem presas enquanto o
-        // novo intent estiver aberto.
-        const siblings = await svc.entities.Payment.filter({ order_id: payment.order_id, is_deleted: false });
-        // Regra de 'pagamento vivo' (igual ao job de expiração): pending OU
-        // succeeded OU em fulfillment (pending_retry/fulfilled).
-        const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (
-          p.status === "pending" || p.status === "succeeded" ||
-          p.fulfillment_status === "pending_retry" || p.fulfillment_status === "fulfilled"
-        ));
-        if (!hasLiveSibling) {
-          const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
-          await releaseReservations(svc, orderItems);
-          await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
-        }
+      if (payment && payment.status === "pending") {
+        await expirePaymentOnce(svc, payment);
       }
       return Response.json({ received: true });
     }
@@ -121,9 +108,6 @@ export default async function(req: Request): Promise<Response> {
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
       const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
       if (!order) return Response.json({ received: true, skipped: "order not found" });
-
-      const refundAmountBRL = (charge.amount_refunded || 0) / 100;
-      const isPartial = (charge.amount_refunded || 0) < (charge.amount || 0);
 
       // Associa o estorno à solicitação PELO ID do Refund do Stripe (não por
       // ordenação temporal): estornos por item concorrentes cancelam os itens
@@ -143,53 +127,15 @@ export default async function(req: Request): Promise<Response> {
       if (!matched) {
         matched = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
       }
-      // Per-item: se a solicitação casada for cancel_item, cancela só esses itens.
-      const orderItemIds = matched && matched.refund_type === "cancel_item"
-        && Array.isArray(matched.order_item_ids) && matched.order_item_ids.length > 0
-        ? matched.order_item_ids
-        : undefined;
-      const refundOutcome = await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
-      if (refundOutcome.usedSkipped > 0) {
-        // Estorno direto no painel do Stripe sobre ingresso já utilizado (P3):
-        // o dinheiro voltou (Stripe é autoritativo), mas o ingresso UTILIZADO
-        // não é cancelado silenciosamente — alerta o admin (auditoria +
-        // solicitação marcada). Reverter o check-in é pré-requisito para tratar.
-        try {
-          await svc.entities.AuditLog.create({
-            action: "status_change",
-            entity_type: "Payment",
-            entity_id: payment.id,
-            details: JSON.stringify({ type: "refund_used_ticket_blocked", used_skipped: refundOutcome.usedSkipped }),
-            event_id: order.event_id,
-            user_id: order.buyer_user_id,
-          });
-        } catch (usedErr: any) {
-          console.error('[stripeWebhook] used-ticket audit failed:', usedErr?.message || usedErr);
-        }
-        if (matched) {
-          try {
-            await svc.entities.RefundRequest.update(matched.id, {
-              status: "failed",
-              rejection_reason: "Estorno no Stripe atingiu ingresso(s) já utilizado(s) — ingresso mantido válido; reverta o check-in para revisar.",
-            });
-          } catch {}
-        }
-      }
-
-      // Confirma a solicitação correspondente (requestRefund apenas dispara o
-      // estorno no Stripe — o webhook é quem processa).
-      try {
-        if (matched && matched.status !== "processed" && matched.status !== "failed") {
-          await svc.entities.RefundRequest.update(matched.id, {
-            status: "processed",
-            processed_at: new Date().toISOString(),
-            amount_refunded: matched.amount_requested || refundAmountBRL,
-          });
-        }
-      } catch (reqErr: any) {
-        console.error('[stripeWebhook] refund request confirm failed:', reqErr?.message || reqErr);
-      }
-      return Response.json({ received: true, refundAmount: refundAmountBRL, partial: isPartial });
+      // Processa o estorno com a lógica comum ao webhook e ao reconciler do
+      // job agendado: cancela ingressos/participantes afetados, atribui o
+      // valor cumulativo autoritativo, alerta ingresso já utilizado e
+      // confirma a solicitação correspondente.
+      const outcome = await applyConfirmedStripeRefund(
+        svc, payment, order, matched,
+        (charge.amount_refunded || 0), (charge.amount || 0)
+      );
+      return Response.json({ received: true, refundAmount: outcome.refundAmountBRL, partial: outcome.isPartial });
     }
 
     // Unhandled event type — acknowledge so Stripe stops retrying.

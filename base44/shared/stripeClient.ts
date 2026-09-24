@@ -98,6 +98,18 @@ export async function retrieveChargeWithRefunds(chargeId: string): Promise<any> 
   return data;
 }
 
+// Recupera um Refund com o Charge expandido — usado pelo reconciler de
+// estornos do job agendado: status do refund + valor cumulativo estornado
+// (charge.amount_refunded) quando o webhook charge.refunded não chegou.
+export async function retrieveRefundWithCharge(refundId: string): Promise<any> {
+  const res = await fetch(`${STRIPE_API}/refunds/${refundId}?expand[]=charge`, {
+    headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+  return data;
+}
+
 export async function createRefund(opts: {
   paymentIntentId: string;
   amountCents?: number; // partial if provided
