@@ -38,6 +38,15 @@ Deno.serve(async (req) => {
           console.error('mark-read failed:', e);
         }
       }
+      // P1 — Badge de não-lidas do ChatThread: marca o lado do leitor como lido até agora.
+      try {
+        await base44.asServiceRole.entities.ChatThread.update(
+          threadId,
+          thread.person_a_id === userPersonId ? { last_read_at_a: now } : { last_read_at_b: now }
+        );
+      } catch (e) {
+        console.error('thread mark-read failed:', e);
+      }
     }
 
     return Response.json({ messages });

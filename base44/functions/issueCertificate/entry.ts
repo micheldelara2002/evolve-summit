@@ -102,6 +102,26 @@ Deno.serve(async (req) => {
       email_sent: false,
     });
 
+    // P1 — Dedup pós-create: duas emissões concorrentes podem passar ambas na
+    // checagem acima. Re-query determinística (created_date + id) mantém um
+    // sobrevivente e cancela as duplicatas — exatamente um certificado por
+    // participante/tipo/sessão.
+    const allCertificates = await base44.asServiceRole.entities.Certificate.filter(existingFilter);
+    if (allCertificates.length > 1) {
+      allCertificates.sort((a: any, b: any) =>
+        (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
+        (a.id < b.id ? -1 : 1)
+      );
+      const survivor = allCertificates[0];
+      const duplicateIds = allCertificates.slice(1).map((c: any) => c.id);
+      try {
+        await base44.asServiceRole.entities.Certificate.bulkUpdate(
+          duplicateIds.map((id: string) => ({ id, is_deleted: true }))
+        );
+        return Response.json({ certificate: survivor, alreadyExisted: false, deduplicated: duplicateIds.length });
+      } catch {}
+    }
+
     return Response.json({ certificate, alreadyExisted: false });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

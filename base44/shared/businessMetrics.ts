@@ -1,6 +1,9 @@
 // P0.3 — Business Dashboard materialization helpers.
 //
-// EventStats = estado ATUAL por evento (unique_participants_count, total_leads_count).
+// P2 — FONTE ÚNICA: MetricBucket. EventStats é LEGADO: não é mais escrito no
+// caminho incremental (inc/dec abaixo) nem lido pelo dashboard — apenas o
+// reconcileBusinessMetrics o reconstrói por completo, como referência histórica.
+//
 // MetricBucket = série temporal diária:
 //   unique_participants (por evento)
 //   participants_by_role (por evento + dimension=role_in_event)
@@ -15,13 +18,13 @@
 // Violação da invariante (pessoa duplicada no mesmo evento) => overcount; ver risco residual no reconcile.
 //
 // Regras de integridade (preservam a semântica do dashboard):
-//   Participant.create(role=R)        → EventStats.unique++ AND unique_participants(day=created)++
+//   Participant.create(role=R)        → unique_participants(day=created)++
 //                                      AND participants_by_role(day=created, role=R)++
-//   Participant.soft-delete(role=R)   → EventStats.unique-- AND unique_participants(day=created)--
+//   Participant.soft-delete(role=R)   → unique_participants(day=created)--
 //                                      AND participants_by_role(day=created, role=R)--
 //   Participant.role_change(R1→R2)    → participants_by_role(day=created, role=R1)-- AND (role=R2)++
 //                                      (unique NÃO muda — mesma pessoa)
-//   Lead.create(partner)              → EventStats.leads++ AND leads(day=created, partner_id)++
+//   Lead.create(partner)              → leads(day=created, partner_id)++
 //   Partner.create                    → partners(day=created)++
 //   Partner.soft-delete               → partners(day=created)--  (is_deleted:false no dashboard)
 //   Person.create                     → persons(day=created)++
@@ -37,21 +40,6 @@ export const GLOBAL_EVENT_ID = "__global__";
 
 function dayKey(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
-}
-
-export async function ensureEventStats(svc: any, eventId: string): Promise<any> {
-  const existing = await svc.entities.EventStats.filter({ event_id: eventId });
-  if (existing.length > 0) return existing[0];
-  try {
-    return await svc.entities.EventStats.create({
-      event_id: eventId,
-      unique_participants_count: 0,
-      total_leads_count: 0,
-    });
-  } catch {
-    const retry = await svc.entities.EventStats.filter({ event_id: eventId });
-    return retry[0];
-  }
 }
 
 // toca um bucket atômicamente. `dimension` só entra no filtro/create quando não-vazio
@@ -81,15 +69,11 @@ async function touchBucket(
 // === unique_participants (por evento) ===
 export async function incUniqueParticipant(svc: any, eventId: string, createdDateISO: string): Promise<void> {
   if (!eventId || !createdDateISO) return;
-  const stats = await ensureEventStats(svc, eventId);
-  if (stats) await svc.entities.EventStats.updateMany({ id: stats.id }, { $inc: { unique_participants_count: 1 } });
   await touchBucket(svc, { eventId, metricType: "unique_participants", bucketDate: dayKey(createdDateISO), delta: 1 });
 }
 
 export async function decUniqueParticipant(svc: any, eventId: string, createdDateISO: string): Promise<void> {
   if (!eventId || !createdDateISO) return;
-  const stats = await svc.entities.EventStats.filter({ event_id: eventId });
-  if (stats[0]) await svc.entities.EventStats.updateMany({ id: stats[0].id }, { $inc: { unique_participants_count: -1 } });
   await touchBucket(svc, { eventId, metricType: "unique_participants", bucketDate: dayKey(createdDateISO), delta: -1 });
 }
 
@@ -113,8 +97,6 @@ export async function moveParticipantsByRole(svc: any, eventId: string, oldRole:
 // === leads (por evento + partner_id) ===
 export async function incLeads(svc: any, eventId: string, partnerId: string, createdDateISO: string, count = 1): Promise<void> {
   if (!eventId || !createdDateISO) return;
-  const stats = await ensureEventStats(svc, eventId);
-  if (stats) await svc.entities.EventStats.updateMany({ id: stats.id }, { $inc: { total_leads_count: count } });
   await touchBucket(svc, { eventId, metricType: "leads", bucketDate: dayKey(createdDateISO), partnerId: partnerId || "", delta: count });
 }
 

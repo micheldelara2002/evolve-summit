@@ -67,50 +67,16 @@ Deno.serve(async (req) => {
       message_text: safeText,
     });
 
-    // Update thread preview
+    // Update thread preview + sender's read marker (o remetente acabou de ver a
+    // própria mensagem — o badge de não-lidas do ChatThread não acende para ele).
+    // P1: nenhuma NotificationCampaign/Recipient é criada por mensagem — o badge
+    // de não-lidas deriva do próprio ChatThread (last_message_at + marcadores de leitura).
+    const now = new Date().toISOString();
     await base44.asServiceRole.entities.ChatThread.update(threadId, {
-      last_message_at: new Date().toISOString(),
+      last_message_at: now,
       last_message_preview: safeText.substring(0, 100),
+      ...(thread.person_a_id === senderPersonId ? { last_read_at_a: now } : { last_read_at_b: now }),
     });
-
-    // Notify the other participant (best-effort, não bloqueia o envio)
-    try {
-      const otherPersonId = thread.person_a_id === senderPersonId ? thread.person_b_id : thread.person_a_id;
-      if (otherPersonId && otherPersonId !== senderPersonId) {
-        const otherPersons = await base44.asServiceRole.entities.Person.filter({ id: otherPersonId, is_active: true });
-        const otherPerson = otherPersons?.[0];
-        if (otherPerson?.contact_email) {
-          const users = await base44.asServiceRole.entities.User.list();
-          const recipient = users.find((u) => u.email?.toLowerCase() === otherPerson.contact_email.toLowerCase());
-          if (recipient) {
-            const campaign = await base44.asServiceRole.entities.NotificationCampaign.create({
-              scope_type: "event",
-              scope_event_id: effectiveEventId,
-              title: `Nova mensagem de ${safeSenderName}`,
-              message: safeText.substring(0, 100),
-              type: "informativa",
-              audience_type: "manual",
-              priority: "normal",
-              status: "sent",
-              sent_at: new Date().toISOString(),
-              recipients_count: 1,
-              delivered_count: 1,
-              cta_label: "Ver conversa",
-              cta_target: `/event/${effectiveEventId}`,
-            });
-            await base44.asServiceRole.entities.NotificationRecipient.create({
-              campaign_id: campaign.id,
-              recipient_user_id: recipient.id,
-              recipient_name: otherPerson.full_name,
-              delivery_status: "sent",
-              delivered_at: new Date().toISOString(),
-            });
-          }
-        }
-      }
-    } catch (e) {
-      console.error('chat notification failed:', e);
-    }
 
     return Response.json({ ok: true, message: msg });
   } catch (error) {
