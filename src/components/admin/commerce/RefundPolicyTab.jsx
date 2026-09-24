@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 export default function RefundPolicyTab({ eventId, hasAccess, user }) {
   const { toast } = useToast();
   const [form, setForm] = useState({
-    full_refund_until_days: 7,
+    full_refund_until_days: 15,
     partial_refund_percent: 50,
     no_refund_within_days: 1,
     allow_manual_override: true,

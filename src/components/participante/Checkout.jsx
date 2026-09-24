@@ -4,7 +4,8 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { ArrowLeft, CheckCircle2, Loader2, AlertCircle, Ticket, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getEventTickets, createPaymentIntent, getPaymentStatus } from "@/lib/commerceApi";
+import { getEventTickets, createPaymentIntent, getPaymentStatus, getRefundPolicy } from "@/lib/commerceApi";
+import RefundPolicyNote from "@/components/participante/RefundPolicyNote";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function Checkout({ eventId }) {
@@ -16,6 +17,16 @@ export default function Checkout({ eventId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [iframeBlocked, setIframeBlocked] = useState(false);
+  const [refundPolicy, setRefundPolicy] = useState(null);
+
+  // Política de estorno do evento (padrão global + override) — informada ao comprador.
+  useEffect(() => {
+    let cancelled = false;
+    getRefundPolicy(eventId)
+      .then((res) => { if (!cancelled) setRefundPolicy(res); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [eventId]);
 
   const items = location.state?.items;
   const couponCode = location.state?.couponCode;
@@ -107,6 +118,7 @@ export default function Checkout({ eventId }) {
         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Ingressos</span><span>{items.length}</span></div>
         <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Total</span><span className="font-bold text-primary text-lg">R$ {Number(intent.total).toFixed(2)}</span></div>
         {intent.discount > 0 && <div className="flex justify-between text-xs text-emerald-500 mt-1"><span>Desconto</span><span>- R$ {Number(intent.discount).toFixed(2)}</span></div>}
+        <RefundPolicyNote policy={refundPolicy?.policy} eventStart={refundPolicy?.event_start} />
       </div>
       <Elements stripe={stripe} options={options}>
         <CheckoutForm paymentId={intent.payment_id} eventId={eventId} total={intent.total} />

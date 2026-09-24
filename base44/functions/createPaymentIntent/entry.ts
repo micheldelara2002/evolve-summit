@@ -2,6 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
+import { findActiveDuplicateEmails } from "../../shared/participantDedup.ts";
+// (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
@@ -73,6 +75,22 @@ export default async function(req: Request): Promise<Response> {
     // Tickets só são vendidos se o evento estiver ativo (não draft, não finalizado, não cancelado).
     if (event.status !== 'active') {
       return Response.json({ error: 'Ingressos não estão à venda para este evento.' }, { status: 400 });
+    }
+
+    // P0 — Deduplicidade (bloqueio com reativação): 1 e-mail ATIVO = 1 inscrição
+    // por evento. Validado no servidor ANTES de reservar estoque. Mesmo e-mail em
+    // dois itens do carrinho é rejeitado; e-mail com inscrição ativa no evento
+    // bloqueia a nova compra (cancelada/reembolsada permite nova inscrição).
+    const seenCartEmails = new Set<string>();
+    for (const it of items) {
+      if (seenCartEmails.has(it.holder_email)) {
+        return Response.json({ error: `Cada ingresso precisa de um titular diferente — "${it.holder_email}" aparece mais de uma vez no carrinho.` }, { status: 400 });
+      }
+      seenCartEmails.add(it.holder_email);
+    }
+    const activeDup = await findActiveDuplicateEmails(svc, eventId, items.map((i: any) => i.holder_email));
+    if (activeDup.size > 0) {
+      return Response.json({ error: `Não foi possível concluir: ${[...activeDup].join(', ')} já possui inscrição ativa neste evento (1 e-mail = 1 inscrição por evento).` }, { status: 409 });
     }
 
     // Stripe Connect: evento vinculado a uma conta conectada do organizador?

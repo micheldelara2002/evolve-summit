@@ -39,7 +39,8 @@ export default async function(req: Request): Promise<Response> {
       const event = (await svc.entities.Event.filter({ id: eventId }))[0];
       const override = parseOverride(event);
       const policy = resolveRefundPolicy(override, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
-      return Response.json({ policy, global: DEFAULT_GLOBAL_REFUND_POLICY, override });
+      // event_start: usado pelo checkout para informar as janelas de estorno ao comprador.
+      return Response.json({ policy, global: DEFAULT_GLOBAL_REFUND_POLICY, override, event_start: event?.start_date || '' });
     }
 
     if (action === 'setPolicy') {

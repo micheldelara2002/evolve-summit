@@ -7,9 +7,9 @@
 // Money is represented in BRL decimal (Stripe wants cents — conversion happens at the edge).
 
 export const DEFAULT_GLOBAL_REFUND_POLICY = {
-  full_refund_until_days: 7,        // estorno total até X dias antes do evento
+  full_refund_until_days: 15,       // estorno total até X dias antes do evento (padrão global aprovado)
   partial_refund_percent: 50,       // estorno parcial (%) após o prazo total
-  no_refund_within_days: 1,         // sem estorno a partir de X dias antes do evento
+  no_refund_within_days: 1,         // sem estorno a partir de X dias antes do evento (D-1 = véspera)
   allow_manual_override: true,      // gerente pode aprovar manualmente fora da política
 };
 

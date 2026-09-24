@@ -186,14 +186,17 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
     let jaVinculadosIgnorados = alreadyLinked.length;
     let errosCriacao = 0;
 
-    // Create NEW in batches of 50
+    // Create NEW in batches of 50 — o servidor valida a política de dedup
+    // (1 e-mail ativo = 1 inscrição por evento) e devolve os bloqueados.
+    const duplicadosBloqueados = [];
     const newPayloads = newRows.map((r) => ({ ...r.payload, import_id: importRecord.id }));
     for (let i = 0; i < newPayloads.length; i += 50) {
       const batch = newPayloads.slice(i, i + 50);
       try {
-        const createdBatch = await bulkCreateParticipants(eventId, batch);
-        novosCriados += batch.length;
-        const createdDates = (createdBatch || []).map((p) => p?.created_date).filter(Boolean);
+        const report = await bulkCreateParticipants(eventId, batch);
+        novosCriados += report.participants.length;
+        duplicadosBloqueados.push(...report.duplicates);
+        const createdDates = report.participants.map((p) => p?.created_date).filter(Boolean);
         await bulkIncParticipantsCounter(eventId, createdDates, createdDates.map(() => "attendee"));
       } catch {
         errosCriacao += batch.length;
@@ -238,7 +241,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       status: "completed",
       success_count: novosCriados + existentesVinculados,
       error_count: invalidRows.length + errosCriacao,
-      duplicate_count: jaVinculadosIgnorados,
+      duplicate_count: jaVinculadosIgnorados + duplicadosBloqueados.length,
       errors_detail: JSON.stringify(invalidRows.slice(0, 100)),
     });
 
@@ -256,6 +259,8 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       novos_criados: novosCriados,
       existentes_vinculados: existentesVinculados,
       ja_vinculados_ignorados: jaVinculadosIgnorados,
+      duplicados_bloqueados: duplicadosBloqueados.length,
+      duplicados_detalhe: duplicadosBloqueados.slice(0, 100),
       invalidos: invalidRows.length,
       erros_por_linha: invalidRows,
     });
@@ -408,6 +413,9 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         <ResultStat label="Vinculados" value={result.existentes_vinculados} color="text-sky-600" />
         <ResultStat label="Já vinculados (ignorados)" value={result.ja_vinculados_ignorados} color="text-amber-600" />
         <ResultStat label="Inválidos" value={result.invalidos} color="text-red-500" />
+        {result.duplicados_bloqueados > 0 && (
+          <ResultStat label="Bloqueados (e-mail já inscrito)" value={result.duplicados_bloqueados} color="text-amber-600" />
+        )}
       </div>
 
       {result.erros_por_linha.length > 0 && (

@@ -7,6 +7,8 @@
 // frontend, best-effort como hoje; a função apenas grava o registro.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
+// (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 
 const WRITABLE_FIELDS = [
   'full_name', 'email', 'cpf', 'phone', 'company', 'job_title',
@@ -69,8 +71,15 @@ export default async function(req) {
     if (op === 'create') {
       const data = pickFields(body.data);
       if (!data.full_name) return Response.json({ error: 'Nome é obrigatório.' }, { status: 400 });
+      if (!data.email) return Response.json({ error: 'E-mail é obrigatório.' }, { status: 400 });
       if (data.role_in_event && !ROLE_ENUM.includes(data.role_in_event)) {
         return Response.json({ error: 'Papel inválido.' }, { status: 400 });
+      }
+      data.email = normalizeParticipantEmail(data.email);
+      // P0 — Deduplicidade: 1 e-mail ativo = 1 inscrição por evento (servidor).
+      const dup = await findActiveDuplicateEmails(base44.asServiceRole, eventId, [data.email]);
+      if (dup.size > 0) {
+        return Response.json({ error: `"${data.email}" já possui inscrição ativa neste evento (1 e-mail = 1 inscrição).` }, { status: 409 });
       }
       const created = await base44.asServiceRole.entities.Participant.create({ ...data, event_id: eventId });
       return Response.json({ participant: created });
@@ -80,9 +89,35 @@ export default async function(req) {
       const items = Array.isArray(body.items) ? body.items : [];
       if (items.length === 0) return Response.json({ error: 'Nenhum registro para criar.' }, { status: 400 });
       if (items.length > 200) return Response.json({ error: 'Lote maior que 200 registros.' }, { status: 400 });
-      const payloads = items.map((it) => ({ ...pickFields(it), event_id: eventId }));
-      const created = await base44.asServiceRole.entities.Participant.bulkCreate(payloads);
-      return Response.json({ participants: created });
+      // P0 — Deduplicidade: duplicatas NO PRÓPRIO LOTE são separadas (não derrubam
+      // o lote); duplicatas com inscrição ativa no evento são bloqueadas e
+      // devolvidas na resposta para o importador reportar.
+      const seen = new Set();
+      const duplicates = [];
+      const payloads = [];
+      for (const it of items) {
+        const data = pickFields(it);
+        const email = normalizeParticipantEmail(data.email);
+        if (seen.has(email)) {
+          duplicates.push({ email, reason: 'Duplicado no próprio lote de importação' });
+          continue;
+        }
+        seen.add(email);
+        payloads.push({ ...data, email, event_id: eventId });
+      }
+      const activeDup = await findActiveDuplicateEmails(base44.asServiceRole, eventId, [...seen]);
+      const toCreate = [];
+      for (const p of payloads) {
+        if (activeDup.has(p.email)) {
+          duplicates.push({ email: p.email, reason: 'Já possui inscrição ativa neste evento' });
+        } else {
+          toCreate.push(p);
+        }
+      }
+      const created = toCreate.length > 0
+        ? await base44.asServiceRole.entities.Participant.bulkCreate(toCreate)
+        : [];
+      return Response.json({ participants: created, duplicates });
     }
 
     if (op === 'update') {
@@ -95,6 +130,17 @@ export default async function(req) {
       const found = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId });
       if (!found.length) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
       const current = found[0];
+      // P0 — Deduplicidade na edição: trocar o e-mail por um que já tem inscrição
+      // ativa no evento é bloqueado (ignora o próprio registro na consulta).
+      if (data.email) {
+        data.email = normalizeParticipantEmail(data.email);
+        if (data.email !== normalizeParticipantEmail(current.email)) {
+          const dup = await findActiveDuplicateEmails(base44.asServiceRole, eventId, [data.email], participantId);
+          if (dup.size > 0) {
+            return Response.json({ error: `"${data.email}" já possui inscrição ativa neste evento (1 e-mail = 1 inscrição).` }, { status: 409 });
+          }
+        }
+      }
       if (data.role_in_event && current.role_in_event === 'speaker' && data.role_in_event !== 'speaker') {
         if (await speakerHasSessions(base44, eventId, participantId)) {
           return Response.json({ error: 'Não é possível alterar o papel: esta pessoa possui sessão associada. Edite a sessão primeiro.' }, { status: 409 });

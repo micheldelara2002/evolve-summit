@@ -18,7 +18,8 @@ export async function createParticipant(eventId, data) {
 
 export async function bulkCreateParticipants(eventId, items) {
   const out = await invokeOp({ op: "bulkCreate", event_id: eventId, items });
-  return out.participants || [];
+  // duplicates: bloqueados pela política de dedup (1 e-mail ativo = 1 inscrição).
+  return { participants: out.participants || [], duplicates: out.duplicates || [] };
 }
 
 export async function updateParticipant(eventId, participantId, data) {

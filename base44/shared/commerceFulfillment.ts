@@ -20,9 +20,17 @@ import { retrieveChargeWithBalance } from "./stripeClient.ts";
 export const FULFILLING_STALE_MS = 10 * 60 * 1000;
 
 // Resolve or create a Person by contact_email (companion may not have an account yet).
+// Dedup com reativação: Person inativa com o mesmo e-mail é REATIVADA (a
+// inscrição anterior cancelada/reembolsada não impede uma nova inscrição —
+// a identidade existente volta), em vez de criar uma Person duplicada.
 async function ensurePerson(svc: any, name: string, email: string, phone?: string): Promise<string> {
-  const existing = await svc.entities.Person.filter({ contact_email: email, is_active: true });
-  if (existing.length > 0) return existing[0].id;
+  const existing = await svc.entities.Person.filter({ contact_email: email });
+  if (existing.length > 0) {
+    if (existing[0].is_active === false) {
+      try { await svc.entities.Person.update(existing[0].id, { is_active: true }); } catch {}
+    }
+    return existing[0].id;
+  }
   const person = await svc.entities.Person.create({
     full_name: name,
     contact_email: email,
@@ -69,6 +77,41 @@ export async function captureStripeFee(svc: any, payment: any, chargeId: any): P
 // Idempotent fulfillment: create Participants + Tickets for a paid order.
 // Returns { fulfilled: boolean, tickets: string[], error?: string }.
 export async function fulfillOrder(svc: any, payment: any, order: any, orderItems: any[]): Promise<{ fulfilled: boolean; tickets: any[]; error?: string }> {
+  // P0 — Guarda de pedido cancelado: confirmação de pagamento (webhook OU
+  // polling OU retry) que chega para um pedido JÁ cancelado/expirado NUNCA emite
+  // ingressos nem participantes. O pagamento é marcado 'succeeded' (o dinheiro é
+  // real e rastreável na aba de transações; o expirador nunca cancela pedidos
+  // com pagamento vivo) e o evento é gravado no audit trail EXATAMENTE UMA VEZ
+  // (CAS pending→succeeded: reentregas do Stripe não duplicam a auditoria).
+  // O pedido cancelado não é alterado; a resolução (estorno) fica para a gestão.
+  if (order && order.status === "cancelled") {
+    const claim = await svc.entities.Payment.updateMany(
+      { id: payment.id, status: "pending" },
+      { $set: { status: "succeeded", error_reason: "Pagamento confirmado após o cancelamento do pedido — ingressos não emitidos; resolver com estorno." } }
+    );
+    if (claim && claim.updated) {
+      try {
+        await svc.entities.AuditLog.create({
+          action: "status_change",
+          entity_type: "Payment",
+          entity_id: payment.id,
+          details: JSON.stringify({
+            type: "pagamento_pos_cancelamento_ignorado",
+            status: "desconhecido_ignorado",
+            order_id: order.id,
+            payment_id: payment.id,
+            intent_id: payment.intent_id || "",
+            valor_pago: payment.amount,
+          }),
+          event_id: order.event_id,
+          user_id: order.buyer_user_id,
+        });
+      } catch {}
+    }
+    const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
+    return { fulfilled: false, tickets, error: "Pedido já cancelado — pagamento registrado para resolução manual (estorno)." };
+  }
+
   if (payment.fulfillment_status === "fulfilled") {
     const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
     return { fulfilled: true, tickets };
