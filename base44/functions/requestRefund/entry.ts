@@ -3,7 +3,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { createRefund } from "../../shared/stripeClient.ts";
-import { processRefundSuccess } from "../../shared/commerceFulfillment.ts";
+import { processRefundSuccess, lockTicketsForRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 
@@ -126,6 +126,20 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: evalFree.reason, decision: evalFree.decision }, { status: 403 });
       }
 
+      // ===== Trava anti-corrida estorno × check-in (P0): issued → refund_pending =====
+      // Nenhum ingresso afetado é validado no check-in entre a solicitação e o
+      // cancelamento efetivo. CAS por ingresso: check-in concorrente aborta tudo.
+      const freeAffected = refundType === "cancel_item"
+        ? orderTickets.filter((t: any) => itemIds && itemIds.includes(t.order_item_id))
+        : orderTickets;
+      const freeIssuable = freeAffected.filter((t: any) => t.status === "issued");
+      if (freeIssuable.length === 0) {
+        return Response.json({ error: "Não há ingressos elegíveis para estorno." }, { status: 400 });
+      }
+      if (!(await lockTicketsForRefund(svc, freeIssuable.map((t: any) => t.id)))) {
+        return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
+      }
+
       const refundRequest = await svc.entities.RefundRequest.create({
         order_id: order.id,
         payment_id: payment.id,
@@ -166,7 +180,14 @@ export default async function(req: Request): Promise<Response> {
       });
 
       // Cancelamento local idempotente (ingressos/participantes/pedido).
-      await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
+      // Falha no meio → destrava os ingressos (nada fica travado sem estorno).
+      try {
+        await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
+      } catch (procErr: any) {
+        await unlockTicketsForRefund(svc, order.id, itemIds);
+        throw procErr;
+      }
+
 
       // E-mail para comprador + titulares afetados.
       try {
@@ -243,6 +264,24 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: "O teto de estorno deste pagamento já foi alcançado por outra solicitação." }, { status: 409 });
     }
 
+    // ===== Trava anti-corrida estorno × check-in (P0): issued → refund_pending =====
+    // ANTES do disparo no Stripe: nenhum check-in valida ingresso com estorno
+    // em andamento. CAS por ingresso — se qualquer um mudou de estado (ex.:
+    // check-in confirmado agora), a trava é revertida, o teto devolvido e o
+    // estorno NÃO dispara: dinheiro devolvido com ingresso válido não existe.
+    const paidAffected = refundType === "cancel_item"
+      ? orderTickets.filter((t: any) => itemIds && itemIds.includes(t.order_item_id))
+      : orderTickets;
+    const paidIssuable = paidAffected.filter((t: any) => t.status === "issued");
+    if (paidIssuable.length === 0) {
+      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      return Response.json({ error: "Não há ingressos elegíveis para estorno." }, { status: 400 });
+    }
+    if (!(await lockTicketsForRefund(svc, paidIssuable.map((t: any) => t.id)))) {
+      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
+    }
+
     // RefundRequest ANTES do Stripe: o webhook charge.refunded procura a
     // solicitação correspondente (cancel_item usa order_item_ids) — ela precisa
     // existir quando o webhook chegar.
@@ -300,6 +339,8 @@ export default async function(req: Request): Promise<Response> {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: err?.message || String(err) }); } catch {}
       // Devolve a reserva do teto — o estorno não aconteceu.
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      // Destrava os ingressos — o estorno não foi disparado.
+      await unlockTicketsForRefund(svc, order.id, itemIds);
       console.error('[requestRefund] Stripe refund failed:', err?.message || err);
       return Response.json({ error: `Falha no estorno: ${err?.message || err}` }, { status: 502 });
     }
@@ -307,6 +348,7 @@ export default async function(req: Request): Promise<Response> {
     if (refund.status === "failed") {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      await unlockTicketsForRefund(svc, order.id, itemIds);
       return Response.json({ error: "Estorno falhou no Stripe.", refund_status: refund.status }, { status: 502 });
     }
 

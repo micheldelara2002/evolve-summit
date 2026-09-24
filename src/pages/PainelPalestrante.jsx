@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -34,16 +35,9 @@ export default function PainelPalestrante() {
   const { data: speakerParticipants = [], isLoading } = useQuery({
     queryKey: ["speaker-participants", user?.person_id, user?.email],
     queryFn: async () => {
-      const queries = [
-        base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
-      ];
-      if (user?.person_id) {
-        queries.push(base44.entities.Participant.filter({ person_id: user.person_id, is_deleted: false }));
-      }
-      const [byEmail, byPersonId] = await Promise.all(queries);
-      const merged = [...byEmail, ...(byPersonId || [])];
+      const mine = await fetchMyParticipants();
       const seen = new Set();
-      return merged.filter((p) => {
+      return mine.filter((p) => {
         if (seen.has(p.id)) return false;
         if (p.role_in_event !== "speaker") return false;
         seen.add(p.id);

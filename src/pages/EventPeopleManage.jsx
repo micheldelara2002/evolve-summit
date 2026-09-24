@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useEventAccess } from "@/hooks/useEventAccess";
-import { getEventSessions } from "@/lib/participantApi";
+import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import ListSkeleton from "@/components/ui/ListSkeleton";
@@ -26,7 +26,7 @@ export default function EventPeopleManage() {
 
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId),
     enabled: !!eventId && hasAccess,
   });
 

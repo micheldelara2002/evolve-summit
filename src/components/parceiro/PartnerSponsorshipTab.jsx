@@ -5,6 +5,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPartnerSpeakerParticipants } from "@/lib/participantApi";
 import { Award, Mic } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,8 +57,8 @@ export default function PartnerSponsorshipTab({ eventId, partnerId }) {
     queryKey: ["sponsorship_speakers", eventId, repPersonIds.join(",")],
     queryFn: async () => {
       if (!repPersonIds.length) return [];
-      const all = await base44.entities.Participant.filter({ event_id: eventId, role_in_event: "speaker", is_deleted: false });
-      return all.filter((p) => repPersonIds.includes(p.person_id));
+      const all = await fetchPartnerSpeakerParticipants(partnerId);
+      return all.filter((p) => p.event_id === eventId && repPersonIds.includes(p.person_id));
     },
     enabled: !!eventId && repPersonIds.length > 0,
   });

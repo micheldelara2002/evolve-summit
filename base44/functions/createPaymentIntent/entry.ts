@@ -35,11 +35,35 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'Carrinho vazio.' }, { status: 400 });
     }
 
-    // Validate items have required fields.
+    // P0 — Teto de itens por pedido (anti-abuso: pedido gigante drena créditos
+    // e trava lotes inteiros com reservas).
+    if (items.length > 20) {
+      return Response.json({ error: 'Máximo de 20 ingressos por pedido.' }, { status: 400 });
+    }
+
+    // P0 — Normalização + limites dos dados do titular (nome ≤120, e-mail ≤254
+    // com formato válido, telefone ≤30): entrada inválida nunca cria pedido
+    // nem consome reserva.
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (const it of items) {
       if (!it.lot_id || !it.holder_name || !it.holder_email || !it.holder_phone) {
         return Response.json({ error: 'Cada ingresso precisa de lote, nome, email e telefone do titular.' }, { status: 400 });
       }
+      const hName = String(it.holder_name).trim();
+      const hEmail = String(it.holder_email).trim().toLowerCase();
+      const hPhone = String(it.holder_phone).trim();
+      if (hName.length < 2 || hName.length > 120) {
+        return Response.json({ error: 'Nome do titular inválido (entre 2 e 120 caracteres).' }, { status: 400 });
+      }
+      if (hEmail.length > 254 || !EMAIL_RE.test(hEmail)) {
+        return Response.json({ error: 'E-mail do titular inválido.' }, { status: 400 });
+      }
+      if (hPhone.length < 8 || hPhone.length > 30) {
+        return Response.json({ error: 'Telefone do titular inválido.' }, { status: 400 });
+      }
+      it.holder_name = hName;
+      it.holder_email = hEmail;
+      it.holder_phone = hPhone;
     }
 
     // Resolve buyer person.

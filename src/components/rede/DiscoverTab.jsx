@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchPersonsByIds } from "@/lib/personApi";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { Search, UserPlus, Check, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ export default function DiscoverTab({ eventId, myPerson, isReadOnly }) {
 
   const { data: participants = [], isLoading } = useQuery({
     queryKey: ["rede_participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId),
   });
 
   // Load only Persons who are participants in this event (privacy + performance)

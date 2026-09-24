@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { getEventSessions } from "@/lib/participantApi";
+import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -44,7 +44,7 @@ function PeopleContent({ eventId, hasAccess }) {
   const [showImport, setShowImport] = useState(false);
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId),
   });
   // Session tem RLS admin-only — leitura via getEventSessions (admin OU gerente/equipe).
   const { data: sessions = [] } = useQuery({

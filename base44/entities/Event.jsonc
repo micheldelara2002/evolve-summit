@@ -103,9 +103,15 @@
           }
         },
         {
-          "user_condition": {
-            "role": "user"
+          "data.status": {
+            "$in": [
+              "active",
+              "finished"
+            ]
           }
+        },
+        {
+          "data.manager_id": "{{user.id}}"
         }
       ]
     },

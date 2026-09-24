@@ -6,6 +6,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchPersonsByIds } from "@/lib/personApi";
+import { fetchEventParticipants, fetchAllMyEventsParticipants } from "@/lib/participantApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Trophy, RefreshCw, Medal } from "lucide-react";
@@ -41,9 +42,11 @@ export default function RankingModal({ open, onClose, myParticipants = [] }) {
     queryKey: ["ranking-participants", mode, selectedEventId, refreshKey],
     queryFn: async () => {
       if (mode === "evento" && selectedEventId) {
-        return base44.entities.Participant.filter({ event_id: selectedEventId, is_deleted: false });
+        return fetchEventParticipants(selectedEventId);
       }
-      return base44.entities.Participant.filter({ is_deleted: false });
+      // Ranking geral: participantes dos eventos com registro próprio ativo
+      // (escopo por evento — nunca a base inteira).
+      return fetchAllMyEventsParticipants();
     },
     enabled: open,
   });

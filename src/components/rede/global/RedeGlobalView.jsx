@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useAuth } from "@/lib/AuthContext";
 import { UserPlus, Inbox, Users, MessageSquare } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -54,22 +55,9 @@ export default function RedeGlobalView() {
   });
 
   const { data: myParticipantRecords = [], isLoading: loadingParticipants } = useQuery({
-    queryKey: ["my_participants_rede_global", user?.email, myPerson?.id],
-    queryFn: async () => {
-      const [byEmail, byPerson] = await Promise.all([
-        base44.entities.Participant.filter({ email: user.email, is_deleted: false }),
-        myPerson?.id
-          ? base44.entities.Participant.filter({ person_id: myPerson.id, is_deleted: false })
-          : [],
-      ]);
-      const seen = new Set();
-      return [...byEmail, ...byPerson].filter((p) => {
-        if (seen.has(p.id)) return false;
-        seen.add(p.id);
-        return true;
-      });
-    },
-    enabled: !!user && !!myPerson,
+    queryKey: ["my_participants_rede_global", user?.email],
+    queryFn: () => fetchMyParticipants(),
+    enabled: !!user,
   });
 
   const myEventIds = useMemo(

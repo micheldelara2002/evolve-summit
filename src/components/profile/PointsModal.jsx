@@ -3,6 +3,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Star, Loader2 } from "lucide-react";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
@@ -29,15 +30,7 @@ export default function PointsModal({ open, onClose, personId, userEmail }) {
   // P0: Server-side filtered participants (by person_id OR email, merged + deduped)
   const { data: participants = [], isLoading: loadingParts } = useQuery({
     queryKey: ["profile-participants", personId, userEmail],
-    queryFn: async () => {
-      const [byPerson, byEmail] = await Promise.all([
-        personId ? base44.entities.Participant.filter({ person_id: personId, is_deleted: false }) : [],
-        userEmail ? base44.entities.Participant.filter({ email: userEmail, is_deleted: false }) : [],
-      ]);
-      const map = new Map();
-      [...byPerson, ...byEmail].forEach((p) => map.set(p.id, p));
-      return Array.from(map.values());
-    },
+    queryFn: () => fetchMyParticipants(),
     enabled: open && (!!personId || !!userEmail),
   });
 

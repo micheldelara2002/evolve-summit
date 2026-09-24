@@ -1,7 +1,7 @@
 {
   "name": "OrderItem",
   "type": "object",
-  "description": "Item de um pedido \u2014 um ingresso para um titular (comprador ou acompanhante). unit_price \u00e9 snapshot do pre\u00e7o do lote na compra.",
+  "description": "Item de um pedido \u2014 um ingresso para um titular (comprador ou acompanhante). unit_price \u00e9 snapshot do pre\u00e7o do lote na compra. holder_phone \u00e9 snapshot do telefone do titular \u2014 P0 auditoria: o checkout sempre exigiu telefone, mas o campo n\u00e3o existia no schema e a plataforma descartava o valor silenciosamente; agora persiste e o fulfillment o aplica na Person e no Participant do titular.",
   "properties": {
     "order_id": {
       "type": "string",
@@ -30,6 +30,10 @@
     "holder_email": {
       "type": "string",
       "description": "Email do titular do ingresso"
+    },
+    "holder_phone": {
+      "type": "string",
+      "description": "Telefone do titular do ingresso (snapshot validado no checkout \u2014 obrigat\u00f3rio, at\u00e9 30 caracteres)"
     },
     "unit_price": {
       "type": "number",

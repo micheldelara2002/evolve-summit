@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson, saveMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useAuth } from "@/lib/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -101,24 +102,7 @@ export default function UserProfile() {
   // Queries direcionadas por person_id e/ou email — sem scan global de Participant.
   const { data: myParticipants = [] } = useQuery({
     queryKey: ["my-participants-profile", user?.person_id, user?.email],
-    queryFn: async () => {
-      const queries = [];
-      if (user?.person_id) {
-        queries.push(base44.entities.Participant.filter({ person_id: user.person_id, is_deleted: false }));
-      }
-      if (user?.email) {
-        queries.push(base44.entities.Participant.filter({ email: user.email, is_deleted: false }));
-      }
-      if (queries.length === 0) return [];
-      const [byPerson, byEmail] = await Promise.all(queries);
-      const merged = [...(byPerson ?? []), ...(byEmail ?? [])];
-      // Deduplica por Participant.id (mesmo registro pode aparecer nas duas queries)
-      const seen = new Map();
-      for (const p of merged) {
-        if (!seen.has(p.id)) seen.set(p.id, p);
-      }
-      return Array.from(seen.values());
-    },
+    queryFn: () => fetchMyParticipants(),
     enabled: !!user,
   });
 

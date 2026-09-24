@@ -4,6 +4,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchPartnerSpeakerParticipants } from "@/lib/participantApi";
 import { Calendar, Users, Mic } from "lucide-react";
 
 export default function PartnerDashboard({ partnerId }) {
@@ -44,11 +45,8 @@ export default function PartnerDashboard({ partnerId }) {
     queryKey: ["dash_speaker_participants", repPersonIds.join(",")],
     queryFn: async () => {
       if (!repPersonIds.length) return [];
-      return base44.entities.Participant.filter({
-        role_in_event: "speaker",
-        person_id: { $in: repPersonIds },
-        is_deleted: false,
-      });
+      const all = await fetchPartnerSpeakerParticipants(partnerId);
+      return all.filter((p) => repPersonIds.includes(p.person_id));
     },
     enabled: repPersonIds.length > 0,
   });

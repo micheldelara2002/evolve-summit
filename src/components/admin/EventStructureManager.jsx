@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
-import { getEventSessions } from "@/lib/participantApi";
+import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
 import { logAudit } from "@/lib/audit";
 import { t } from "@/lib/i18n";
 import EntityTable from "@/components/admin/EntityTable";
@@ -55,7 +55,7 @@ export default function EventStructureManager({ eventId, hasAccess, user, module
   });
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId),
   });
 
   const saveMut = useMutation({

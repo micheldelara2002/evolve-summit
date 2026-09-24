@@ -15,6 +15,7 @@ import { processAction } from "@/lib/scoringEngine";
 import { calcCompleteness } from "@/lib/profileCompleteness";
 import { sanitizeText } from "@/utils/sanitize";
 import { fetchMyPerson, saveMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 
 const COUNTRY_OPTIONS = [
   { value: "BR", label: "Brasil" },
@@ -144,7 +145,7 @@ export default function UserProfileEdit() {
           const updatedPerson = savedPerson;
           const completeness = calcCompleteness(updatedPerson);
           if (completeness > 0) {
-            const participants = await base44.entities.Participant.filter({ person_id: personId, is_deleted: false });
+            const participants = (await fetchMyParticipants()).filter((p) => p.person_id === personId);
             await Promise.all(
               participants.map((p) =>
                 processAction({

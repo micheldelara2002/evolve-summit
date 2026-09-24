@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchSpeakerFeedback } from "@/lib/personApi";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { uploadFile } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
@@ -271,8 +272,7 @@ function LeadsTab({ session }) {
     queryKey: ["speaker-leads-participants", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      const all = await base44.entities.Participant.filter({ event_id: session.event_id, is_deleted: false });
-      return all.filter((p) => participantIds.includes(p.id));
+      return fetchEventParticipants(session.event_id, { participant_ids: participantIds });
     },
     enabled: participantIds.length > 0,
   });

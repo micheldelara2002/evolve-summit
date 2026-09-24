@@ -1,6 +1,7 @@
 {
   "name": "Participant",
   "type": "object",
+  "description": "Participa\u00e7\u00e3o de uma pessoa em um evento (1 ingresso = 1 registro). PII (e-mail, telefone, CPF): leitura direta via SDK restrita ao pr\u00f3prio registro (por e-mail) ou admin \u2014 listas de participantes de um evento passam pela fun\u00e7\u00e3o getEventParticipants, que valida v\u00ednculo ativo com o evento (canAccessEventData) e remove CPF de quem n\u00e3o \u00e9 gest\u00e3o.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -127,7 +128,18 @@
     "email"
   ],
   "rls": {
-    "read": {},
+    "read": {
+      "$or": [
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "create": {
       "user_condition": {
         "role": "admin"

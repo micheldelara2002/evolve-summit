@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge } from "../../shared/stripeClient.ts";
-import { releaseReservations, FULFILLING_STALE_MS, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";
+import { releaseReservations, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -301,6 +301,11 @@ export default async function(req: Request): Promise<Response> {
                 { $inc: { refunded_amount: -reservedBRL } }
               );
             }
+            // Destrava os ingressos travados para este estorno (refund_pending → issued).
+            await unlockTicketsForRefund(
+              svc, order.id,
+              Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined
+            );
           } catch (failErr: any) {
             console.error('[expireStaleReservations] refund fail mark failed:', req.id, failErr?.message || failErr);
           }

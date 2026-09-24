@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchPersonsByIds } from "@/lib/personApi";
+import { fetchMyEventsParticipantsPage } from "@/lib/participantApi";
 import { Search, UserPlus, Check, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,12 +33,12 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
       const myId = myPerson?.id;
       let skip = 0;
       while (true) {
-        const page = await base44.entities.Participant.filter(
-          { event_id: { $in: eventIds }, is_deleted: false },
-          "id",
-          PARTICIPANT_BATCH,
-          skip
-        );
+        // Participantes dos eventos com registro próprio ativo — via backend
+        // (escopo por evento), paginado em lotes como antes.
+        const { participants: page, hasMore } = await fetchMyEventsParticipantsPage({
+          limit: PARTICIPANT_BATCH,
+          skip,
+        });
         if (page.length === 0) break;
         let added = 0;
         for (const p of page) {
@@ -52,7 +53,7 @@ export default function GlobalDiscoverTab({ eventIds, eventMap, myPerson, myPart
           }
           entry.sharedEventIds.push(p.event_id);
         }
-        if (page.length < PARTICIPANT_BATCH) break;
+        if (!hasMore || page.length < PARTICIPANT_BATCH) break;
         if (added === 0) break; // safety: skip not advancing
         skip += PARTICIPANT_BATCH;
       }

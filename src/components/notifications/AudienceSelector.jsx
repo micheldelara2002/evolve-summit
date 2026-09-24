@@ -3,6 +3,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { getAllowedSegments } from "@/lib/notificationService";
 import { getMyMemberships } from "@/lib/roleEngine";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -44,7 +45,7 @@ export default function AudienceSelector({ user, scopeType, scopeEventId, value,
   const { data: participants = [] } = useQuery({
     queryKey: ["participants_est", scopeEventId],
     queryFn: () => scopeEventId
-      ? base44.entities.Participant.filter({ event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } })
+      ? fetchEventParticipants(scopeEventId, { eligible_only: true })
       : base44.entities.User.list().then((users) => users.filter((u) => u.account_status !== "deleted")),
     enabled: true,
   });

@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useAuth } from "@/lib/AuthContext";
 import { Handshake, Lock, Calendar, Users, Trophy, QrCode, Award, Bell } from "lucide-react";
 import { isAdmin, isPartnerManager } from "@/lib/access";
@@ -99,24 +100,8 @@ export default function PainelParceiro() {
   // Para representante: participações como partner_rep — queries direcionadas por person_id e email
   const { data: myPartnerships = [], isLoading: loadingPartnerships } = useQuery({
     queryKey: ["my_partner_participations", user?.person_id, user?.email],
-    queryFn: async () => {
-      const queries = [];
-      if (user?.person_id) {
-        queries.push(base44.entities.Participant.filter({ person_id: user.person_id, is_deleted: false }));
-      }
-      if (user?.email) {
-        queries.push(base44.entities.Participant.filter({ email: user.email, is_deleted: false }));
-      }
-      if (!queries.length) return [];
-      const [byPerson, byEmail] = await Promise.all(queries);
-      const merged = [...(byPerson ?? []), ...(byEmail ?? [])];
-      // Deduplica por Participant.id (mesmo registro pode aparecer nas duas queries)
-      const seen = new Map();
-      for (const p of merged) {
-        if (!seen.has(p.id)) seen.set(p.id, p);
-      }
-      return Array.from(seen.values()).filter((p) => p.role_in_event === "partner_rep");
-    },
+    queryFn: async () =>
+      (await fetchMyParticipants()).filter((p) => p.role_in_event === "partner_rep"),
     enabled: !!user && !isPartnerManager(user) && !isAdmin(user),
   });
 

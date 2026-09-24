@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import { Trophy } from "lucide-react";
 import RaffleModal from "@/components/raffle/RaffleModal";
@@ -15,7 +16,7 @@ export default function SorteioTab({ eventId, user }) {
 
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId),
   });
 
   const { data: sessions = [] } = useQuery({

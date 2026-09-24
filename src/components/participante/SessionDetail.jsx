@@ -14,6 +14,7 @@ import { base44 } from "@/api/base44Client";
 import { sendEmail } from "@/lib/apiClient";
 import { processAction } from "@/lib/scoringEngine";
 import { fetchMyPerson, fetchPersonsByIds, manageAttendance, manageSessionReview } from "@/lib/personApi";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, BookUser,
@@ -58,8 +59,8 @@ function SpeakerCard({ session }) {
     queryKey: ["speaker-person", session.speaker_id],
     queryFn: async () => {
       if (!session.speaker_id) return null;
-      // speaker_id é Participant.id
-      const parts = await base44.entities.Participant.filter({ id: session.speaker_id });
+      // speaker_id é Participant.id — resolvido via backend com escopo do evento
+      const parts = await fetchEventParticipants(session.event_id, { participant_ids: [session.speaker_id] });
       const sp = parts[0];
       if (!sp?.person_id) return null;
       const persons = await fetchPersonsByIds([session.event_id], [sp.person_id]);

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
 import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket } from "lucide-react";
@@ -74,7 +75,7 @@ export default function AdminHome() {
     queryKey: ["home-role-check", user?.id, user?.person_id, user?.email],
     queryFn: async () => {
       const [mine, memberships, mySubs] = await Promise.all([
-        base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
+        fetchMyParticipants(),
         user?.id
           ? base44.entities.EventMembership.filter({ user_id: user.id, is_active: true, is_deleted: false })
           : Promise.resolve([]),

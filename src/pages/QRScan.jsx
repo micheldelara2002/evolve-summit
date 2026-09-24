@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import QRScanner from "@/components/participante/QRScanner";
@@ -27,26 +28,12 @@ export default function QRScan() {
     enabled: !!user,
   });
 
-  // P0: Server-side filter by email — returns only the user's participants, not all
-  const { data: participantsByEmail = [], isLoading: loadingByEmail } = useQuery({
-    queryKey: ["my_participants_email", user?.email],
-    queryFn: () => base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
+  // Registros próprios (e-mail OU person_id) via backend — dedupe server-side
+  const { data: myParticipants = [], isLoading: loadingParticipants } = useQuery({
+    queryKey: ["my_participants_all", user?.email],
+    queryFn: () => fetchMyParticipants(),
     enabled: !!user,
   });
-
-  // P0: Server-side filter by person_id — returns only the user's participants, not all
-  const { data: participantsByPerson = [], isLoading: loadingByPerson } = useQuery({
-    queryKey: ["my_participants_person", myPerson?.id],
-    queryFn: () => base44.entities.Participant.filter({ person_id: myPerson.id, is_deleted: false }),
-    enabled: !!myPerson?.id,
-  });
-
-  // Merge + deduplicate (email match OR person_id match — same selection logic as before)
-  const myParticipants = useMemo(() => {
-    const map = new Map();
-    [...participantsByEmail, ...participantsByPerson].forEach((p) => map.set(p.id, p));
-    return Array.from(map.values());
-  }, [participantsByEmail, participantsByPerson]);
 
   const myEventIds = useMemo(
     () => [...new Set(myParticipants.map((p) => p.event_id))],
@@ -69,7 +56,7 @@ export default function QRScan() {
     enabled: myEventIds.length > 0,
   });
 
-  const isLoading = personLoading || loadingByEmail || (!!myPerson && loadingByPerson);
+  const isLoading = personLoading || loadingParticipants;
 
   // Auto-open scanner when exactly one active event
   useEffect(() => {

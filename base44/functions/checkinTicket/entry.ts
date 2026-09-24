@@ -47,6 +47,14 @@ export default async function(req: Request): Promise<Response> {
         message: 'Ingresso cancelado/estornado — entrada bloqueada.',
       });
     }
+    if (ticket.status === 'refund_pending') {
+      return Response.json({
+        ok: false,
+        status: 'refund_pending',
+        holder_name: ticket.holder_name,
+        message: 'Estorno deste ingresso em andamento — entrada bloqueada.',
+      });
+    }
     if (ticket.status === 'used') {
       const part = ticket.participant_id ? (await svc.entities.Participant.filter({ id: ticket.participant_id }))[0] : null;
       return Response.json({

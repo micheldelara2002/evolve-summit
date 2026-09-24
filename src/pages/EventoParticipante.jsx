@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { motion } from "framer-motion";
 import {
   Calendar, ShoppingBag, Trophy, Briefcase,
@@ -65,11 +66,10 @@ export default function EventoParticipante() {
     },
   });
 
-  // Check participant association
-  const { data: myParticipant, isLoading: loadingParticipant } = useQuery({
-    queryKey: ["my_participant_check", eventId, user?.email],
-    queryFn: () =>
-      base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+  // Participações próprias (e-mail OU person_id) via backend — sem scan de todos os participantes do evento
+  const { data: myParticipantsAll = [], isLoading: loadingParticipant } = useQuery({
+    queryKey: ["my_participants_all", user?.email],
+    queryFn: () => fetchMyParticipants(),
     enabled: !!user && !!eventId,
   });
 
@@ -83,10 +83,10 @@ export default function EventoParticipante() {
   const isLoading = loadingEvent || loadingParticipant;
 
   // Determine if user is associated
-  const myParticipantRecord = myParticipant?.find(
+  const myParticipantRecord = myParticipantsAll.find(
     (p) =>
-      p.email === user?.email ||
-      (myPerson && p.person_id === myPerson?.id)
+      p.event_id === eventId &&
+      (p.email === user?.email || (myPerson && p.person_id === myPerson?.id))
   );
   const isAssociated = !!myParticipantRecord;
 
@@ -320,12 +320,12 @@ export default function EventoParticipante() {
 function PointsChip({ eventId, userEmail, myPerson, primaryColor }) {
   // For now, show placeholder — real scoring engine to be connected later
   const { data: participants = [] } = useQuery({
-    queryKey: ["my_participant_points", eventId, userEmail],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryKey: ["my_participants_all", eventId, userEmail],
+    queryFn: () => fetchMyParticipants(),
   });
 
   const myParticipant = participants.find(
-    (p) => p.email === userEmail || (myPerson && p.person_id === myPerson?.id)
+    (p) => p.event_id === eventId && (p.email === userEmail || (myPerson && p.person_id === myPerson?.id))
   );
 
   const points = myParticipant?.points_total ?? 0;

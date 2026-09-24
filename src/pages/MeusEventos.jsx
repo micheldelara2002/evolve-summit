@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { base44 } from "@/api/base44Client";
-import { fetchMyPerson } from "@/lib/personApi";
+import { fetchMyParticipants } from "@/lib/participantApi";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calendar, Clock, Lock } from "lucide-react";
@@ -91,33 +91,14 @@ export default function MeusEventos() {
     ]);
   };
 
-  // 1. Buscar Person vinculada ao user (não-admin) — scoped por email
-  const { data: myPerson = null, isLoading: loadingPersons } = useQuery({
-    queryKey: ["my_person", user?.id],
-    queryFn: () => fetchMyPerson(),
+  // 1-3. Participações próprias (e-mail OU person_id) via backend, deduped — scoped (não-admin)
+  const { data: allMyParticipants = [], isLoading: loadingParticipants } = useQuery({
+    queryKey: ["my_participants_all", user?.id],
+    queryFn: () => fetchMyParticipants(),
     enabled: !!user && !admin,
-  });
-
-  // 2. Buscar participações por email — scoped (não-admin)
-  const { data: participantsByEmail = [], isLoading: loadingByEmail } = useQuery({
-    queryKey: ["my_participants_email", user?.email],
-    queryFn: () => base44.entities.Participant.filter({ email: user?.email, is_deleted: false }),
-    enabled: !!user && !admin,
-  });
-
-  // 3. Buscar participações vinculadas via person_id — scoped (não-admin)
-  const personIds = myPerson?.id ? [myPerson.id] : [];
-  const { data: participantsByPerson = [], isLoading: loadingByPerson } = useQuery({
-    queryKey: ["my_participants_person", personIds.join(",")],
-    queryFn: () => {
-      if (!personIds.length) return [];
-      return base44.entities.Participant.filter({ person_id: { $in: personIds }, is_deleted: false });
-    },
-    enabled: !!user && !admin && personIds.length > 0,
   });
 
   // 4. Resolver event IDs e buscar eventos — scoped
-  const allMyParticipants = [...participantsByEmail, ...participantsByPerson];
   const myEventIds = admin ? null : new Set(allMyParticipants.map((p) => p.event_id));
   const eventIdList = myEventIds ? [...myEventIds] : [];
 
@@ -133,7 +114,7 @@ export default function MeusEventos() {
     enabled: !!user && (admin || eventIdList.length > 0),
   });
 
-  const isLoading = admin ? loadingEvents : (loadingPersons || loadingByEmail || loadingByPerson || loadingEvents);
+  const isLoading = admin ? loadingEvents : (loadingParticipants || loadingEvents);
 
   const activeEvents = scopedEvents.filter((e) => e.status === "active");
   const finishedEvents = scopedEvents.filter((e) => e.status === "finished");

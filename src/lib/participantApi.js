@@ -62,3 +62,52 @@ export async function createEventImport(eventId, fileName, totalRows) {
 export async function updateEventImport(eventId, importId, data) {
   return invokeOp({ op: "importUpdate", event_id: eventId, import_id: importId, data });
 }
+
+/**
+ * Leituras de Participant (endurecimento de PII): o SDK direto só devolve o
+ * registro próprio (por e-mail) ou admin. Listas de terceiros passam pela
+ * função getEventParticipants, que valida vínculo com o evento e remove CPF
+ * de quem não é gestão.
+ */
+async function invokeRead(payload) {
+  const res = await base44.functions.invoke("getEventParticipants", payload);
+  return res.data;
+}
+
+export async function fetchMyParticipants() {
+  const out = await invokeRead({ op: "my" });
+  return out.participants || [];
+}
+
+export async function fetchEventParticipants(eventId, opts = {}) {
+  const out = await invokeRead({ op: "event", event_id: eventId, ...opts });
+  return out.participants || [];
+}
+
+export async function fetchMyEventsParticipantsPage({ limit, skip } = {}) {
+  const out = await invokeRead({ op: "my_events", limit, skip });
+  return { participants: out.participants || [], hasMore: !!out.has_more };
+}
+
+export async function fetchAllMyEventsParticipants() {
+  const BATCH = 2000;
+  const all = [];
+  let skip = 0;
+  while (true) {
+    const { participants, hasMore } = await fetchMyEventsParticipantsPage({ limit: BATCH, skip });
+    all.push(...participants);
+    if (!hasMore || participants.length === 0) break;
+    skip += BATCH;
+  }
+  return all;
+}
+
+export async function fetchPartnerSpeakerParticipants(partnerId) {
+  const out = await invokeRead({ op: "partner_speakers", partner_id: partnerId });
+  return out.participants || [];
+}
+
+export async function fetchGlobalParticipantLookup(eventId) {
+  const out = await invokeRead({ op: "import_lookup", event_id: eventId });
+  return out.participants || [];
+}

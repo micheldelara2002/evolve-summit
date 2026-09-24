@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { listEventConfig } from "@/lib/eventConfigApi";
 import { ShoppingBag, ImageIcon, Star, Wallet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -142,7 +143,7 @@ export default function LojaView({ eventId, participantId, personId, isReadOnly 
   // Calcular pontos disponíveis (pontos totais - total resgatado)
   const { data: participantData = [] } = useQuery({
     queryKey: ["participant_points", eventId, participantId],
-    queryFn: () => base44.entities.Participant.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => fetchEventParticipants(eventId, { participant_ids: [participantId] }),
     enabled: !!participantId,
   });
 

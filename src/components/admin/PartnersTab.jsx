@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,11 +100,8 @@ function AssociatePartnerModal({ eventId, existingEventPartners = [], onClose, o
 
       // 2. Upsert participants for selected reps
       if (selectedRepIds.length > 0) {
-        // Load existing participants for this event
-        const existingParticipants = await base44.entities.Participant.filter({
-          event_id: eventId,
-          is_deleted: false,
-        });
+        // Load existing participants for this event (via backend — verificação de vínculo)
+        const existingParticipants = await fetchEventParticipants(eventId);
 
         for (const repId of selectedRepIds) {
           const rep = globalReps.find((r) => r.id === repId);

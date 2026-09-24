@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchSpeakerFeedback } from "@/lib/personApi";
+import { fetchEventParticipants } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import { Ticket, Trophy } from "lucide-react";
 import RaffleModal from "@/components/raffle/RaffleModal";
@@ -45,8 +46,7 @@ export default function SpeakerRaffleSection({ event, myParticipant, user }) {
     queryKey: ["speaker-raffle-participants", participantIds.join(",")],
     queryFn: async () => {
       if (!participantIds.length) return [];
-      const all = await base44.entities.Participant.filter({ event_id: event.id, is_deleted: false });
-      return all.filter((p) => participantIds.includes(p.id));
+      return fetchEventParticipants(event.id, { participant_ids: participantIds });
     },
     enabled: participantIds.length > 0,
   });

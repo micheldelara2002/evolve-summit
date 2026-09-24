@@ -472,3 +472,48 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
   } catch {}
   return { usedSkipped };
 }
+
+// ===== Trava anti-corrida estorno × check-in (P0 TOCTOU) =====
+//
+// requestRefund trava os ingressos afetados de 'issued' → 'refund_pending'
+// com CAS ANTES de disparar o estorno no Stripe: nenhum check-in aceita o
+// ingresso no intervalo entre a solicitação e a confirmação. O webhook
+// charge.refunded (processRefundSuccess) move refund_pending → refunded; a
+// falha/recusa do estorno destrava de volta para issued.
+
+// Trava os ingressos (CAS issued → refund_pending). Retorna false se QUALQUER
+// ingresso mudou de estado entre a leitura e a trava (ex.: check-in confirmado
+// agora) — nesse caso a trava parcial é revertida e o estorno NÃO dispara:
+// dinheiro devolvido com ingresso válido deixa de existir.
+export async function lockTicketsForRefund(svc: any, ticketIds: string[]): Promise<boolean> {
+  if (!ticketIds || ticketIds.length === 0) return true;
+  const claim = await svc.entities.Ticket.updateMany(
+    { id: { $in: ticketIds }, status: "issued" },
+    { $set: { status: "refund_pending" } }
+  );
+  const locked = claim && claim.updated ? claim.updated : 0;
+  if (locked === ticketIds.length) return true;
+  // Reverte a trava parcial — nada fica travado sem estorno em andamento.
+  try {
+    await svc.entities.Ticket.updateMany(
+      { id: { $in: ticketIds }, status: "refund_pending" },
+      { $set: { status: "issued" } }
+    );
+  } catch (err: any) {
+    console.error("[lockTicketsForRefund] rollback failed:", err?.message || err);
+  }
+  return false;
+}
+
+// Destrava refund_pending → issued quando o estorno falhou/foi recusado no
+// Stripe. Idempotente por CAS: só reativa exatamente o que ainda está travado
+// (estorno confirmado já moveu os ingressos para 'refunded' — não é tocado).
+export async function unlockTicketsForRefund(svc: any, orderId: string, orderItemIds?: string[]): Promise<void> {
+  const query: any = { order_id: orderId, status: "refund_pending" };
+  if (orderItemIds && orderItemIds.length > 0) query.order_item_id = { $in: orderItemIds };
+  try {
+    await svc.entities.Ticket.updateMany(query, { $set: { status: "issued" } });
+  } catch (err: any) {
+    console.error("[unlockTicketsForRefund] failed:", err?.message || err);
+  }
+}

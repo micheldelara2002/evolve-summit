@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/lib/i18n";
 import { logAudit } from "@/lib/audit";
 import { incParticipantCounter, bulkIncParticipantsCounter } from "@/lib/businessCounters";
-import { createParticipant, bulkCreateParticipants, createEventImport, updateEventImport } from "@/lib/participantApi";
+import { createParticipant, bulkCreateParticipants, createEventImport, updateEventImport, fetchGlobalParticipantLookup } from "@/lib/participantApi";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
@@ -83,10 +83,11 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         return;
       }
 
-      // Fetch ALL participants globally (by CPF) to detect EXISTING_UNLINKED
+      // Lookup global (por CPF/e-mail) para detectar EXISTING_UNLINKED — via
+      // backend com verificação de gestão do evento (campos mínimos).
       let globalParticipants = [];
       try {
-        globalParticipants = await base44.entities.Participant.filter({ is_deleted: false });
+        globalParticipants = await fetchGlobalParticipantLookup(eventId);
       } catch {}
 
       // Build lookup maps
