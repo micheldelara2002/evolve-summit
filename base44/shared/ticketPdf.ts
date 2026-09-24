@@ -425,6 +425,12 @@ export async function deliverTickets(svc: any, event: any, order: any, tickets: 
   for (const it of orderItems) itemByOrderItem.set(it.id, it);
   for (const ticket of tickets) {
     if (ticket.pdf_url) continue;
+    // Replay de webhook/retentativa: e-mail já entregue (marcador) → não
+    // regenera o PDF (geração custosa: QR + jsPDF) nem reenvia.
+    try {
+      const delivered = await svc.entities.EmailDeliveryLog.filter({ key: `ticket_delivery:${ticket.id}` }, "-created_date", 1);
+      if (delivered.length > 0) continue;
+    } catch {}
     const item = itemByOrderItem.get(ticket.order_item_id);
     if (!item) continue;
     try {

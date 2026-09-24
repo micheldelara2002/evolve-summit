@@ -82,6 +82,10 @@
       "default": "pending",
       "description": "Estado do fulfillment de participantes/ingressos"
     },
+    "error_reason": {
+      "type": "string",
+      "description": "Motivo da \u00faltima falha/cancelamento do pedido (ex.: erro Stripe ao iniciar o pagamento). P3 \u2014 campo agora persistido no schema (antes era gravado e silenciosamente descartado)."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false

@@ -13,6 +13,11 @@
 
 import { generateTicketHash } from "./commercePolicy.ts";
 import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decParticipantsByRole } from "./businessMetrics.ts";
+import { retrieveChargeWithBalance } from "./stripeClient.ts";
+
+// Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
+// considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
+export const FULFILLING_STALE_MS = 10 * 60 * 1000;
 
 // Resolve or create a Person by contact_email (companion may not have an account yet).
 async function ensurePerson(svc: any, name: string, email: string, phone?: string): Promise<string> {
@@ -45,17 +50,52 @@ export async function ensureCompanionInvites(base44: any, svc: any, orderItems: 
   }
 }
 
+// Captura a taxa do Stripe (balance_transaction do charge) no Payment —
+// idempotente (só preenche se ainda não foi). Usada no webhook E nos caminhos
+// de polling/retry: pagamento confirmado fora do webhook não fica com taxa 0.
+export async function captureStripeFee(svc: any, payment: any, chargeId: any): Promise<void> {
+  if (!chargeId || payment.stripe_fee_amount) return;
+  try {
+    const charge = await retrieveChargeWithBalance(String(chargeId));
+    const feeCents = charge?.balance_transaction?.fee;
+    if (typeof feeCents === "number") {
+      await svc.entities.Payment.update(payment.id, { stripe_fee_amount: feeCents / 100 });
+    }
+  } catch (err: any) {
+    console.error("[captureStripeFee] failed:", err?.message || err);
+  }
+}
+
 // Idempotent fulfillment: create Participants + Tickets for a paid order.
 // Returns { fulfilled: boolean, tickets: string[], error?: string }.
 export async function fulfillOrder(svc: any, payment: any, order: any, orderItems: any[]): Promise<{ fulfilled: boolean; tickets: any[]; error?: string }> {
-  // Atomic claim: only one caller transitions fulfillment pending→fulfilled.
   if (payment.fulfillment_status === "fulfilled") {
     const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
     return { fulfilled: true, tickets };
   }
+
+  // Claim atômico com ESTADO INTERMEDIÁRIO 'fulfilling' — distinto de 'fulfilled'
+  // enquanto o laço de emissão roda. Um crash no meio deixa o pagamento em
+  // 'fulfilling' (NUNCA 'fulfilled' com emissão pela metade): recuperável pelo
+  // retryFulfillment e pelo reconciler do job de expiração quando stalo.
+  if (payment.fulfillment_status === "fulfilling") {
+    const claimedAt = payment.updated_date ? new Date(payment.updated_date).getTime() : 0;
+    if (Date.now() - claimedAt < FULFILLING_STALE_MS) {
+      // Outro laço de emissão está vivo agora — não concorre com ele.
+      const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
+      return { fulfilled: true, tickets };
+    }
+    // 'fulfilling' stalo = crash antigo. Recupera para pending_retry; o claim
+    // normal abaixo retoma a emissão de onde parou (idempotente por item).
+    await svc.entities.Payment.updateMany(
+      { id: payment.id, fulfillment_status: "fulfilling" },
+      { $set: { fulfillment_status: "pending_retry", error_reason: "Emissão interrompida (crash) — retomada automaticamente." } }
+    );
+    payment = { ...payment, fulfillment_status: "pending_retry" };
+  }
   const claim = await svc.entities.Payment.updateMany(
-    { id: payment.id, fulfillment_status: "pending" },
-    { $set: { fulfillment_status: "fulfilled", status: "succeeded", succeeded_at: new Date().toISOString() } }
+    { id: payment.id, fulfillment_status: { $in: ["pending", "pending_retry"] } },
+    { $set: { fulfillment_status: "fulfilling", status: "succeeded", succeeded_at: payment.succeeded_at || new Date().toISOString() } }
   );
   if (!claim || !claim.updated) {
     // Another caller is fulfilling or already done.
@@ -131,22 +171,48 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       // ingresso): estornar um ingresso cancela só a inscrição dele, e a mesma
       // pessoa pode ter N entradas se tiver N ingressos.
       if (!ticket.participant_id) {
-        const part = await svc.entities.Participant.create({
-          event_id: order.event_id,
-          full_name: item.holder_name,
-          email: item.holder_email,
-          phone: item.holder_phone || "",
-          person_id: ticket.person_id,
-          role_in_event: "attendee",
-          registration_status: "confirmed",
-          checkin_status: "pending",
-          created_day: new Date().toISOString().slice(0, 10),
-          is_eligible: true,
-          is_deleted: false,
-        });
+        // Reconciliação de órfão (P3): se uma tentativa anterior crashou entre
+        // criar o participante e vinculá-lo no ingresso, ficou um participante
+        // SEM nenhum Ticket apontando para ele. Antes de criar um SEGUNDO
+        // participante para este ingresso, adota um órfão da mesma pessoa
+        // (person_id + event_id, criado após este pedido) que não esteja
+        // vinculado a nenhum Ticket.
+        let part: any = null;
+        if (ticket.person_id) {
+          try {
+            const orderCreated = order.created_date ? new Date(order.created_date).getTime() : 0;
+            const candidates = await svc.entities.Participant.filter({
+              event_id: order.event_id,
+              person_id: ticket.person_id,
+              registration_status: { $ne: "cancelled" },
+              is_deleted: false,
+            });
+            for (const cand of candidates) {
+              const candCreated = cand.created_date ? new Date(cand.created_date).getTime() : 0;
+              if (orderCreated && candCreated < orderCreated) continue;
+              const linked = await svc.entities.Ticket.filter({ participant_id: cand.id, is_deleted: false });
+              if (linked.length === 0) { part = cand; break; }
+            }
+          } catch {}
+        }
+        if (!part) {
+          part = await svc.entities.Participant.create({
+            event_id: order.event_id,
+            full_name: item.holder_name,
+            email: item.holder_email,
+            phone: item.holder_phone || "",
+            person_id: ticket.person_id,
+            role_in_event: "attendee",
+            registration_status: "confirmed",
+            checkin_status: "pending",
+            created_day: new Date().toISOString().slice(0, 10),
+            is_eligible: true,
+            is_deleted: false,
+          });
+          try { await incUniqueParticipant(svc, order.event_id, part.created_date); } catch {}
+          try { await incParticipantsByRole(svc, order.event_id, "attendee", part.created_date); } catch {}
+        }
         await svc.entities.Ticket.update(ticket.id, { participant_id: part.id });
-        try { await incUniqueParticipant(svc, order.event_id, part.created_date); } catch {}
-        try { await incParticipantsByRole(svc, order.event_id, "attendee", part.created_date); } catch {}
       }
     }
 
@@ -198,7 +264,8 @@ export async function releaseReservations(svc: any, orderItems: any[]): Promise<
 }
 
 // Process a successful refund: cancel participants + tickets + EventStats.
-export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[]): Promise<void> {
+export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[]): Promise<{ usedSkipped: number }> {
+  let usedSkipped = 0;
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
   const targetItemIds = orderItemIds && orderItemIds.length > 0 ? new Set(orderItemIds) : null;
@@ -210,6 +277,10 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
   // pela política de prazo (100%–0%) e é independente do cancelamento da participação.
   for (const ticket of relevantTickets) {
     if (ticket.status === "cancelled" || ticket.status === "refunded") continue;
+    // Trava pós-check-in (P3): ingresso UTILIZADO nunca é cancelado
+    // silenciosamente (estorno direto no painel do Stripe) — o ingresso segue
+    // válido e o chamador alerta (webhook marca a solicitação + auditoria).
+    if (ticket.status === "used") { usedSkipped++; continue; }
     await svc.entities.Ticket.update(ticket.id, { status: "refunded" });
     if (ticket.participant_id) {
       const part = (await svc.entities.Participant.filter({ id: ticket.participant_id }))[0];
@@ -263,4 +334,5 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
       user_id: order.buyer_user_id,
     });
   } catch {}
+  return { usedSkipped };
 }

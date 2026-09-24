@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from "base44:runtime";
-import { constructStripeEvent, retrieveChargeWithBalance, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
-import { fulfillOrder, releaseReservations, processRefundSuccess } from "../../shared/commerceFulfillment.ts";
+import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
+import { fulfillOrder, releaseReservations, processRefundSuccess, captureStripeFee } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
@@ -42,7 +42,7 @@ export default async function(req: Request): Promise<Response> {
       const order = (await svc.entities.Order.filter({ id: orderId }))[0];
       if (!order) return Response.json({ received: true, skipped: "order not found" });
 
-      const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
+      const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
 
@@ -51,18 +51,7 @@ export default async function(req: Request): Promise<Response> {
       // Captura a taxa do Stripe desta venda (balance_transaction do charge) —
       // best-effort, nunca bloqueia o fulfillment; gravação idempotente (só
       // preenche se ainda não foi). Usada no cálculo do líquido do organizador.
-      try {
-        const chargeId = pi.latest_charge;
-        if (chargeId && !payment.stripe_fee_amount) {
-          const charge = await retrieveChargeWithBalance(String(chargeId));
-          const feeCents = charge?.balance_transaction?.fee;
-          if (typeof feeCents === "number") {
-            await svc.entities.Payment.update(payment.id, { stripe_fee_amount: feeCents / 100 });
-          }
-        }
-      } catch (feeErr: any) {
-        console.error('[stripeWebhook] stripe fee capture failed:', feeErr?.message || feeErr);
-      }
+      await captureStripeFee(svc, payment, pi.latest_charge);
 
       // Idempotent fulfillment.
       const result = await fulfillOrder(svc, payment, order, orderItems);
@@ -85,7 +74,7 @@ export default async function(req: Request): Promise<Response> {
       // se a tentativa seguinte passasse. Cancelamento/liberação só ocorrem quando
       // o PaymentIntent chega a 'canceled' (abaixo ou polling de status).
       const pi = evt.data.object;
-      const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
+      const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
       if (payment && payment.status === "pending") {
         await svc.entities.Payment.update(payment.id, {
@@ -99,7 +88,7 @@ export default async function(req: Request): Promise<Response> {
       // Intent cancelado (abandono, expiry futura, checkout reaberto): aqui sim
       // libera as reservas e encerra o pedido.
       const pi = evt.data.object;
-      const payments = await svc.entities.Payment.filter({ intent_id: pi.id });
+      const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
       if (payment && payment.status !== "succeeded") {
         await svc.entities.Payment.update(payment.id, { status: "expired" });
@@ -109,7 +98,12 @@ export default async function(req: Request): Promise<Response> {
         // andamento (corrida de webhooks). Reservas seguem presas enquanto o
         // novo intent estiver aberto.
         const siblings = await svc.entities.Payment.filter({ order_id: payment.order_id, is_deleted: false });
-        const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (p.status === "pending" || p.status === "succeeded"));
+        // Regra de 'pagamento vivo' (igual ao job de expiração): pending OU
+        // succeeded OU em fulfillment (pending_retry/fulfilled).
+        const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (
+          p.status === "pending" || p.status === "succeeded" ||
+          p.fulfillment_status === "pending_retry" || p.fulfillment_status === "fulfilled"
+        ));
         if (!hasLiveSibling) {
           const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
           await releaseReservations(svc, orderItems);
@@ -122,7 +116,7 @@ export default async function(req: Request): Promise<Response> {
     if (evt.type === "charge.refunded") {
       const charge = evt.data.object;
       const piId = charge.payment_intent;
-      const payments = await svc.entities.Payment.filter({ intent_id: piId });
+      const payments = await svc.entities.Payment.filter({ intent_id: piId }, "-created_date", 1);
       const payment = payments[0];
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
       const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
@@ -154,7 +148,33 @@ export default async function(req: Request): Promise<Response> {
         && Array.isArray(matched.order_item_ids) && matched.order_item_ids.length > 0
         ? matched.order_item_ids
         : undefined;
-      await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
+      const refundOutcome = await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
+      if (refundOutcome.usedSkipped > 0) {
+        // Estorno direto no painel do Stripe sobre ingresso já utilizado (P3):
+        // o dinheiro voltou (Stripe é autoritativo), mas o ingresso UTILIZADO
+        // não é cancelado silenciosamente — alerta o admin (auditoria +
+        // solicitação marcada). Reverter o check-in é pré-requisito para tratar.
+        try {
+          await svc.entities.AuditLog.create({
+            action: "status_change",
+            entity_type: "Payment",
+            entity_id: payment.id,
+            details: JSON.stringify({ type: "refund_used_ticket_blocked", used_skipped: refundOutcome.usedSkipped }),
+            event_id: order.event_id,
+            user_id: order.buyer_user_id,
+          });
+        } catch (usedErr: any) {
+          console.error('[stripeWebhook] used-ticket audit failed:', usedErr?.message || usedErr);
+        }
+        if (matched) {
+          try {
+            await svc.entities.RefundRequest.update(matched.id, {
+              status: "failed",
+              rejection_reason: "Estorno no Stripe atingiu ingresso(s) já utilizado(s) — ingresso mantido válido; reverta o check-in para revisar.",
+            });
+          } catch {}
+        }
+      }
 
       // Confirma a solicitação correspondente (requestRefund apenas dispara o
       // estorno no Stripe — o webhook é quem processa).

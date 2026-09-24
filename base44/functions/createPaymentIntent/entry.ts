@@ -74,37 +74,62 @@ export default async function(req: Request): Promise<Response> {
     if (prevOrders.length > 0) {
       prevOrders.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
       const prev = prevOrders[0];
-      const prevPayments = await svc.entities.Payment.filter({ order_id: prev.id, status: 'pending' });
-      let alreadyPaid = false;
-      for (const pp of prevPayments) {
-        if (String(pp.intent_id || '').startsWith('free_')) {
-          try { await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' }); } catch {}
-          continue;
+      // Checa TODOS os pagamentos do pedido anterior (não só os 'pending'):
+      // um pagamento 'succeeded' (ou em fulfillment pending_retry/fulfilled)
+      // significa que o pedido foi PAGO — fica intacto (webhook cuida) e um
+      // pedido NOVO é criado para este carrinho.
+      const prevPayments = await svc.entities.Payment.filter({ order_id: prev.id, is_deleted: false });
+      const paidSibling = prevPayments.some((p: any) =>
+        p.status === 'succeeded' || p.fulfillment_status === 'pending_retry' || p.fulfillment_status === 'fulfilled'
+      );
+      if (!paidSibling) {
+        // Claim atômico do reuso (CAS sobre reserved_until, que é atualizado de
+        // qualquer forma no reuso): duas abas concorrentes NÃO empilham itens no
+        // mesmo pedido — a segunda recebe 409 em vez de duplicar o checkout.
+        const claimQuery = prev.reserved_until
+          ? { id: prev.id, status: 'pending', reserved_until: prev.reserved_until }
+          : { id: prev.id, status: 'pending' };
+        const claimed = await svc.entities.Order.updateMany(claimQuery, {
+          $set: { reserved_until: new Date(Date.now() + 15 * 60 * 1000).toISOString() },
+        });
+        if (!claimed || !claimed.updated) {
+          return Response.json({ error: 'Outro checkout deste evento acabou de começar (outra aba/dispositivo). Tente novamente em instantes.' }, { status: 409 });
         }
-        try {
-          await cancelPaymentIntent(pp.intent_id);
-          await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' });
-        } catch (err: any) {
-          if (/succeeded|captured/i.test(String(err?.message || ''))) {
-            alreadyPaid = true; // pedido antigo foi pago — o webhook vai fulfillá-lo
-          } else {
-            console.error('[createPaymentIntent] cancel old intent failed:', err?.message || err);
+        let alreadyPaid = false;
+        for (const pp of prevPayments) {
+          if (pp.status !== 'pending') continue;
+          if (String(pp.intent_id || '').startsWith('free_')) {
             try { await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' }); } catch {}
+            continue;
+          }
+          try {
+            await cancelPaymentIntent(pp.intent_id);
+            await svc.entities.Payment.update(pp.id, { status: 'expired', error_reason: 'Checkout reaberto com novo carrinho.' });
+          } catch (err: any) {
+            if (/succeeded|captured/i.test(String(err?.message || ''))) {
+              alreadyPaid = true; // pedido antigo foi pago entre a leitura e agora — webhook cuida
+              break;
+            }
+            // ABORTA o re-checkout (P3): sem cancelar o intent antigo ficariam
+            // DOIS intents pagáveis sobre o mesmo pedido (risco de dupla cobrança).
+            // Nunca prossegue engolindo a falha.
+            console.error('[createPaymentIntent] cancel old intent failed:', err?.message || err);
+            return Response.json({ error: 'Não foi possível encerrar o pagamento anterior. Tente novamente em instantes.' }, { status: 502 });
           }
         }
-      }
-      if (!alreadyPaid) {
-        const prevItems = await svc.entities.OrderItem.filter({ order_id: prev.id, is_deleted: false });
-        for (const it of prevItems) {
-          try {
-            await svc.entities.SalesLot.updateMany(
-              { id: it.lot_id, quantity_reserved: { $gte: 1 } },
-              { $inc: { quantity_reserved: -1 } }
-            );
-          } catch {}
-          try { await svc.entities.OrderItem.update(it.id, { is_deleted: true }); } catch {}
+        if (!alreadyPaid) {
+          const prevItems = await svc.entities.OrderItem.filter({ order_id: prev.id, is_deleted: false });
+          for (const it of prevItems) {
+            try {
+              await svc.entities.SalesLot.updateMany(
+                { id: it.lot_id, quantity_reserved: { $gte: 1 } },
+                { $inc: { quantity_reserved: -1 } }
+              );
+            } catch {}
+            try { await svc.entities.OrderItem.update(it.id, { is_deleted: true }); } catch {}
+          }
+          reusableOrder = prev;
         }
-        reusableOrder = prev;
       }
     }
 
@@ -287,14 +312,29 @@ export default async function(req: Request): Promise<Response> {
     }
     let intent;
     try {
-      intent = await createPaymentIntent({
-        amountCents,
-        currency: 'BRL',
-        orderId: order.id,
-        eventId,
-        destinationAccountId: destinationAccountId || undefined,
-        applicationFeeCents,
-      });
+      // Chave de idempotência ÚNICA POR TENTATIVA (P3): o Stripe casheia a chave
+      // por 24h — reusar pi_create_<orderId> devolve o intent antigo
+      // (possivelmente cancelado) como se fosse novo e trava o re-checkout.
+      // Revalida o intent retornado: morto ou com valor errado → cancela e
+      // tenta de novo (nunca devolve client_secret de intent cancelado).
+      for (let attempt = 0; attempt < 3; attempt++) {
+        intent = await createPaymentIntent({
+          amountCents,
+          currency: 'BRL',
+          orderId: order.id,
+          eventId,
+          destinationAccountId: destinationAccountId || undefined,
+          applicationFeeCents,
+          idempotencyKey: `pi_create_${order.id}_${Date.now()}_${attempt}`,
+        });
+        if (intent && intent.status !== 'canceled' && Number(intent.amount) === amountCents) break;
+        console.error('[createPaymentIntent] intent inválido retornado (tentativa ' + (attempt + 1) + '):', intent?.status, intent?.amount);
+        if (intent && intent.status !== 'canceled') {
+          try { await cancelPaymentIntent(intent.id); } catch {}
+        }
+        intent = null;
+      }
+      if (!intent) throw new Error('Stripe devolveu um PaymentIntent inválido após as retentativas.');
     } catch (err: any) {
       // Rollback: release reservations + cancel order.
       for (const lotId of reservedLots) {

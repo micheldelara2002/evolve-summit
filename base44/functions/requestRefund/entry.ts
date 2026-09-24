@@ -114,6 +114,11 @@ export default async function(req: Request): Promise<Response> {
       String(payment.intent_id || "").startsWith("free_") ||
       (Number(payment.amount_cents) || 0) <= 0;
     if (isFree) {
+      // Chamada repetida sem mudança de estado é rejeitada (no-op, P3): a
+      // primeira já cancelou pedido/ingressos — não reprocessa nem reenvia.
+      if (order.status === "refunded") {
+        return Response.json({ error: "Este pedido já foi estornado/cancelado." }, { status: 400 });
+      }
       const evalFree = evaluateRefund(policy, event?.start_date, new Date(), 0, isManual);
       if (!evalFree.allowed) {
         return Response.json({ error: evalFree.reason, decision: evalFree.decision }, { status: 403 });
@@ -149,7 +154,9 @@ export default async function(req: Request): Promise<Response> {
           try {
             // Idempotente por marcador: chamadas repetidas não reenviam.
             await sendTransactionalEmail(svc, {
-              dedupeKey: `free_cancel:${refundRequest.id}:${to}`,
+              // Chave derivada do PEDIDO + itens afetados (não do ID da nova
+              // RefundRequest, P3): chamadas repetidas não reenviam o e-mail.
+              dedupeKey: `free_cancel:${order.id}:${itemIds && itemIds.length > 0 ? [...itemIds].sort().join("_") : "full"}:${to}`,
               to,
               subject: `Cancelamento de ingresso — ${event?.name || "Evento"}`,
               body:
@@ -196,6 +203,21 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: "Não há valor a estornar para este pagamento." }, { status: 400 });
     }
 
+    // Trava atômica do teto (anti-TOCTOU, P3): dois estornos concorrentes não
+    // podem passar ambos com o refunded_amount antigo. Reserva o valor com CAS +
+    // $inc; o webhook charge.refunded depois ASSIGNA o valor cumulativo
+    // autoritativo do Stripe (convergência). Falha na reserva → teto já
+    // alcançado por outra solicitação. A reserva é devolvida se o Stripe recusar.
+    const refundBRL = round2(refundAmountCents / 100);
+    const capRemaining = round2(payment.amount - refundBRL);
+    const capClaim = await svc.entities.Payment.updateMany(
+      { id: payment.id, $or: [ { refunded_amount: { $lte: capRemaining } }, { refunded_amount: { $exists: false } } ] },
+      { $inc: { refunded_amount: refundBRL } }
+    );
+    if (!capClaim || !capClaim.updated) {
+      return Response.json({ error: "O teto de estorno deste pagamento já foi alcançado por outra solicitação." }, { status: 409 });
+    }
+
     // RefundRequest ANTES do Stripe: o webhook charge.refunded procura a
     // solicitação correspondente (cancel_item usa order_item_ids) — ela precisa
     // existir quando o webhook chegar.
@@ -229,12 +251,15 @@ export default async function(req: Request): Promise<Response> {
       });
     } catch (err: any) {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: err?.message || String(err) }); } catch {}
+      // Devolve a reserva do teto — o estorno não aconteceu.
+      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
       console.error('[requestRefund] Stripe refund failed:', err?.message || err);
       return Response.json({ error: `Falha no estorno: ${err?.message || err}` }, { status: 502 });
     }
 
     if (refund.status === "failed") {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
+      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
       return Response.json({ error: "Estorno falhou no Stripe.", refund_status: refund.status }, { status: 502 });
     }
 

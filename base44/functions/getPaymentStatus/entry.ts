@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { retrievePaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, releaseReservations, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, releaseReservations, ensureCompanionInvites, captureStripeFee } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 
 // Polling fallback for payment status — used when the client (Pix flow) doesn't
@@ -59,6 +59,9 @@ export default async function(req: Request): Promise<Response> {
       const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
       const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
       const result = await fulfillOrder(svc, payment, order, orderItems);
+      // Captura a taxa do Stripe também no caminho de polling (P3) — pagamento
+      // confirmado fora do webhook não fica com taxa 0.
+      try { await captureStripeFee(svc, payment, intent.latest_charge); } catch {}
       try {
         const event = (await svc.entities.Event.filter({ id: order?.event_id }))[0];
         await deliverTickets(svc, event, order, result.tickets, orderItems);
@@ -68,10 +71,20 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (piStatus === "canceled") {
-      const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
-      await releaseReservations(svc, orderItems);
+      // Regra de 'pagamento vivo' (igual ao webhook/job de expiração): só
+      // encerra o pedido se NÃO houver outra transação viva nele — um
+      // re-checkout pode ter criado um novo PaymentIntent sobre o MESMO pedido.
+      const siblings = await svc.entities.Payment.filter({ order_id: payment.order_id, is_deleted: false });
+      const hasLiveSibling = siblings.some((p: any) => p.id !== payment.id && (
+        p.status === "pending" || p.status === "succeeded" ||
+        p.fulfillment_status === "pending_retry" || p.fulfillment_status === "fulfilled"
+      ));
       await svc.entities.Payment.update(paymentId, { status: "expired" });
-      await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
+      if (!hasLiveSibling) {
+        const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
+        await releaseReservations(svc, orderItems);
+        await svc.entities.Order.update(payment.order_id, { status: "cancelled" });
+      }
       return Response.json({ status: "expired" });
     }
 

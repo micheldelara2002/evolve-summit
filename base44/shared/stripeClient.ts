@@ -40,6 +40,7 @@ export async function createPaymentIntent(opts: {
   // a plataforma retém a comissão via application_fee_amount.
   destinationAccountId?: string;
   applicationFeeCents?: number;
+  idempotencyKey?: string;
 }): Promise<any> {
   const { amountCents, currency, orderId, eventId, metadata } = opts;
   const params = new URLSearchParams();
@@ -56,7 +57,10 @@ export async function createPaymentIntent(opts: {
       params.append("application_fee_amount", String(opts.applicationFeeCents));
     }
   }
-  return stripeRequest("/payment_intents", params, `pi_create_${orderId}`);
+  // Chave de idempotência ÚNICA POR TENTATIVA: o Stripe casheia a chave por 24h —
+  // reusar a chave do pedido devolve o intent antigo (possivelmente cancelado)
+  // como se fosse novo e trava o re-checkout. Cada tentativa cria um intent novo.
+  return stripeRequest("/payment_intents", params, opts.idempotencyKey || `pi_create_${orderId}_${Date.now()}`);
 }
 
 // Cancela um PaymentIntent (checkout reaberto/abandonado) — impossibilita o
