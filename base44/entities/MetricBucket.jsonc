@@ -1,7 +1,7 @@
 {
   "name": "MetricBucket",
   "type": "object",
-  "description": "P0.3 \u2014 S\u00e9rie temporal di\u00e1ria materializada. Tipos:\n  unique_participants (por evento, dimension='')\n  leads (por evento + partner_id)\n  participants_by_role (por evento + dimension=role_in_event)\n  users / persons / partners (globais \u2014 event_id='__global__', append-only; partners sofre dec no soft-delete)\nReconstru\u00edda por reconcileBusinessMetrics (por evento) / reconcileGlobalMetrics (globais).\nQueries por bucket_date (string YYYY-MM-DD) funcionam (range queries em created_date N\u00c3O funcionam).\nvalue \u00e9 RAW \u2014 nunca clampado a 0; drift negativo \u00e9 evidenciado pela leitura e corrigido por reconcile.",
+  "description": "P0.3 \u2014 S\u00e9rie temporal di\u00e1ria materializada. Tipos:\n  unique_participants (por evento, dimension='')\n  leads (por evento + partner_id)\n  participants_by_role (por evento + dimension=role_in_event)\n  users / persons / partners (globais \u2014 event_id='__global__', append-only; partners sofre dec no soft-delete)\nReconstru\u00edda por reconcileBusinessMetrics (por evento) / reconcileGlobalMetrics (globais).\nQueries por bucket_date (string YYYY-MM-DD) funcionam (range queries em created_date N\u00c3O funcionam).\nvalue \u00e9 RAW \u2014 nunca clampado a 0; drift negativo \u00e9 evidenciado pela leitura e corrigido por reconcile.\nP2 \u2014 Fonte \u00daNICA dos contadores de neg\u00f3cio (EventStats \u00e9 legado, apenas reconstru\u00eddo pelo reconciler).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -37,11 +37,6 @@
       "type": "number",
       "default": 0,
       "description": "Contador do bucket (raw; nunca clampado a zero)"
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 1000,
-      "description": "Descri\u00e7\u00e3o livre (opcional, m\u00e1x 1000 caracteres)"
     }
   },
   "required": [

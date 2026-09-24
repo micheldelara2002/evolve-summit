@@ -1,7 +1,7 @@
 {
   "name": "EventMembership",
   "type": "object",
-  "description": "V\u00ednculo de uma Pessoa a um Evento com um papel espec\u00edfico (speaker, reviewer, curator, entrant, winner, etc.). Entidade mestra de permiss\u00f5es por evento \u2014 separada de Participant (presen\u00e7a/credenciamento). Uma mesma Person pode ter m\u00faltiplos EventMembership no mesmo evento (pap\u00e9is acumulados) e em eventos diferentes.",
+  "description": "V\u00ednculo de uma Pessoa a um Evento com um papel espec\u00edfico (speaker, reviewer, curator, entrant, winner, etc.). Entidade mestra de permiss\u00f5es por evento \u2014 separada de Participant (presen\u00e7a/credenciamento). Uma mesma Person pode ter m\u00faltiplos EventMembership no mesmo evento (pap\u00e9is acumulados) e em eventos diferentes. P0 \u2014 tamb\u00e9m \u00e9 a fonte de resolu\u00e7\u00e3o das audi\u00eancias segmentadas de notifica\u00e7\u00e3o (gerente/staff/palestrante/representante), ancorada em user_id.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -17,7 +17,7 @@
     },
     "user_id": {
       "type": "string",
-      "description": "ID do User vinculado (\u00e2ncora de RLS \u2014 permite que o usu\u00e1rio leia suas pr\u00f3prias memberships)"
+      "description": "ID do User vinculado (\u00e2ncora de RLS \u2014 permite que o usu\u00e1rio leia suas pr\u00f3prias memberships; resolve destinat\u00e1rios de notifica\u00e7\u00e3o sem lookup de e-mail)"
     },
     "user_email": {
       "type": "string",
@@ -47,11 +47,6 @@
     "is_deleted": {
       "type": "boolean",
       "default": false
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 1000,
-      "description": "Descri\u00e7\u00e3o livre (opcional, m\u00e1x 1000 caracteres)"
     }
   },
   "required": [

@@ -181,6 +181,34 @@ async function computeGlobal(svc, metricType, entityName, filterBase, startDay, 
   return bulk + startCount + endCount;
 }
 
+// P2 — Top events (all-time) agora via MetricBucket (fonte única; EventStats é
+// legado). Soma paginada por evento — O(batch) memória, cobre todos os eventos
+// sem truncar (o cap anterior de 5000 em EventStats assumia O(eventos)).
+async function sumBucketsByEvent(svc: any): Promise<Map<string, any>> {
+  const metricTypes = ["unique_participants", "leads"];
+  const sums = await Promise.all(metricTypes.map(async (metricType) => {
+    const map = new Map<string, number>();
+    let skip = 0;
+    while (true) {
+      const batch = await svc.entities.MetricBucket.filter({ metric_type: metricType }, "id", 500, skip);
+      if (batch.length === 0) break;
+      for (const b of batch) {
+        if (b.event_id === GLOBAL_EVENT_ID) continue;
+        map.set(b.event_id, (map.get(b.event_id) || 0) + (b.value || 0));
+      }
+      if (batch.length < 500) break;
+      skip += 500;
+    }
+    return map;
+  }));
+  const out = new Map<string, any>();
+  const ids = new Set([...sums[0].keys(), ...sums[1].keys()]);
+  for (const id of ids) {
+    out.set(id, { unique_participants_count: sums[0].get(id) || 0, total_leads_count: sums[1].get(id) || 0 });
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -196,11 +224,8 @@ Deno.serve(async (req) => {
     const svc = base44.asServiceRole;
     const driftWarnings: any[] = [];
 
-    // Events (bounded) + EventStats (O(1)/evento).
-    const [events, eventStats] = await Promise.all([
-      svc.entities.Event.filter({ is_deleted: false }, '-created_date', 5000),
-      svc.entities.EventStats.filter({}, undefined, 5000),
-    ]);
+    // Events (bounded). EventStats é legado — Top events usa MetricBucket.
+    const events = await svc.entities.Event.filter({ is_deleted: false }, '-created_date', 5000);
 
     const validEvents = events.filter((e) => e.status === "active" || e.status === "finished");
     const statusEvents = statusFilter === "all" ? validEvents : validEvents.filter((e) => e.status === statusFilter);
@@ -278,14 +303,8 @@ Deno.serve(async (req) => {
       { name: "Encerrados", value: finishedNow },
     ];
 
-    // === Top events (all-time) via EventStats (soma todas as linhas por evento) ===
-    const statsByEvent = new Map<string, any>();
-    for (const s of eventStats) {
-      const cur = statsByEvent.get(s.event_id) || { unique_participants_count: 0, total_leads_count: 0 };
-      cur.unique_participants_count += s.unique_participants_count || 0;
-      cur.total_leads_count += s.total_leads_count || 0;
-      statsByEvent.set(s.event_id, cur);
-    }
+    // === Top events (all-time) via MetricBucket (soma por evento; EventStats é legado) ===
+    const statsByEvent = await sumBucketsByEvent(svc);
     const topEvents = eventScopedEvents
       .map((e) => ({
         id: e.id,

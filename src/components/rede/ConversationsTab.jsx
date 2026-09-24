@@ -1,14 +1,22 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchPersonsByIds } from "@/lib/personApi";
+import { threadUnreadFor } from "@/lib/chatUnread";
 import { MessageSquare, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PersonAvatar from "./PersonAvatar";
 import ChatWindow from "./ChatWindow";
 
 export default function ConversationsTab({ eventId, myPerson, isReadOnly, activeThreadId, onClearActiveThread }) {
+  const queryClient = useQueryClient();
   const [selectedThreadId, setSelectedThreadId] = useState(null);
+
+  const handleBack = () => {
+    setSelectedThreadId(null);
+    // Atualiza os marcadores de leitura da lista (o dot de não-lidas some)
+    queryClient.invalidateQueries({ queryKey: ["rede_threads"] });
+  };
 
   useEffect(() => {
     if (activeThreadId) {
@@ -55,7 +63,7 @@ export default function ConversationsTab({ eventId, myPerson, isReadOnly, active
     const otherPerson = otherId ? personMap.get(otherId) : null;
     return (
       <div className="space-y-3">
-        <Button variant="ghost" size="sm" onClick={() => setSelectedThreadId(null)} className="gap-1.5">
+        <Button variant="ghost" size="sm" onClick={handleBack} className="gap-1.5">
           <ArrowLeft className="w-4 h-4" /> Voltar
         </Button>
         <ChatWindow
@@ -97,6 +105,9 @@ export default function ConversationsTab({ eventId, myPerson, isReadOnly, active
                 <p className="text-xs text-muted-foreground truncate">{thread.last_message_preview}</p>
               )}
             </div>
+            {threadUnreadFor(thread, myPerson.id) && (
+              <span className="w-2 h-2 rounded-full bg-primary shrink-0" aria-label="Mensagens não lidas" />
+            )}
           </button>
         );
       })}

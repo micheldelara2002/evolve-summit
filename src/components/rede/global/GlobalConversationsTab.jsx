@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchPersonsByIds } from "@/lib/personApi";
+import { threadUnreadFor } from "@/lib/chatUnread";
 import { MessageSquare, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PersonAvatar from "../PersonAvatar";
@@ -12,7 +13,14 @@ import EmptyState from "@/components/ui/EmptyState";
 import { t } from "@/lib/i18n";
 
 export default function GlobalConversationsTab({ eventIds, eventMap, myPerson, activeThreadId, onClearActiveThread }) {
+  const queryClient = useQueryClient();
   const [selectedThreadId, setSelectedThreadId] = useState(null);
+
+  const handleBack = () => {
+    setSelectedThreadId(null);
+    // Atualiza os marcadores de leitura da lista (o dot de não-lidas some)
+    queryClient.invalidateQueries({ queryKey: ["rede_global_threads"] });
+  };
 
   useEffect(() => {
     if (activeThreadId) {
@@ -61,7 +69,7 @@ export default function GlobalConversationsTab({ eventIds, eventMap, myPerson, a
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedThreadId(null)} className="gap-1.5">
+          <Button variant="ghost" size="sm" onClick={handleBack} className="gap-1.5">
             <ArrowLeft className="w-4 h-4" /> {t("rede.back")}
           </Button>
           {threadEventId && <EventBadge eventName={eventMap.get(threadEventId)?.name} />}
@@ -103,6 +111,9 @@ export default function GlobalConversationsTab({ eventIds, eventMap, myPerson, a
                 <EventBadge eventName={eventMap.get(thread.event_id)?.name} />
               </div>
             </div>
+            {threadUnreadFor(thread, myPerson.id) && (
+              <span className="w-2 h-2 rounded-full bg-primary shrink-0" aria-label="Mensagens não lidas" />
+            )}
           </button>
         );
       })}

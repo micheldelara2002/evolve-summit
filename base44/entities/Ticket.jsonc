@@ -66,7 +66,7 @@
     },
     "pdf_url": {
       "type": "string",
-      "description": "URL do PDF do ingresso (com QR + recibo), gerado no fulfillment ou sob demanda via getTicketPdf"
+      "description": "P3 \u2014 LEGADO: URL do PDF de ingressos antigos. Ingressos novos n\u00e3o populam este campo \u2014 o PDF \u00e9 gerado sob demanda via getTicketPdf (base64) e entregue por e-mail/download; o campo \u00e9 mantido apenas para reuso dos ingressos legados que j\u00e1 t\u00eam link."
     },
     "is_deleted": {
       "type": "boolean",

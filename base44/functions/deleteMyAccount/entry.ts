@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 
 // Account Deletion — self-service exclusão de conta do próprio usuário.
 //
@@ -37,15 +38,14 @@ const DELETED_EMAIL_MARKER = "conta_excluida";
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // P2 — Guard de conta excluída: conta já excluída é bloqueada com 403
+    // (antes retornava alreadyDeleted; agora o guard padroniza todos os pontos
+    // de entrada do backend).
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const svc = base44.asServiceRole;
-
-    // Idempotência: conta já excluída — não re-executa.
-    if (user.account_status === 'deleted') {
-      return Response.json({ ok: true, alreadyDeleted: true });
-    }
 
     const body = await req.json().catch(() => ({}));
     const dryRun = !!body.dryRun;

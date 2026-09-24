@@ -8,7 +8,7 @@
     },
     "recipient_user_id": {
       "type": "string",
-      "description": "ID do participante destinat\u00e1rio"
+      "description": "P0 \u2014 ID do USER (conta do app) destinat\u00e1rio. SEMPRE um User ID real: a RLS de leitura e o NotificationInbox casam com {{user.id}}. Audi\u00eancias de evento resolvem Participant \u2192 e-mail \u2192 User, e segmentos de papel resolvem via EventMembership (user_id ancorado). Participante SEM conta de app N\u00c3O gera registro (regra de neg\u00f3cio)."
     },
     "recipient_name": {
       "type": "string",
@@ -16,7 +16,7 @@
     },
     "recipient_email": {
       "type": "string",
-      "description": "Email do destinat\u00e1rio (snapshot)"
+      "description": "Email do destinat\u00e1rio (snapshot, lowercase)"
     },
     "recipient_role": {
       "type": "string",
@@ -50,11 +50,6 @@
     "error_reason": {
       "type": "string",
       "description": "Motivo do erro se falhou (nullable)"
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 1000,
-      "description": "Descri\u00e7\u00e3o livre (opcional, m\u00e1x 1000 caracteres)"
     }
   },
   "required": [

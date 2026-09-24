@@ -77,15 +77,19 @@ export async function canAccessEventData(base44, user, eventId) {
   if (!user || !eventId) return false;
   if (user.role === 'admin') return true;
 
-  const memberships = await base44.asServiceRole.entities.EventMembership.filter({
-    event_id: eventId,
-    user_id: user.id,
-    is_active: true,
-    is_deleted: false,
-  });
+  // P2 — Membership e Person são independentes: consultadas em paralelo em vez
+  // de sequencialmente (as de Participant abaixo já eram paralelas entre si).
+  const [memberships, personId] = await Promise.all([
+    base44.asServiceRole.entities.EventMembership.filter({
+      event_id: eventId,
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+    }),
+    resolveUserPersonId(base44, user),
+  ]);
   if (memberships.length > 0) return true;
 
-  const personId = await resolveUserPersonId(base44, user);
   const queries = [
     base44.asServiceRole.entities.Participant.filter({
       event_id: eventId,

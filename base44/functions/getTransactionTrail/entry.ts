@@ -78,10 +78,13 @@ export default async function(req: Request): Promise<Response> {
     // solicitações de estorno dele, em ordem cronológica.
     const payIds = payments.map((p: any) => p.id);
     const reqIds = refundReqs.map((r: any) => r.id);
+    // P3 — Queries escopadas por event_id (todas as entradas de comércio gravam
+    // event_id): restringe a varredura do AuditLog em vez de casar entity_id
+    // globalmente — degrada menos com o volume de entradas.
     const audits: any[] = [];
-    audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'Order', entity_id: order.id }));
-    if (payIds.length > 0) audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'Payment', entity_id: { $in: payIds } }));
-    if (reqIds.length > 0) audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'RefundRequest', entity_id: { $in: reqIds } }));
+    audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'Order', entity_id: order.id, event_id: order.event_id }));
+    if (payIds.length > 0) audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'Payment', entity_id: { $in: payIds }, event_id: order.event_id }));
+    if (reqIds.length > 0) audits.push(...await svc.entities.AuditLog.filter({ entity_type: 'RefundRequest', entity_id: { $in: reqIds }, event_id: order.event_id }));
     audits.sort((a: any, b: any) => new Date(a.created_date).getTime() - new Date(b.created_date).getTime());
 
     return Response.json({

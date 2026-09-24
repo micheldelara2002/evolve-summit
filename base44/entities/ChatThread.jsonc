@@ -31,14 +31,19 @@
       "type": "string",
       "description": "Preview da \u00faltima mensagem"
     },
+    "last_read_at_a": {
+      "type": "string",
+      "format": "date-time",
+      "description": "P1 \u2014 Quando a pessoa A (person_a_id) leu a conversa pela \u00faltima vez. Base do badge de n\u00e3o-lidas: thread n\u00e3o-lida para A quando last_message_at > last_read_at_a. Atualizado por getChatMessages (leitor) e sendChatMessage (remetente)."
+    },
+    "last_read_at_b": {
+      "type": "string",
+      "format": "date-time",
+      "description": "P1 \u2014 Quando a pessoa B (person_b_id) leu a conversa pela \u00faltima vez. Base do badge de n\u00e3o-lidas: thread n\u00e3o-lida para B quando last_message_at > last_read_at_b."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 1000,
-      "description": "Descri\u00e7\u00e3o livre (opcional, m\u00e1x 1000 caracteres)"
     }
   },
   "required": [
