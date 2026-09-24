@@ -89,8 +89,11 @@ export default async function(req: Request): Promise<Response> {
             details: JSON.stringify({
               type: 'stale_reservation_kept_paid',
               payment_id: livePayment.id,
+              intent_id: livePayment.intent_id || '',
               payment_status: livePayment.status,
               fulfillment_status: livePayment.fulfillment_status || '',
+              valor_pago: livePayment.amount || 0,
+              valor_total_pedido: order.total || 0,
             }),
             event_id: order.event_id,
             user_id: order.buyer_user_id,
@@ -164,7 +167,12 @@ export default async function(req: Request): Promise<Response> {
           action: 'status_change',
           entity_type: 'Order',
           entity_id: order.id,
-          details: JSON.stringify({ type: 'stale_reservation_expired', items: orderItems.length }),
+          details: JSON.stringify({
+            type: 'stale_reservation_expired',
+            items: orderItems.length,
+            valor_total: order.total || 0,
+            intents_expirados: pendingPayments.map((p: any) => p.intent_id),
+          }),
           event_id: order.event_id,
           user_id: order.buyer_user_id,
         });
@@ -265,7 +273,15 @@ export default async function(req: Request): Promise<Response> {
               action: 'status_change',
               entity_type: 'RefundRequest',
               entity_id: req.id,
-              details: JSON.stringify({ type: 'refund_reconciled_offline', stripe_refund_id: req.stripe_refund_id }),
+              details: JSON.stringify({
+                type: 'refund_reconciled_offline',
+                stripe_refund_id: req.stripe_refund_id,
+                payment_id: payment.id,
+                intent_id: payment.intent_id || '',
+                valor_pago: payment.amount || 0,
+                valor_estornado_acumulado: (Number(refunded.charge?.amount_refunded) || 0) / 100,
+                valor_solicitado: req.amount_requested || 0,
+              }),
               event_id: order.event_id,
               user_id: req.requested_by_user_id,
             });

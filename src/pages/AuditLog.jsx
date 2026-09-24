@@ -12,6 +12,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import PageHeader from "@/components/layout/PageHeader";
+import TransactionTrailView from "@/components/admin/audit/TransactionTrailView";
 
 const ACTIONS = ["create", "update", "soft_delete", "status_change", "role_change", "import", "export"];
 
@@ -117,6 +118,7 @@ export default function AuditLog() {
   const [sortDir, setSortDir] = useState("desc");
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
+  const [mode, setMode] = useState("eventos");
   const PAGE_SIZE = 10;
 
   // Column order — persisted
@@ -187,6 +189,23 @@ export default function AuditLog() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  if (mode === "transacoes") {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          icon={Shield}
+          title={t("audit.title")}
+          tone="warning"
+        />
+        <div className="flex gap-1 p-1 rounded-lg bg-muted w-fit">
+          <Button variant="ghost" size="sm" onClick={() => setMode("eventos")}>Eventos</Button>
+          <Button variant="default" size="sm">Transações</Button>
+        </div>
+        <TransactionTrailView />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -204,6 +223,11 @@ export default function AuditLog() {
           </div>
         }
       />
+
+      <div className="flex gap-1 p-1 rounded-lg bg-muted w-fit">
+        <Button variant="default" size="sm">Eventos</Button>
+        <Button variant="ghost" size="sm" onClick={() => setMode("transacoes")}>Transações</Button>
+      </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

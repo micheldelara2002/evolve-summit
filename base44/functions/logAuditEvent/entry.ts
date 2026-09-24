@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { extractClientIp } from "../../shared/commerceAudit.ts";
 
 Deno.serve(async (req) => {
   try {
@@ -32,12 +33,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'entity_id inválido.' }, { status: 400 });
     }
 
-    // Extract client IP from standard proxy headers
-    const forwarded = req.headers.get("x-forwarded-for");
-    const ip = (forwarded ? forwarded.split(",")[0].trim() : "")
-             || req.headers.get("x-real-ip")
-             || req.headers.get("cf-connecting-ip")
-             || "";
+    // Extract client IP from standard proxy headers (shared helper)
+    const ip = extractClientIp(req);
 
     await base44.asServiceRole.entities.AuditLog.create({
       event_id: body.event_id || "",

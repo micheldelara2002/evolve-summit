@@ -69,3 +69,6 @@ export const getSalesMetrics = (filters) => invoke("getSalesMetrics", filters);
 export const getEventSalesSummary = (eventId) => invoke("getEventSalesSummary", { eventId });
 export const getEventOrders = (eventId) => invoke("getEventOrders", { eventId });
 export const checkinTicket = (code) => invoke("checkinTicket", { code });
+
+// ===== Trail de transações (admin — visão do painel de auditoria) =====
+export const getTransactionTrail = (query) => invoke("getTransactionTrail", { query });

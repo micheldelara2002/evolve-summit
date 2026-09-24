@@ -226,7 +226,14 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         action: "create",
         entity_type: "Order",
         entity_id: order.id,
-        details: JSON.stringify({ type: "ticket_fulfillment", tickets: createdTickets.length }),
+        details: JSON.stringify({
+          type: "ticket_fulfillment",
+          tickets: createdTickets.length,
+          payment_id: payment.id,
+          intent_id: payment.intent_id,
+          valor_pago: payment.amount,
+          moeda: payment.currency || "BRL",
+        }),
         event_id: order.event_id,
         user_id: order.buyer_user_id,
       });
@@ -242,7 +249,13 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         action: "status_change",
         entity_type: "Order",
         entity_id: order.id,
-        details: JSON.stringify({ type: "ticket_fulfillment_failed", error: err?.message || String(err) }),
+        details: JSON.stringify({
+          type: "ticket_fulfillment_failed",
+          error: err?.message || String(err),
+          payment_id: payment.id,
+          intent_id: payment.intent_id,
+          valor_pago: payment.amount,
+        }),
         event_id: order.event_id,
         user_id: order.buyer_user_id,
       });
@@ -323,7 +336,7 @@ export async function applyConfirmedStripeRefund(
     && Array.isArray(matched.order_item_ids) && matched.order_item_ids.length > 0
     ? matched.order_item_ids
     : undefined;
-  const outcome = await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds);
+  const outcome = await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds, matched?.id);
 
   if (outcome.usedSkipped > 0) {
     // Estorno sobre ingresso já utilizado (P3): o dinheiro voltou (Stripe é
@@ -335,7 +348,16 @@ export async function applyConfirmedStripeRefund(
         action: "status_change",
         entity_type: "Payment",
         entity_id: payment.id,
-        details: JSON.stringify({ type: "refund_used_ticket_blocked", used_skipped: outcome.usedSkipped }),
+        details: JSON.stringify({
+          type: "refund_used_ticket_blocked",
+          used_skipped: outcome.usedSkipped,
+          payment_id: payment.id,
+          intent_id: payment.intent_id,
+          valor_pago: payment.amount,
+          valor_estornado_acumulado: refundAmountBRL,
+          stripe_refund_id: matched?.stripe_refund_id || "",
+          refund_request_id: matched?.id || "",
+        }),
         event_id: order.event_id,
         user_id: order.buyer_user_id,
       });
@@ -369,7 +391,7 @@ export async function applyConfirmedStripeRefund(
 }
 
 // Process a successful refund: cancel participants + tickets + EventStats.
-export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[]): Promise<{ usedSkipped: number }> {
+export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string): Promise<{ usedSkipped: number }> {
   let usedSkipped = 0;
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
@@ -434,7 +456,16 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
       action: "status_change",
       entity_type: "Order",
       entity_id: order.id,
-      details: JSON.stringify({ type: "ticket_refund", amount: refundAmountBRL, partial: isPartial }),
+      details: JSON.stringify({
+        type: "ticket_refund",
+        amount: refundAmountBRL,
+        partial: isPartial,
+        valor_pago: payment.amount,
+        valor_estornado_acumulado: refundAmountBRL,
+        payment_id: payment.id,
+        intent_id: payment.intent_id,
+        refund_request_id: refundRequestId || "",
+      }),
       event_id: order.event_id,
       user_id: order.buyer_user_id,
     });

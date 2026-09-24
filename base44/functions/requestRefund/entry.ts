@@ -5,6 +5,7 @@ import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POL
 import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess } from "../../shared/commerceFulfillment.ts";
 import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
+import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -35,6 +36,7 @@ export default async function(req: Request): Promise<Response> {
     const user = guard.user;
     const svc = base44.asServiceRole;
     const isAdmin = user.role === "admin";
+    const clientIp = extractClientIp(req);
 
     const body = await req.json();
     const { paymentId, reason, refundType = "full", manualApprove = false, order_item_ids = [] } = body;
@@ -140,8 +142,31 @@ export default async function(req: Request): Promise<Response> {
         order_item_ids: itemIds || [],
       });
 
+      // Trail — solicitação de estorno (pedido gratuito) com solicitante e IP.
+      await writeAudit(svc, {
+        action: "create",
+        entity_type: "RefundRequest",
+        entity_id: refundRequest.id,
+        user_id: user.id,
+        user_name: user.full_name || "",
+        event_id: order.event_id,
+        ip_address: clientIp,
+        details: JSON.stringify({
+          type: "estorno_solicitado",
+          order_id: order.id,
+          payment_id: payment.id,
+          intent_id: payment.intent_id,
+          gratuito: true,
+          tipo: refundType,
+          valor_solicitado: 0,
+          itens: itemIds?.length || 0,
+          motivo: reason || "",
+          decisao_politica: evalFree.decision,
+        }),
+      });
+
       // Cancelamento local idempotente (ingressos/participantes/pedido).
-      await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds);
+      await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
 
       // E-mail para comprador + titulares afetados.
       try {
@@ -237,6 +262,28 @@ export default async function(req: Request): Promise<Response> {
       policy_decision: evalResult.decision,
       status: "pending",
       order_item_ids: itemIds || [],
+    });
+
+    // Trail — solicitação de estorno (pedido pago) com solicitante, valor e IP.
+    await writeAudit(svc, {
+      action: "create",
+      entity_type: "RefundRequest",
+      entity_id: refundRequest.id,
+      user_id: user.id,
+      user_name: user.full_name || "",
+      event_id: order.event_id,
+      ip_address: clientIp,
+      details: JSON.stringify({
+        type: "estorno_solicitado",
+        order_id: order.id,
+        payment_id: payment.id,
+        intent_id: payment.intent_id,
+        tipo: refundType,
+        valor_solicitado: refundAmountCents / 100,
+        itens: itemIds?.length || 0,
+        motivo: reason || "",
+        decisao_politica: evalResult.decision,
+      }),
     });
 
     let refund;

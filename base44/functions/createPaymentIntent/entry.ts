@@ -4,6 +4,7 @@ import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
+import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
 // Reserves lot quantities atomically (cannot oversell). Returns the client secret
@@ -26,6 +27,7 @@ export default async function(req: Request): Promise<Response> {
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
     const svc = base44.asServiceRole;
+    const clientIp = extractClientIp(req);
 
     const body = await req.json();
     const { eventId, items, couponCode } = body;
@@ -128,6 +130,22 @@ export default async function(req: Request): Promise<Response> {
             } catch {}
             try { await svc.entities.OrderItem.update(it.id, { is_deleted: true }); } catch {}
           }
+          // Trail — deixa rastro do carrinho anterior invalidado no re-checkout.
+          await writeAudit(svc, {
+            action: 'update',
+            entity_type: 'Order',
+            entity_id: prev.id,
+            user_id: user.id,
+            user_name: user.full_name || user.email || '',
+            event_id: eventId,
+            ip_address: clientIp,
+            details: JSON.stringify({
+              type: 'checkout_reaberto',
+              itens_invalidados: prevItems.length,
+              itens_anteriores: prevItems.map((i: any) => ({ tipo: i.ticket_type_name, titular: i.holder_name, email: i.holder_email })),
+              total_anterior: prev.total,
+            }),
+          });
           reusableOrder = prev;
         }
       }
@@ -281,6 +299,34 @@ export default async function(req: Request): Promise<Response> {
       } catch (err: any) {
         console.error('[createPaymentIntent] free fulfillment error:', err?.message || err);
       }
+      // Trail — compra gratuita registrada com comprador, carrinho, valores e IP.
+      await writeAudit(svc, {
+        action: 'create',
+        entity_type: 'Order',
+        entity_id: order.id,
+        user_id: user.id,
+        user_name: user.full_name || user.email || '',
+        event_id: eventId,
+        ip_address: clientIp,
+        details: JSON.stringify({
+          type: 'compra_iniciada',
+          gratuito: true,
+          payment_id: freePayment.id,
+          intent_id: freePayment.intent_id,
+          comprador: { id: user.id, nome: user.full_name || '', email: user.email || '' },
+          itens: lines.map((l: any) => ({
+            tipo: l.ticket_type_name,
+            titular: l.holder_name,
+            email: l.holder_email,
+            lote: lotById[l.lot_id]?.name || l.lot_id,
+            valor: l.unit_price,
+          })),
+          subtotal: totals.subtotal,
+          desconto: totals.discount,
+          cupom: coupon?.code || '',
+          total: totals.total,
+        }),
+      });
       // P2 — o uso do cupom é contabilizado dentro do fulfillOrder (idempotente,
       // com marker no pedido) — não aqui na criação.
       try { await ensureCompanionInvites(base44, svc, orderItems); } catch {}
@@ -361,6 +407,38 @@ export default async function(req: Request): Promise<Response> {
       fulfillment_status: 'pending',
       destination_account_id: destinationAccountId,
       application_fee_amount: applicationFeeCents ? applicationFeeCents / 100 : 0,
+    });
+
+    // Trail — compra com pagamento Stripe registrada com comprador, carrinho,
+    // valores, identificador único da transação (intent_id) e IP do comprador.
+    await writeAudit(svc, {
+      action: 'create',
+      entity_type: 'Order',
+      entity_id: order.id,
+      user_id: user.id,
+      user_name: user.full_name || user.email || '',
+      event_id: eventId,
+      ip_address: clientIp,
+      details: JSON.stringify({
+        type: 'compra_iniciada',
+        gratuito: false,
+        payment_id: payment.id,
+        intent_id: intent.id,
+        destino_conta_stripe: destinationAccountId || '',
+        comissao_plataforma: applicationFeeCents ? applicationFeeCents / 100 : 0,
+        comprador: { id: user.id, nome: user.full_name || '', email: user.email || '' },
+        itens: lines.map((l: any) => ({
+          tipo: l.ticket_type_name,
+          titular: l.holder_name,
+          email: l.holder_email,
+          lote: lotById[l.lot_id]?.name || l.lot_id,
+          valor: l.unit_price,
+        })),
+        subtotal: totals.subtotal,
+        desconto: totals.discount,
+        cupom: coupon?.code || '',
+        total: totals.total,
+      }),
     });
 
     // P2 — o uso do cupom é contabilizado no fulfillment (pagamento confirmado,
