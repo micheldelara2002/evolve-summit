@@ -14,15 +14,15 @@ import {
 //
 //   op 'event'     → participantes de UM evento. Gate: admin, EventMembership
 //                    ativa OU registro próprio ativo no evento
-//                    (canAccessEventData). CPF só para admin/gestão
+//                    (canAccessEventData). CPF e TELEFONE só para admin/gestão
 //                    (manager/team) — PII sensível não vaza para participantes.
 //   op 'my'        → registros próprios (e-mail OU person_id), com CPF.
 //   op 'my_events' → participantes de todos os eventos onde o chamador tem
 //                    registro próprio ATIVO (ranking geral, descoberta da
-//                    Rede global). CPF removido; paginação limit/skip.
+//                    Rede global). CPF e telefone removidos; paginação limit/skip.
 //   op 'partner_speakers' → participantes speaker dos reps ativos de um
 //                    parceiro (painéis do parceiro). Gate: canAccessPartnerData.
-//                    CPF removido.
+//                    CPF e telefone removidos.
 //   op 'import_lookup' → campos mínimos de TODOS os participantes para dedup
 //                    da importação CSV (id, event_id, email, cpf, person_id).
 //                    Gate: admin OU manager/team do evento.
@@ -34,6 +34,16 @@ function stripCpf(p: any) {
   if (!p) return p;
   const out = { ...p };
   delete out.cpf;
+  return out;
+}
+
+// INF-003 (opção 2) — telefone tem o MESMO tratamento do CPF: visível apenas
+// para a gestão do evento (admin/manager/team) e o próprio dono (op 'my').
+// Qualquer lista de terceiros sai sem telefone.
+function stripContact(p: any) {
+  if (!p) return p;
+  const out = stripCpf(p);
+  delete out.phone;
   return out;
 }
 
@@ -84,7 +94,7 @@ export default async function(req: Request): Promise<Response> {
         skip
       );
       const out: any[] = [];
-      for (let i = 0; i < page.length; i++) out.push(stripCpf(page[i]));
+      for (let i = 0; i < page.length; i++) out.push(stripContact(page[i]));
       return Response.json({ participants: out, has_more: page.length >= limit });
     }
 
@@ -112,7 +122,7 @@ export default async function(req: Request): Promise<Response> {
         isManagement = mgr.authorized;
       }
       const out: any[] = [];
-      for (let i = 0; i < participants.length; i++) out.push(isManagement ? participants[i] : stripCpf(participants[i]));
+      for (let i = 0; i < participants.length; i++) out.push(isManagement ? participants[i] : stripContact(participants[i]));
       return Response.json({ participants: out, has_more: participants.length >= limit });
     }
 
@@ -132,7 +142,7 @@ export default async function(req: Request): Promise<Response> {
       if (personIds.length === 0) return Response.json({ participants: [] });
       const participants = await svc.entities.Participant.filter({ role_in_event: "speaker", person_id: { $in: personIds }, is_deleted: false });
       const out: any[] = [];
-      for (let i = 0; i < participants.length; i++) out.push(stripCpf(participants[i]));
+      for (let i = 0; i < participants.length; i++) out.push(stripContact(participants[i]));
       return Response.json({ participants: out });
     }
 

@@ -40,6 +40,15 @@ Liberação idempotente e escopada por evento em falha, cancelamento/expiração
 pagamento confirmado. Os campos escalares legados na Person ficam por
 histórico (não são lidos/escritos desde r2).
 
+## INF-003 (opção 2) — telefone de participante escondido como o CPF
+
+Decisão de produto (2026-09-28): o telefone DEIXA de ser feature de
+networking. `getEventParticipants` agora remove `phone` de qualquer lista
+para não-gestão (ops `event`, `my_events`, `partner_speakers`) — mesmo
+tratamento do CPF: visível apenas à gestão do evento (admin/manager/team) e
+ao próprio dono (op `my`). A UI de networking nunca exibiu telefone, então
+nenhum componente precisou mudar.
+
 ## PERF-001 — fim da truncagem silenciosa em métricas
 
 - `getSalesMetrics`: Orders removidos do carregamento (nunca usados);

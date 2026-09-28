@@ -1,7 +1,7 @@
 {
   "name": "Participant",
   "type": "object",
-  "description": "Participa\u00e7\u00e3o de uma pessoa em um evento (1 ingresso = 1 registro). PII (e-mail, telefone, CPF): leitura direta via SDK restrita ao pr\u00f3prio registro (por e-mail) ou admin \u2014 listas de participantes de um evento passam pela fun\u00e7\u00e3o getEventParticipants, que valida v\u00ednculo ativo com o evento (canAccessEventData) e remove CPF de quem n\u00e3o \u00e9 gest\u00e3o.",
+  "description": "Participa\u00e7\u00e3o de uma pessoa em um evento (1 ingresso = 1 registro). PII (e-mail, CPF, telefone): leitura direta via SDK restrita ao pr\u00f3prio registro (por e-mail) ou admin \u2014 listas de participantes de um evento passam pela fun\u00e7\u00e3o getEventParticipants, que valida v\u00ednculo ativo com o evento (canAccessEventData) e remove CPF E TELEFONE de quem n\u00e3o \u00e9 gest\u00e3o (INF-003, op\u00e7\u00e3o 2 \u2014 2026-09-28: telefone tem o mesmo tratamento do CPF, vis\u00edvel apenas \u00e0 gest\u00e3o do evento e ao pr\u00f3prio dono).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -21,7 +21,7 @@
     },
     "phone": {
       "type": "string",
-      "description": "Telefone \u2014 opcional"
+      "description": "Telefone \u2014 opcional. INF-003: PII com tratamento igual ao CPF \u2014 removido de qualquer lista para n\u00e3o-gest\u00e3o em getEventParticipants (ops event/my_events/partner_speakers); vis\u00edvel apenas \u00e0 gest\u00e3o do evento (admin/manager/team) e ao pr\u00f3prio dono (op 'my')"
     },
     "company": {
       "type": "string",
