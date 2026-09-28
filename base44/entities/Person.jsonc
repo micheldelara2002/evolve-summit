@@ -63,15 +63,22 @@
     },
     "checkout_lock_event_id": {
       "type": "string",
-      "description": "FIN-001 \u2014 Evento do checkout atual do comprador. Lock at\u00f4mico de exclusividade (comprador + evento) via Person.updateMany condicional: em corrida h\u00e1 EXATAMENTE um vencedor (primitivo validado 2026-09-28). Vazio = sem lock. Ancorado na Person porque a plataforma bloqueia updateMany bulk na entidade User."
+      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28). Mantido por hist\u00f3rico; o lock vivo de checkout agora usa checkout_lock_events + CheckoutLock."
     },
     "checkout_lock_order_id": {
       "type": "string",
-      "description": "FIN-001 \u2014 Pedido pendente ao qual o lock vivo pertence. O recheckout (mesma conta, checkout anterior pendente) segue pelo reuso at\u00f4mico deste pedido em vez de ser recusado."
+      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28)."
     },
     "checkout_lock_expires_at": {
       "type": "string",
-      "description": "FIN-001 \u2014 Validade do lock (ISO-8601). TTL de 15 min = janela de reserva do checkout; expira\u00e7\u00e3o por tempo impede locks \u00f3rf\u00e3os. Libera\u00e7\u00e3o expl\u00edcita e idempotente em falha, cancelamento (expirador) e pagamento confirmado (fulfillment)."
+      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28)."
+    },
+    "checkout_lock_events": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "FIN-001 r2 \u2014 Port\u00e3o at\u00f4mico de locks de checkout SIMULT\u00c2NEOS por evento: CAS { checkout_lock_events: { $ne: eventId } } + $push garante EXATAMENTE um vencedor por (comprador, evento) em corrida, e eventos distintos coexistem sem interfer\u00eancia. Cada elemento \u00e9 um event_id com lock vivo; o $pull condicional na libera\u00e7\u00e3o \u00e9 idempotente e escopado por evento. Os detalhes (pedido, TTL) ficam na entidade CheckoutLock."
     }
   },
   "required": [

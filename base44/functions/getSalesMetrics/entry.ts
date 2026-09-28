@@ -1,13 +1,21 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, dayKeyOf } from "../../shared/businessPeriod.ts";
+import { scanAll } from "../../shared/completeScan.ts";
 
 // Métricas globais de vendas (admin): receita total, ingressos vendidos,
 // ticket médio, pedidos pagos, série diária de receita, top eventos por receita.
 // Filtros: period, customStart, customEnd, eventFilter.
 //
-// Volume de pagamentos é baixo (escala de eventos), então carregamos pagamentos
-// succeeded + tickets e filtramos in-memory por created_date/succeeded_at.
+// PERF-001 (2026-09-28) — FIM da truncagem silenciosa:
+//   - Orders REMOVIDOS do carregamento (nunca eram usados no cálculo — todos
+//     os KPIs vêm de Payment succeeded; "pedidos pagos" conta pagamentos);
+//   - Payment/Ticket/Event carregados com VARREDURA COMPLETA paginada por id
+//     (scanAll) — nenhum limite 10000/20000 silencioso;
+//   - filtros movidos para a QUERY (payment status 'succeeded'; ingressos
+//     'issued'/'used') — menos registros por página, mesmo resultado;
+//   - a resposta informa consultas executadas e completude (scan.*) —
+//     medição antes/depois auditável.
 //
 // Payload: { period, customStart, customEnd, eventFilter }
 
@@ -25,22 +33,26 @@ export default async function(req: Request): Promise<Response> {
 
     const svc = base44.asServiceRole;
 
-    const [events, payments, orders, tickets] = await Promise.all([
-      svc.entities.Event.filter({ is_deleted: false }, '-created_date', 5000),
-      svc.entities.Payment.filter({ is_deleted: false }, undefined, 20000),
-      svc.entities.Order.filter({}, '-created_date', 20000),
-      svc.entities.Ticket.filter({ is_deleted: false }, undefined, 20000),
+    // Varredura completa — TODO cálculo usa somente pagamentos succeeded e
+    // ingressos issued/used; eventos para o mapa de nomes. Sem Orders.
+    const [eventsScan, paymentsScan, ticketsScan] = await Promise.all([
+      scanAll(svc.entities.Event, { is_deleted: false }),
+      scanAll(svc.entities.Payment, { status: 'succeeded', is_deleted: false }),
+      scanAll(svc.entities.Ticket, { status: { $in: ['issued', 'used'] }, is_deleted: false }),
     ]);
+    const events = eventsScan.items;
+    const payments = paymentsScan.items;
+    const tickets = ticketsScan.items;
 
     const evId = eventFilter !== 'all' ? eventFilter : null;
     const eventName = new Map(events.map((e: any) => [e.id, e.name]));
 
     const curSucceeded = payments.filter((p: any) =>
-      p.status === 'succeeded' && inRange(p.succeeded_at || p.created_date, current.start, current.end) &&
+      inRange(p.succeeded_at || p.created_date, current.start, current.end) &&
       (!evId || p.event_id === evId)
     );
     const prevSucceeded = payments.filter((p: any) =>
-      p.status === 'succeeded' && inRange(p.succeeded_at || p.created_date, previous.start, previous.end) &&
+      inRange(p.succeeded_at || p.created_date, previous.start, previous.end) &&
       (!evId || p.event_id === evId)
     );
 
@@ -50,12 +62,10 @@ export default async function(req: Request): Promise<Response> {
     const ordersPaidPrev = prevSucceeded.length;
 
     const curTickets = tickets.filter((t: any) =>
-      (t.status === 'issued' || t.status === 'used') &&
       inRange(t.created_date, current.start, current.end) &&
       (!evId || t.event_id === evId)
     );
     const prevTickets = tickets.filter((t: any) =>
-      (t.status === 'issued' || t.status === 'used') &&
       inRange(t.created_date, previous.start, previous.end) &&
       (!evId || t.event_id === evId)
     );
@@ -74,7 +84,6 @@ export default async function(req: Request): Promise<Response> {
 
     const byEvent = new Map<string, number>();
     for (const p of payments) {
-      if (p.status !== 'succeeded') continue;
       if (evId && p.event_id !== evId) continue;
       byEvent.set(p.event_id, (byEvent.get(p.event_id) || 0) + (Number(p.amount) || 0));
     }
@@ -92,6 +101,12 @@ export default async function(req: Request): Promise<Response> {
       },
       revenueDaily,
       topEvents,
+      scan: {
+        payments: { records: payments.length, queries: paymentsScan.queries, complete: paymentsScan.complete },
+        tickets: { records: tickets.length, queries: ticketsScan.queries, complete: ticketsScan.complete },
+        events: { records: events.length, queries: eventsScan.queries, complete: eventsScan.complete },
+        orders_loaded: 0,
+      },
     });
   } catch (error: any) {
     console.error('[getSalesMetrics]', error?.message || error);

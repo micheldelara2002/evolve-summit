@@ -1,75 +1,141 @@
-// FIN-001 — Lock atômico de exclusividade de checkout (comprador + evento).
+// FIN-001 (r2) — Lock atômico de exclusividade de checkout (comprador + evento).
 //
-// Ancorado na PERSON do comprador: todo usuário do app ganha uma Person no
-// cadastro (workflow "Criar Person no Cadastro") e Person.updateMany suporta
-// CAS condicional — a plataforma BLOQUEIA updateMany na entidade User
-// ("Bulk user update not allowed", 405), então o User não pode ancorar o lock.
+// r2 (2026-09-28): locks SIMULTÂNEOS e INDEPENDENTES por (comprador, evento).
+// O lock único anterior (campos escalares na Person) permitia reabrir a
+// corrida quando o mesmo comprador alternava eventos: checkout A → lock A;
+// checkout B sobrescrevia para B; nova chamada A readquiria A enquanto B
+// seguia pendente — dois checkouts pagáveis no mesmo evento.
 //
-// Primitivo validado em produção (2026-09-28, scratch + claims concorrentes):
-//   - { checkout_lock_event_id: { $ne: eventId } } + $set → EXATAMENTE um
-//     vencedor entre requisições concorrentes do mesmo comprador/evento.
-//   - Release condicional por (person, event) é idempotente: a segunda
-//     chamada não casa (campo já vazio) e não altera nada.
+// Portão atômico: Person.checkout_lock_events (array de event_ids) — o CAS
+//   { checkout_lock_events: { $ne: eventId } } + $push
+// garante EXATAMENTE um vencedor por evento em corrida (primitiva $ne+$push
+// da mesma família do registro de cupons — DAT-001, validada em produção
+// 2026-09-28) e NÃO interfere entre eventos distintos (A e B coexistem).
+// Detalhes do lock (pedido pendente, TTL) ficam na entidade CheckoutLock,
+// escritos APENAS pelo vencedor do portão — sem corrida de escrita.
+//
+// Campos escalares legados (checkout_lock_event_id/order_id/expires_at) são
+// mantidos por histórico: NENHUM código os lê ou escreve desde r2.
 //
 // Semântica:
-//   - claimCheckoutLock: CAS em duas tentativas (A: lock ausente/otro
-//     evento/liberado; B: lock do MESMO evento porém vencido por TTL).
-//     TTL = janela de reserva do checkout (15 min) — impede locks órfãos.
-//   - attachCheckoutLock: liga o lock vivo ao pedido criado/reusado; o
-//     recheckout normal (mesma conta, checkout anterior ainda pendente) cai
-//     no caminho de reuso atômico do pedido apontado pelo lock.
-//   - releaseCheckoutLock: idempotente — liberado em falha do checkout,
-//     cancelamento/expiração (expirador) e pagamento confirmado (fulfillment).
+//   - claimCheckoutLock: portão CAS; portão travado + registro ativo não
+//     vencido → { ok:false, pendingOrderId } (recheckout reusa o pedido
+//     pendente apontado; sem pedido → 409 imediato no chamador); registro
+//     vencido por TTL ou ausente (crash pós-portão) → libera SOMENTE este
+//     evento e readquire (recuperação sem locks órfãos).
+//   - attachCheckoutLock: liga o lock vivo ao pedido criado/reusado e renova
+//     o TTL; cria o registro se o vencedor ainda não o fez (autocura).
+//   - releaseCheckoutLock: idempotente e ESCOPADO por evento — libera em
+//     falha do checkout, cancelamento/expiração (expirador) e pagamento
+//     confirmado (fulfillment), sem tocar locks de outros eventos.
 //
 // O lock é camada PRÉ-Order: o CAS do pedido (reuso + dedup pós-create)
 // permanece como defesa secundária — nunca removê-lo.
 
 export const CHECKOUT_LOCK_TTL_MS = 15 * 60 * 1000;
 
-// Retorna { ok: true } com o lock adquirido, { ok: true, skipped: true }
-// quando o comprador não tem Person (lock indisponível — o CAS do Order
-// continua garantindo exclusividade) ou { ok: false } quando há lock vivo
-// para o mesmo evento (concorrente em andamento).
-export async function claimCheckoutLock(svc: any, personId: string, eventId: string): Promise<{ ok: boolean; skipped?: boolean }> {
-  if (!personId || !eventId) return { ok: true, skipped: true };
+// Tolerância para o vencedor do portão criar/atualizar o registro CheckoutLock:
+// sem isto, um concorrente trataria "portão travado sem registro" como crash e
+// liberaria o lock de um claim legítimo em pleno voo (janela de milissegundos
+// entre o $push do portão e o create do registro).
+const REGISTRY_SETTLE_RETRIES = 3;
+const REGISTRY_SETTLE_DELAY_MS = 250;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Escrito apenas pelo vencedor do portão (sem corrida de escrita): reutiliza o
+// registro ativo DESTE evento ou cria um novo. Nenhum registro 'released' é
+// reutilizado (histórico preservado).
+async function upsertActiveLockRecord(svc: any, personId: string, eventId: string, userId: string, orderId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + CHECKOUT_LOCK_TTL_MS).toISOString();
-  const baseSet = { checkout_lock_event_id: eventId, checkout_lock_order_id: "", checkout_lock_expires_at: expiresAt };
-  // Tentativa A — lock ausente, liberado ou de outro evento (last-writer-wins
-  // entre eventos distintos; dentro do MESMO evento o CAS garante um vencedor).
-  const a = await svc.entities.Person.updateMany(
-    { id: personId, checkout_lock_event_id: { $ne: eventId } },
-    { $set: baseSet }
+  const upd = await svc.entities.CheckoutLock.updateMany(
+    { person_id: personId, event_id: eventId, status: 'active' },
+    { $set: { order_id: orderId, expires_at: expiresAt } }
   );
-  if (a && a.updated) return { ok: true };
-  // Tentativa B — lock DESTE evento, porém vencido (TTL): readquire.
-  const b = await svc.entities.Person.updateMany(
-    { id: personId, checkout_lock_expires_at: { $lt: new Date().toISOString() } },
-    { $set: baseSet }
-  );
-  if (b && b.updated) return { ok: true };
+  if (!upd || !upd.updated) {
+    await svc.entities.CheckoutLock.create({
+      person_id: personId,
+      event_id: eventId,
+      user_id: userId || '',
+      order_id: orderId,
+      expires_at: expiresAt,
+      status: 'active',
+      released_reason: '',
+    });
+  }
+}
+
+// Retorna { ok: true } com o lock adquirido; { ok: true, skipped: true } quando
+// o comprador não tem Person (o CAS do Order segue garantindo exclusividade);
+// { ok: false, pendingOrderId } quando há lock vivo DESTE evento — com pedido
+// apontado o chamador segue pelo reuso atômico; sem pedido (checkout em pleno
+// voo) o chamador devolve 409 imediato.
+export async function claimCheckoutLock(svc: any, personId: string, eventId: string, userId: string = ''): Promise<{ ok: boolean; skipped?: boolean; pendingOrderId?: string }> {
+  if (!personId || !eventId) return { ok: true, skipped: true };
+
+  const gateQuery = { id: personId, checkout_lock_events: { $ne: eventId } };
+  const gatePush = { $push: { checkout_lock_events: eventId } };
+
+  // Portão — tentativa 1: evento não travado (eventos distintos coexistem).
+  const gate = await svc.entities.Person.updateMany(gateQuery, gatePush);
+  if (gate && gate.updated) {
+    await upsertActiveLockRecord(svc, personId, eventId, userId, '');
+    return { ok: true };
+  }
+
+  // Portão travado DESTE evento: lê o registro vivo (com tolerância à janela
+  // de criação do vencedor) para decidir reuso, TTL vencido ou conflito.
+  let lockRow: any = null;
+  for (let i = 0; i < REGISTRY_SETTLE_RETRIES; i++) {
+    lockRow = (await svc.entities.CheckoutLock.filter({
+      person_id: personId,
+      event_id: eventId,
+      status: 'active',
+      is_deleted: false,
+    }))[0];
+    if (lockRow) break;
+    await sleep(REGISTRY_SETTLE_DELAY_MS);
+  }
+  if (lockRow && (!lockRow.expires_at || new Date(lockRow.expires_at).getTime() > Date.now())) {
+    return { ok: false, pendingOrderId: lockRow.order_id || '' };
+  }
+
+  // Registro vencido (TTL) ou ausente (crash pós-portão): libera SOMENTE este
+  // evento e reivindica. Em corrida de recuperação há exatamente um vencedor
+  // (mesmo CAS) — nunca dois claims simultâneos para o mesmo par.
+  await releaseCheckoutLock(svc, personId, eventId, lockRow ? 'expired' : 'stale_orphan');
+  const retry = await svc.entities.Person.updateMany(gateQuery, gatePush);
+  if (retry && retry.updated) {
+    await upsertActiveLockRecord(svc, personId, eventId, userId, '');
+    return { ok: true };
+  }
   return { ok: false };
 }
 
-// Liga o lock vivo ao pedido ativo (estende o TTL junto — o pedido renovou a
-// janela de reserva, o lock acompanha).
+// Liga o lock vivo ao pedido ativo (reuso ou recém-criado) e renova o TTL — o
+// pedido renovou a janela de reserva, o lock acompanha. Só o vencedor do portão
+// chama (autocura: cria o registro se o claim não conseguiu criá-lo).
 export async function attachCheckoutLock(svc: any, personId: string, eventId: string, orderId: string): Promise<void> {
   if (!personId || !eventId || !orderId) return;
   try {
-    await svc.entities.Person.updateMany(
-      { id: personId, checkout_lock_event_id: eventId },
-      { $set: { checkout_lock_order_id: orderId, checkout_lock_expires_at: new Date(Date.now() + CHECKOUT_LOCK_TTL_MS).toISOString() } }
-    );
+    await upsertActiveLockRecord(svc, personId, eventId, '', orderId);
   } catch {}
 }
 
-// Idempotente: só limpa se o lock ainda for do evento informado; segunda
-// chamada não casa (campo já vazio) e é no-op.
-export async function releaseCheckoutLock(svc: any, personId: string, eventId: string): Promise<void> {
+// Idempotente e escopado por evento: o $pull só casa enquanto o evento está no
+// portão (segunda chamada é no-op) e o registro só é encerrado enquanto está
+// 'active'. Locks de OUTROS eventos permanecem intactos.
+export async function releaseCheckoutLock(svc: any, personId: string, eventId: string, reason: string = 'released'): Promise<void> {
   if (!personId || !eventId) return;
   try {
     await svc.entities.Person.updateMany(
-      { id: personId, checkout_lock_event_id: eventId },
-      { $set: { checkout_lock_event_id: "", checkout_lock_order_id: "", checkout_lock_expires_at: "" } }
+      { id: personId, checkout_lock_events: eventId },
+      { $pull: { checkout_lock_events: eventId } }
+    );
+  } catch {}
+  try {
+    await svc.entities.CheckoutLock.updateMany(
+      { person_id: personId, event_id: eventId, status: 'active' },
+      { $set: { status: 'released', released_reason: reason } }
     );
   } catch {}
 }

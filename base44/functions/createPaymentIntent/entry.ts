@@ -108,20 +108,18 @@ export default async function(req: Request): Promise<Response> {
 
     const now = new Date();
 
-    // ===== FIN-001 — claim atômico de exclusividade (comprador + evento) =====
-    // ANTES de criar/reusar Order, OrderItem ou PaymentIntent. CAS na Person
-    // do comprador: duas requisições concorrentes do mesmo comprador/evento —
-    // só uma passa (a perdedora recebe 409 sem criar pedido). Lock vivo com
-    // pedido apontado → recheckout segue pelo reuso atômico abaixo; lock vivo
-    // sem pedido (outro checkout em pleno voo, janela de milissegundos) →
-    // conflito imediato. Comprador sem Person: lock pulado — o CAS do pedido
-    // segue garantindo exclusividade (defesa secundária, nunca removida).
-    const lock = await claimCheckoutLock(svc, buyerPersonId, eventId);
-    if (!lock.ok) {
-      const lockRow = buyerPersonId ? (await svc.entities.Person.filter({ id: buyerPersonId }))[0] : null;
-      if (!lockRow || !lockRow.checkout_lock_order_id) {
-        return Response.json({ error: 'Outro checkout deste evento está em andamento nesta conta. Tente novamente em instantes.' }, { status: 409 });
-      }
+    // ===== FIN-001 (r2) — claim atômico por (comprador + evento) =====
+    // ANTES de criar/reusar Order, OrderItem ou PaymentIntent. Gate CAS no
+    // array checkout_lock_events da Person: corrida no MESMO evento → um
+    // vencedor; eventos DISTINTOS coexistem sem interferência (o lock único
+    // anterior permitia reabrir a corrida alternando eventos A→B→A). Lock
+    // vivo com pedido apontado → recheckout segue pelo reuso atômico abaixo;
+    // sem pedido (checkout em pleno voo, janela de milissegundos) → 409
+    // imediato. Comprador sem Person: lock pulado — o CAS do pedido segue
+    // garantindo exclusividade (defesa secundária, nunca removida).
+    const lock = await claimCheckoutLock(svc, buyerPersonId, eventId, user.id);
+    if (!lock.ok && !lock.pendingOrderId) {
+      return Response.json({ error: 'Outro checkout deste evento está em andamento nesta conta. Tente novamente em instantes.' }, { status: 409 });
     }
 
     // ===== Pedido único ativo: reusa o pedido pendente anterior =====
