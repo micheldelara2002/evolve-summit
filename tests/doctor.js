@@ -126,6 +126,35 @@ if (process.env.E2E_ADMIN_EMAIL && process.env.E2E_ADMIN_PASSWORD && process.env
   warnFail('Auth probe skipped (needs BASE44_APP_ID + E2E_ADMIN_*).');
 }
 
+// 9. Structural hardening checks (SEC-002 / INF-002) — permanent, no personas needed.
+try {
+  const gpp = fs.readFileSync(path.resolve(ROOT, 'base44', 'functions', 'getPartnerPersons', 'entry.ts'), 'utf8');
+  if (/entities\.Person\.list\s*\(/.test(gpp)) {
+    hardFail('INF-002 regressão: getPartnerPersons voltou a enumerar Persons globais (Person.list presente).');
+  } else {
+    pass('INF-002: getPartnerPersons sem enumeração global de Persons (Person.list ausente).');
+  }
+} catch (e) {
+  hardFail('Não foi possível ler getPartnerPersons/entry.ts: ' + e.message);
+}
+try {
+  const wfPath = path.resolve(ROOT, 'base44', 'workflows', 'Expirar Reservas Abandonadas.jsonc');
+  const wf = fs.readFileSync(wfPath, 'utf8');
+  if (/internal_token|x-scheduler-token|[0-9a-f]{64}/i.test(wf)) {
+    hardFail('SEC-002 regressão: workflow contém credencial/valor literal versionado.');
+  } else {
+    pass('SEC-002: workflow sem credencial versionada (args limpos).');
+  }
+  const exp = fs.readFileSync(path.resolve(ROOT, 'base44', 'functions', 'expireStaleReservations', 'entry.ts'), 'utf8');
+  if (/internal_token|x-scheduler-token|SCHEDULER_INTERNAL_TOKEN/.test(exp)) {
+    hardFail('SEC-002 regressão: expireStaleReservations ainda referencia mecanismo de credencial versionada.');
+  } else {
+    pass('SEC-002: expireStaleReservations sem mecanismo de token (admin-only).');
+  }
+} catch (e) {
+  hardFail('SEC-002 structural check falhou ao ler arquivos: ' + e.message);
+}
+
 // --- Report ---
 console.log('\n=== Evolve Summit QA Doctor ===');
 console.log(`Base URL: ${baseURL || 'NOT CONFIGURED'}`);

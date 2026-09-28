@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { secrets } from "base44:runtime";
+import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund } from "../../shared/stripeClient.ts";
 import { releaseReservations, releaseCouponUse, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 
@@ -34,8 +35,10 @@ import { releaseReservations, releaseCouponUse, FULFILLING_STALE_MS, applyConfir
 // webhook charge.refunded não chega); 'failed'/'canceled' marca a falha e
 // devolve a reserva do teto de estorno.
 //
-// Chamado pelo workflow agendado "Expirar Reservas Abandonadas" (sem usuário
-// autenticado). Chamadas diretas autenticadas exigem admin.
+// SEC-002 (2026-09-28) — EXCLUSIVAMENTE admin autenticado (anônimo 401,
+// não-admin 403, conta excluída 403). Execução agendada SUSPENSA: a plataforma
+// não suporta injeção segura de segredo em args de workflow (versionados) nem
+// autenticação nativa de workflow→função — sem fallback com valor versionado.
 //
 // Cupons: o uso nunca é contabilizado na criação do pedido (só no fulfillment),
 // então pedidos expirados não consomem cupom — nada a devolver aqui.
@@ -48,28 +51,21 @@ export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
 
-    // ===== SEC-002 — autorização obrigatória =====
-    // Chamadas diretas exigem admin autenticado. O workflow agendado identifica-
-    // se com a credencial interna (SCHEDULER_INTERNAL_TOKEN — header
-    // x-scheduler-token ou campo internal_token do corpo): verificável e não
-    // forjável por requisição pública. Ausência de sessão NÃO é aceita como
-    // prova de ser o scheduler (comportamento anterior — vetado).
-    let schedulerToken = '';
-    try { schedulerToken = String(req.headers.get('x-scheduler-token') || ''); } catch {}
-    if (!schedulerToken) {
-      try { schedulerToken = String((await req.json())?.internal_token || ''); } catch {}
+    // ===== SEC-002 — autorização obrigatória: somente admin ativo =====
+    // O mecanismo de credencial interna do scheduler foi REMOVIDO (o valor era
+    // gravado literalmente no arquivo do workflow — comprometido). Sem
+    // mecanismo suportado pela plataforma para o scheduler se autenticar de
+    // forma segura e verificável, o endpoint é admin-only: anônimo → 401,
+    // não-admin → 403, conta excluída → 403 (requireActiveUser).
+    let guard: any = null;
+    try {
+      guard = await requireActiveUser(base44);
+    } catch {
+      return Response.json({ error: 'Não autorizado.' }, { status: 401 });
     }
-    let user: any = null;
-    try { user = await base44.auth.me(); } catch {}
-    if (user) {
-      if (user.role !== 'admin') {
-        return Response.json({ error: 'Sem permissão.' }, { status: 403 });
-      }
-    } else {
-      const expected = secrets.get('SCHEDULER_INTERNAL_TOKEN');
-      if (!expected || !schedulerToken || schedulerToken !== expected) {
-        return Response.json({ error: 'Não autorizado.' }, { status: 401 });
-      }
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    if (guard.user.role !== 'admin') {
+      return Response.json({ error: 'Sem permissão.' }, { status: 403 });
     }
     const svc = base44.asServiceRole;
 
@@ -176,6 +172,10 @@ export default async function(req: Request): Promise<Response> {
         { $set: { status: 'cancelled' } }
       );
       if (!orderClaim || !orderClaim.updated) continue;
+
+      // FIN-001 — libera (idempotente) o lock de checkout do comprador: o
+      // pedido pendente foi encerrado, novo checkout é permitido imediatamente.
+      await releaseCheckoutLock(svc, order.buyer_person_id, order.event_id);
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
       // FIN-002 — devolve o uso do cupom reservado pelo checkout abandonado.

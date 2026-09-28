@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Ticket, Plus, Minus, ShoppingCart, Tag, Clock, ArrowLeft, X } from "lucide-react";
+import { Ticket, Plus, ShoppingCart, Tag, Clock, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/use-toast";
 import { getEventTickets } from "@/lib/commerceApi";

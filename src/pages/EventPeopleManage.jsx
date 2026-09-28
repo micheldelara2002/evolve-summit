@@ -8,7 +8,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
 import { useEventAccess } from "@/hooks/useEventAccess";
 import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";

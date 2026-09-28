@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Ticket, Calendar, QrCode, MapPin, Download, AlertCircle } from "lucide-react";
+import { ArrowLeft, Ticket, Calendar, MapPin, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMyOrders, getTicketPdf } from "@/lib/commerceApi";
 import RetryFulfillmentButton from "@/components/admin/commerce/RetryFulfillmentButton";

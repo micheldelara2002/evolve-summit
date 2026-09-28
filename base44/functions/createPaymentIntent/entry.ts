@@ -6,6 +6,7 @@ import { findActiveDuplicateEmails } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse } from "../../shared/commerceFulfillment.ts";
+import { claimCheckoutLock, attachCheckoutLock, releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
@@ -107,6 +108,22 @@ export default async function(req: Request): Promise<Response> {
 
     const now = new Date();
 
+    // ===== FIN-001 — claim atômico de exclusividade (comprador + evento) =====
+    // ANTES de criar/reusar Order, OrderItem ou PaymentIntent. CAS na Person
+    // do comprador: duas requisições concorrentes do mesmo comprador/evento —
+    // só uma passa (a perdedora recebe 409 sem criar pedido). Lock vivo com
+    // pedido apontado → recheckout segue pelo reuso atômico abaixo; lock vivo
+    // sem pedido (outro checkout em pleno voo, janela de milissegundos) →
+    // conflito imediato. Comprador sem Person: lock pulado — o CAS do pedido
+    // segue garantindo exclusividade (defesa secundária, nunca removida).
+    const lock = await claimCheckoutLock(svc, buyerPersonId, eventId);
+    if (!lock.ok) {
+      const lockRow = buyerPersonId ? (await svc.entities.Person.filter({ id: buyerPersonId }))[0] : null;
+      if (!lockRow || !lockRow.checkout_lock_order_id) {
+        return Response.json({ error: 'Outro checkout deste evento está em andamento nesta conta. Tente novamente em instantes.' }, { status: 409 });
+      }
+    }
+
     // ===== Pedido único ativo: reusa o pedido pendente anterior =====
     // Se existir um pedido 'pending' anterior do mesmo comprador neste evento,
     // ele é reaproveitado: PaymentIntents antigos são cancelados no Stripe (nunca
@@ -137,6 +154,7 @@ export default async function(req: Request): Promise<Response> {
           $set: { reserved_until: new Date(Date.now() + 15 * 60 * 1000).toISOString() },
         });
         if (!claimed || !claimed.updated) {
+          await releaseCheckoutLock(svc, buyerPersonId, eventId);
           return Response.json({ error: 'Outro checkout deste evento acabou de começar (outra aba/dispositivo). Tente novamente em instantes.' }, { status: 409 });
         }
         let alreadyPaid = false;
@@ -158,6 +176,7 @@ export default async function(req: Request): Promise<Response> {
             // DOIS intents pagáveis sobre o mesmo pedido (risco de dupla cobrança).
             // Nunca prossegue engolindo a falha.
             console.error('[createPaymentIntent] cancel old intent failed:', err?.message || err);
+            await releaseCheckoutLock(svc, buyerPersonId, eventId);
             return Response.json({ error: 'Não foi possível encerrar o pagamento anterior. Tente novamente em instantes.' }, { status: 502 });
           }
         }
@@ -240,6 +259,7 @@ export default async function(req: Request): Promise<Response> {
           const rq = demandByLot[rid];
           await svc.entities.SalesLot.updateMany({ id: rid }, { $inc: { quantity_reserved: -rq } });
         }
+        await releaseCheckoutLock(svc, buyerPersonId, eventId);
         return Response.json({ error: `Lote "${lot.name}" esgotou enquanto você finalizava. Tente novamente.` }, { status: 409 });
       }
       reservedLots.push(lotId);
@@ -284,6 +304,7 @@ export default async function(req: Request): Promise<Response> {
       for (const lotId of reservedLots) {
         await svc.entities.SalesLot.updateMany({ id: lotId }, { $inc: { quantity_reserved: -demandByLot[lotId] } });
       }
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
       return Response.json({ error: totals.coupon_message || 'Cupom inválido.' }, { status: 400 });
     }
 
@@ -300,6 +321,7 @@ export default async function(req: Request): Promise<Response> {
         for (const lotId of reservedLots) {
           try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
         }
+        await releaseCheckoutLock(svc, buyerPersonId, eventId);
         return Response.json({ error: 'Cupom esgotado — o limite de utilizações foi atingido enquanto você finalizava a compra.' }, { status: 409 });
       }
       couponUseReserved = true;
@@ -333,8 +355,10 @@ export default async function(req: Request): Promise<Response> {
     } else {
       order = await svc.entities.Order.create(orderPayload);
 
-      // FIN-001 — dedup pós-create: duas PRIMEIRAS requisições concorrentes do
-      // mesmo comprador/evento podem ambas não encontrar pedido pendente e
+      // FIN-001 — defesa secundária (o lock atômico na Person já impede a
+      // corrida ANTES do create; isto cobre o comprador sem Person): duas
+      // PRIMEIRAS requisições concorrentes do mesmo comprador/evento podem
+      // ambas não encontrar pedido pendente e
       // criar dois Orders. Sobrevivente determinístico (created_date + id):
       // o perdedor cancela a SI MESMO via CAS, devolve SUAS reservas (lotes +
       // cupom) e recebe 409 controlado — nunca dois client secrets ativos.
@@ -354,10 +378,16 @@ export default async function(req: Request): Promise<Response> {
             { id: order.id, status: 'pending' },
             { $set: { status: 'cancelled', error_reason: 'Checkout concorrente — prevaleceu o checkout anterior do mesmo comprador.' } }
           );
+          await releaseCheckoutLock(svc, buyerPersonId, eventId);
           return Response.json({ error: 'Outro checkout deste evento acabou de começar (outra aba/dispositivo). Tente novamente em instantes.' }, { status: 409 });
         }
       }
     }
+
+    // FIN-001 — liga o lock vivo ao pedido ativo (reuso ou recém-criado):
+    // o recheckout sabe a qual pedido o lock pertence e o TTL acompanha a
+    // janela renovada do pedido.
+    await attachCheckoutLock(svc, buyerPersonId, eventId, order.id);
 
     // Create OrderItems.
     const orderItems = [];
@@ -427,6 +457,8 @@ export default async function(req: Request): Promise<Response> {
       });
       // P2 — o uso do cupom é contabilizado dentro do fulfillOrder (idempotente,
       // com marker no pedido) — não aqui na criação.
+      // FIN-001 — pedido gratuito confirmado: libera o lock imediatamente.
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
       try { await ensureCompanionInvites(base44, svc, orderItems); } catch {}
       return Response.json({
         free: true,
@@ -487,6 +519,7 @@ export default async function(req: Request): Promise<Response> {
       await releaseCouponUse(svc, order);
       await svc.entities.Order.update(order.id, { status: 'cancelled', error_reason: err?.message });
       console.error('[createPaymentIntent] Stripe error:', err?.message || err);
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
       return Response.json({ error: `Falha ao iniciar pagamento: ${err?.message || 'erro Stripe'}` }, { status: 502 });
     }
 

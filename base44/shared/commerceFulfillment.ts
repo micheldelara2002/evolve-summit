@@ -12,6 +12,7 @@
 //     success, release on failure/expire. Atomic $inc with guard.
 
 import { generateTicketHash } from "./commercePolicy.ts";
+import { releaseCheckoutLock } from "./checkoutLock.ts";
 import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decParticipantsByRole } from "./businessMetrics.ts";
 import { retrieveChargeWithBalance } from "./stripeClient.ts";
 
@@ -262,6 +263,10 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
     // Mark order fulfilled.
     await svc.entities.Order.update(order.id, { status: "paid", fulfillment_status: "fulfilled" });
     await svc.entities.Payment.update(payment.id, { status: "succeeded", fulfillment_status: "fulfilled", succeeded_at: new Date().toISOString() });
+
+    // FIN-001 — pagamento confirmado: libera (idempotente) o lock de checkout
+    // do comprador — a exclusividade deixa de ser necessária.
+    await releaseCheckoutLock(svc, order.buyer_person_id, order.event_id);
 
     // Audit.
     try {

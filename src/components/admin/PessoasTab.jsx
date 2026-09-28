@@ -36,7 +36,6 @@ import {
   softDeleteParticipant,
   getEventReviewers,
   getReviewerMembership,
-  setReviewerMembership,
   findPersonIdsByDocument,
 } from "@/lib/participantApi";
 

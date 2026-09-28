@@ -3,7 +3,6 @@
  * Usado em /admin/people E no fluxo de associação de participante do evento.
  */
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { saveManagedPerson } from "@/lib/personApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

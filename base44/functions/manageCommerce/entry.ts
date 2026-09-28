@@ -23,11 +23,54 @@ function normalizeCouponCode(code: any): string {
   return String(code || '').trim().toUpperCase();
 }
 
-// DAT-001 — unicidade de código por evento: retorna duplicados ativos
-// (excluindo o próprio id, quando informado).
-async function findDuplicateCouponCodes(svc: any, eventId: string, code: string, excludeId?: string): Promise<any[]> {
-  const rows = await svc.entities.Coupon.filter({ event_id: eventId, code, is_deleted: false });
-  return rows.filter((r: any) => r.id !== excludeId);
+// DAT-001 — registro de códigos no próprio Event (coupon_codes_registry):
+// constraint lógica de unicidade CONCORRENTE por evento. O claim é um
+// updateMany condicional ({ código $ne } + $push) — em corrida há EXATAMENTE
+// um vencedor (primitivo validado em produção 2026-09-28); a operação
+// perdedora recebe 409 sem modificar o cupom vencedor. O mesmo código em
+// eventos distintos é permitido (registro é por evento).
+//
+// Backfill idempotente: códigos legados (criados antes do registro) são
+// adicionados ao registro antes do claim — duplicatas legadas NUNCA são
+// apagadas automaticamente, apenas diagnosticadas no list.
+
+// Backfill idempotente dos códigos ativos do evento para o registro.
+async function backfillCouponRegistry(svc: any, eventId: string): Promise<void> {
+  const active = await svc.entities.Coupon.filter({ event_id: eventId, is_deleted: false });
+  for (const c of active) {
+    const nc = normalizeCouponCode(c.code);
+    if (!nc) continue;
+    try {
+      await svc.entities.Event.updateMany(
+        { id: eventId, coupon_codes_registry: { $ne: nc } },
+        { $push: { coupon_codes_registry: nc } }
+      );
+    } catch {}
+  }
+}
+
+// Claim atômico: true = código adquirido; false = código já registrado.
+async function claimCouponCode(svc: any, eventId: string, code: string): Promise<boolean> {
+  await backfillCouponRegistry(svc, eventId);
+  const claim = await svc.entities.Event.updateMany(
+    { id: eventId, coupon_codes_registry: { $ne: code } },
+    { $push: { coupon_codes_registry: code } }
+  );
+  return !!(claim && claim.updated);
+}
+
+// Devolve o código ao registro APENAS se nenhum outro cupom ativo o usa
+// (duplicatas legadas permanecem registradas; só são diagnosticadas).
+async function releaseCouponCode(svc: any, eventId: string, code: string): Promise<void> {
+  if (!code) return;
+  const others = await svc.entities.Coupon.filter({ event_id: eventId, code, is_deleted: false });
+  if (others.length > 0) return;
+  try {
+    await svc.entities.Event.updateMany(
+      { id: eventId },
+      { $pull: { coupon_codes_registry: code } }
+    );
+  } catch {}
 }
 
 function parseOverride(event: any): any {
@@ -113,23 +156,24 @@ export default async function(req: Request): Promise<Response> {
       const clean: any = { event_id: eventId };
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
       if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
-      // DAT-001 — unicidade de código por evento no create.
+      // DAT-001 — claim ATÔMICO do código no registro do evento: em corrida há
+      // exatamente um vencedor; a perdedora recebe 409 sem criar nada e sem
+      // tocar no cupom vencedor (nunca mais o soft-delete dos dois).
       if (entityName === 'Coupon' && clean.code) {
-        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code);
-        if (dups.length > 0) {
+        const claimed = await claimCouponCode(svc, eventId, clean.code);
+        if (!claimed) {
           return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
         }
       }
-      const record = await svc.entities[entityName].create(clean);
-      // DAT-001 — concorrência no create: re-checa pós-create. Duplicata
-      // concorrente → a própria criação é desfeita (soft delete) e o chamador
-      // recebe conflito controlado.
-      if (entityName === 'Coupon' && clean.code) {
-        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code, record.id);
-        if (dups.length > 0) {
-          try { await svc.entities.Coupon.update(record.id, { is_deleted: true }); } catch {}
-          return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
+      let record;
+      try {
+        record = await svc.entities[entityName].create(clean);
+      } catch (err: any) {
+        // create falhou — devolve o claim para não vazar código no registro.
+        if (entityName === 'Coupon' && clean.code) {
+          await releaseCouponCode(svc, eventId, clean.code);
         }
+        throw err;
       }
       return Response.json({ record });
     }
@@ -142,14 +186,29 @@ export default async function(req: Request): Promise<Response> {
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
       delete clean.is_deleted;
       if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
-      // DAT-001 — unicidade de código por evento no update (exclui o próprio).
-      if (entityName === 'Coupon' && clean.code) {
-        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code, id);
-        if (dups.length > 0) {
+      // DAT-001 — claim atômico do NOVO código (no-op se igual ao atual):
+      // update concorrente para código existente perde a disputa com 409 sem
+      // corromper o cupom existente. Na troca de código, o antigo só sai do
+      // registro APÓS o update confirmado.
+      const oldCouponCode = entityName === 'Coupon' ? normalizeCouponCode((existing[0] || {}).code) : '';
+      if (entityName === 'Coupon' && clean.code && clean.code !== oldCouponCode) {
+        const claimed = await claimCouponCode(svc, eventId, clean.code);
+        if (!claimed) {
           return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
         }
       }
-      const record = await svc.entities[entityName].update(id, clean);
+      let record;
+      try {
+        record = await svc.entities[entityName].update(id, clean);
+      } catch (err: any) {
+        if (entityName === 'Coupon' && clean.code && clean.code !== oldCouponCode) {
+          await releaseCouponCode(svc, eventId, clean.code);
+        }
+        throw err;
+      }
+      if (entityName === 'Coupon' && oldCouponCode && clean.code && clean.code !== oldCouponCode) {
+        await releaseCouponCode(svc, eventId, oldCouponCode);
+      }
       return Response.json({ record });
     }
 
@@ -158,6 +217,11 @@ export default async function(req: Request): Promise<Response> {
       const existing = await svc.entities[entityName].filter({ id, event_id: eventId });
       if (!existing.length) return Response.json({ error: 'Registro não encontrado.' }, { status: 404 });
       const record = await svc.entities[entityName].update(id, { is_deleted: true, is_active: false });
+      // DAT-001 — devolve o código ao registro apenas se NENHUM outro cupom
+      // ativo o usa (duplicatas legadas permanecem; só diagnosticadas).
+      if (entityName === 'Coupon' && record?.code) {
+        await releaseCouponCode(svc, eventId, normalizeCouponCode(record.code));
+      }
       return Response.json({ record });
     }
 

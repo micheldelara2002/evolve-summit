@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { listEventConfig, createEventConfig, updateEventConfig, deleteEventConfig } from "@/lib/eventConfigApi";
 import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
 import { logAudit } from "@/lib/audit";
