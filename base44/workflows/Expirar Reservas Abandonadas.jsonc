@@ -12,7 +12,10 @@
         "expirar_reservas": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "expireStaleReservations"
+            "function_name": "expireStaleReservations",
+            "args": {
+              "internal_token": "ec98dae21f164b7192e7e380f163552b7dfa6a1a347040479b97549de5f18128"
+            }
           },
           "then": "end",
           "x-base44": {
@@ -40,5 +43,5 @@
       "ends_after_count": null
     }
   },
-  "description": "Expira checkouts abandonados (janela de 15 min), consulta o Stripe antes de cancelar e devolve os ingressos reservados ao estoque dos lotes."
+  "description": "Expira checkouts abandonados (janela de 15 min), consulta o Stripe antes de cancelar e devolve os ingressos reservados ao estoque dos lotes. Identifica-se com a credencial interna do scheduler (SEC-002) \u2014 a fun\u00e7\u00e3o n\u00e3o aceita mais execu\u00e7\u00e3o an\u00f4nima."
 }

@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge } from "../../shared/stripeClient.ts";
-import { releaseReservations, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
+import { secrets } from "base44:runtime";
+import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund } from "../../shared/stripeClient.ts";
+import { releaseReservations, releaseCouponUse, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -46,10 +47,29 @@ const MAX_REFUND_RECONCILE_PER_RUN = 25;
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
+
+    // ===== SEC-002 — autorização obrigatória =====
+    // Chamadas diretas exigem admin autenticado. O workflow agendado identifica-
+    // se com a credencial interna (SCHEDULER_INTERNAL_TOKEN — header
+    // x-scheduler-token ou campo internal_token do corpo): verificável e não
+    // forjável por requisição pública. Ausência de sessão NÃO é aceita como
+    // prova de ser o scheduler (comportamento anterior — vetado).
+    let schedulerToken = '';
+    try { schedulerToken = String(req.headers.get('x-scheduler-token') || ''); } catch {}
+    if (!schedulerToken) {
+      try { schedulerToken = String((await req.json())?.internal_token || ''); } catch {}
+    }
     let user: any = null;
     try { user = await base44.auth.me(); } catch {}
-    if (user && user.role !== 'admin') {
-      return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+    if (user) {
+      if (user.role !== 'admin') {
+        return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      }
+    } else {
+      const expected = secrets.get('SCHEDULER_INTERNAL_TOKEN');
+      if (!expected || !schedulerToken || schedulerToken !== expected) {
+        return Response.json({ error: 'Não autorizado.' }, { status: 401 });
+      }
     }
     const svc = base44.asServiceRole;
 
@@ -158,6 +178,8 @@ export default async function(req: Request): Promise<Response> {
       if (!orderClaim || !orderClaim.updated) continue;
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
+      // FIN-002 — devolve o uso do cupom reservado pelo checkout abandonado.
+      await releaseCouponUse(svc, order);
       await releaseReservations(svc, orderItems);
       for (let k = 0; k < orderItems.length; k++) {
         try { await svc.entities.OrderItem.update(orderItems[k].id, { is_deleted: true }); } catch {}
@@ -241,8 +263,53 @@ export default async function(req: Request): Promise<Response> {
       for (let i = 0; i < pendingReqs.length; i++) {
         if (refundsReconciled + refundsFailed >= MAX_REFUND_RECONCILE_PER_RUN) break;
         const req = pendingReqs[i];
-        // Sem refund no Stripe (ainda não disparado) — só o webhook pode casar.
-        if (!req.stripe_refund_id) continue;
+        // DAT-002 — solicitação com chave de idempotência mas SEM refund no
+        // Stripe: falha de rede na criação (resposta perdida). Re-tenta com a
+        // MESMA chave — se o refund existir, o Stripe devolve o MESMO objeto e
+        // a solicitação é vinculada (o webhook/next pass processa); erro
+        // DEFINITIVO do Stripe marca a falha e devolve teto + trava.
+        if (!req.stripe_refund_id) {
+          if (!req.idempotency_key) continue; // nunca disparada — só o webhook
+          const isPartialReq = req.refund_type === 'partial' || req.refund_type === 'cancel_item';
+          const reqAmountBRL = Number(req.amount_requested) || 0;
+          const failThisRequest = async (why: string) => {
+            await svc.entities.RefundRequest.update(req.id, { status: 'failed', rejection_reason: why });
+            if (reqAmountBRL > 0) {
+              await svc.entities.Payment.updateMany(
+                { id: req.payment_id, refunded_amount: { $gte: reqAmountBRL } },
+                { $inc: { refunded_amount: -reqAmountBRL } }
+              );
+            }
+            const ord = (await svc.entities.Order.filter({ id: req.order_id }))[0];
+            if (ord) await unlockTicketsForRefund(svc, ord.id, Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined);
+            refundsFailed++;
+          };
+          try {
+            const p = (await svc.entities.Payment.filter({ id: req.payment_id }))[0];
+            const o = (await svc.entities.Order.filter({ id: req.order_id }))[0];
+            if (!p || !o) continue;
+            const ref = await createRefund({
+              paymentIntentId: p.intent_id,
+              amountCents: isPartialReq ? Math.round(reqAmountBRL * 100) : undefined,
+              idempotencyKey: req.idempotency_key,
+              reverseTransfer: !!p.destination_account_id,
+              refundApplicationFee: !!p.destination_account_id,
+            });
+            if (ref && ref.status === 'failed') {
+              await failThisRequest('Estorno falhou no Stripe (reconciler — tentativa com chave idempotente).');
+            } else if (ref && ref.id) {
+              await svc.entities.RefundRequest.update(req.id, { stripe_refund_id: ref.id });
+              refundsReconciled++;
+            }
+          } catch (retryErr: any) {
+            if (retryErr instanceof TypeError || /fetch|network/i.test(String(retryErr?.message || ''))) {
+              // Ainda indeterminado — a próxima varredura tenta de novo.
+            } else {
+              await failThisRequest(retryErr?.message || String(retryErr));
+            }
+          }
+          continue;
+        }
         // Janela de cortesia: webhook pode ainda chegar.
         if (req.created_date && new Date(req.created_date).getTime() > refundCutoff) continue;
 

@@ -2,13 +2,16 @@
 // Person tem RLS admin-only; todo acesso de app user passa por aqui.
 // Resolução: user.person_id (link explícito) → contact_email → Participant.email (legado).
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { isValidId } from '../../shared/idGuard.ts';
 
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Não autenticado.' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const svc = base44.asServiceRole;
     let person = null;

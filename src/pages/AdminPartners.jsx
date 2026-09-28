@@ -254,18 +254,16 @@ function RepresentativesDialog({ partner, onClose }) {
     },
   });
 
-  // Lote 4 — Persons via backend (gate canManagePartnerData)
+  // INF-002 — Persons via backend (gate canManagePartnerData): sem catálogo
+  // global — só pessoas vinculadas ao parceiro + busca explícita (>= 3 caracteres).
   const { data: allPersons = [] } = useQuery({
-    queryKey: ["persons_for_rep", partner.id],
+    queryKey: ["persons_for_rep", partner.id, personSearch],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getPartnerPersons', { partnerId: partner.id });
+      const res = await base44.functions.invoke('getPartnerPersons', { partnerId: partner.id, search: personSearch });
       return res.data?.persons || [];
     },
   });
-
-  const filteredPersons = allPersons.filter((p) =>
-    !personSearch || p.full_name?.toLowerCase().includes(personSearch.toLowerCase())
-  );
+  const filteredPersons = allPersons;
 
   const handleAdd = async () => {
     if (!newRep.person_id) { toast.error("Selecione uma pessoa."); return; }
@@ -349,7 +347,8 @@ function RepresentativesDialog({ partner, onClose }) {
             <div className="border border-dashed rounded-lg p-3 space-y-2 bg-muted/20">
               <div className="space-y-1">
                 <Label className="text-xs">Buscar pessoa</Label>
-                <Input placeholder="Nome..." value={personSearch} onChange={(e) => setPersonSearch(e.target.value)} />
+                <Input placeholder="Nome ou e-mail..." value={personSearch} onChange={(e) => setPersonSearch(e.target.value)} />
+                <p className="text-[11px] text-muted-foreground">Digite ao menos 3 letras para buscar pessoas fora da empresa. Pessoas já vinculadas aparecem sempre.</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Pessoa *</Label>

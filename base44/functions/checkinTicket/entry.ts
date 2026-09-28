@@ -69,7 +69,36 @@ export default async function(req: Request): Promise<Response> {
 
     const now = new Date().toISOString();
 
-    await svc.entities.Ticket.update(ticket.id, { status: 'used', used_at: now });
+    // SEC-003 — claim atômico: SOMENTE 'issued' pode virar 'used'. Elimina a
+    // corrida entre scans concorrentes (nenhuma segunda confirmação/auditoria
+    // e nenhuma dupla contagem de check-in) e a corrida com o estorno (o
+    // check-in jamais sobrescreve 'refund_pending' por ler-then-write).
+    const claim = await svc.entities.Ticket.updateMany(
+      { id: ticket.id, status: 'issued' },
+      { $set: { status: 'used', used_at: now } }
+    );
+    if (!claim || !claim.updated) {
+      // Claim falhou — recarrega o estado autoritativo e responde corretamente.
+      const fresh = (await svc.entities.Ticket.filter({ id: ticket.id, is_deleted: false }))[0] || ticket;
+      if (fresh.status === 'used') {
+        const part = fresh.participant_id ? (await svc.entities.Participant.filter({ id: fresh.participant_id }))[0] : null;
+        return Response.json({
+          ok: false,
+          status: 'used',
+          holder_name: fresh.holder_name,
+          used_at: fresh.used_at,
+          message: 'Ingresso já utilizado.',
+          participant: part ? { id: part.id, checkin_status: part.checkin_status } : null,
+        });
+      }
+      if (fresh.status === 'refund_pending') {
+        return Response.json({ ok: false, status: 'refund_pending', holder_name: fresh.holder_name, message: 'Estorno deste ingresso em andamento — entrada bloqueada.' });
+      }
+      if (fresh.status === 'cancelled' || fresh.status === 'refunded') {
+        return Response.json({ ok: false, status: fresh.status, holder_name: fresh.holder_name, message: 'Ingresso cancelado/estornado — entrada bloqueada.' });
+      }
+      return Response.json({ ok: false, status: fresh.status, holder_name: fresh.holder_name, message: 'Ingresso mudou de estado — verifique e tente novamente.' }, { status: 409 });
+    }
 
     let participant = null;
     if (ticket.participant_id) {

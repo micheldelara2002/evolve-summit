@@ -212,3 +212,31 @@ Current Playwright suites:
 | `smoke.spec.js` | Fast release gate, one smoke path per persona | `@smoke` |
 
 The Playwright inventory is generated with `npm run test:e2e -- --list`. A test is considered **PASS** only after execution; listing a test file is not evidence of a passing scenario.
+
+## Hardening crítico — 2026-09-28 (`critical-hardening.spec.js`, tags `@security @rls @hardening`)
+
+Cobertura permanente do lote crítico (cada teste reproduz a falha anterior):
+
+| ID | Correção | Cenário | Status |
+|---|---|---|---|
+| PDW-1 | SEC-001 | Escrita direta de PersonDocument por não-admin bloqueada (RLS admin-only) | NOT_RUN |
+| PDW-2 | SEC-001 | managePersonDocument deriva person_id do autenticado; titularidade imutável em update | NOT_RUN |
+| PDW-3 | SEC-001 | Usuário lê somente documentos próprios (leitura preservada) | NOT_RUN |
+| IL-1 | INF-001 | import_lookup devolve apenas registros do evento autorizado, campos mínimos | NOT_RUN |
+| IL-2 | INF-001 | Sem papel manager/team → 403 em import_lookup | NOT_RUN |
+| SR-1 | SEC-002 | Chamada sem autenticação em expireStaleReservations bloqueada (401) | NOT_RUN |
+| SR-2 | SEC-002 | Usuário não-admin autenticado → 403 | NOT_RUN |
+| CK-1 | SEC-003 | Dois check-ins concorrentes: 1 confirmação, 1 auditoria, sem sobrescrita | NOT_RUN |
+| CK-2 | SEC-003 | refund_pending/refunded nunca viram 'used' | NOT_RUN |
+| AU-1 | SEC-004 | Conta ativa passa pelo guard (controle positivo) | NOT_RUN |
+| PP-1 | INF-002 | getPartnerPersons: sem catálogo global; busca mínima >=3 chars; campos mínimos | NOT_RUN |
+| PP-2 | INF-002 | Partner alheio → 403 | NOT_RUN |
+| PO-1 | FIN-003 | team barrado em startOnboarding/setReserve; leitura liberada | NOT_RUN |
+| CP-1 | DAT-001 | Cupom duplicado por evento (create/update) → 409; outro evento permitido; diagnóstico de legados | NOT_RUN |
+
+Cenários que exigem fixtures de comércio (lotes ativos, carrinho, pagamento Stripe,
+persona com account_status='deleted') e ficam como backend/seed pendentes:
+- FIN-001 — concorrência de dois checkouts iniciais (1 Order/1 PaymentIntent pagável).
+- FIN-002 — reserva atômica de cupom no checkout (max_uses) + devolução na expiração.
+- DAT-002 — idempotência de estorno parcial (replay, retry de rede, reconciler).
+- SEC-004 (caso negativo) — persona com conta excluída + token válido → 403.

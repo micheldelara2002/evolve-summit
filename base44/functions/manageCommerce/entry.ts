@@ -17,6 +17,19 @@ const SANITIZE = {
   Coupon: ['code', 'discount_type', 'value', 'scope', 'valid_from', 'valid_to', 'max_uses', 'is_active'],
 };
 
+// DAT-001 — normalização lógica do código do cupom (mesma regra aplicada no
+// checkout): maiúsculas, sem espaços nas bordas.
+function normalizeCouponCode(code: any): string {
+  return String(code || '').trim().toUpperCase();
+}
+
+// DAT-001 — unicidade de código por evento: retorna duplicados ativos
+// (excluindo o próprio id, quando informado).
+async function findDuplicateCouponCodes(svc: any, eventId: string, code: string, excludeId?: string): Promise<any[]> {
+  const rows = await svc.entities.Coupon.filter({ event_id: eventId, code, is_deleted: false });
+  return rows.filter((r: any) => r.id !== excludeId);
+}
+
 function parseOverride(event: any): any {
   if (!event?.refund_policy) return null;
   try { return JSON.parse(event.refund_policy); } catch { return null; }
@@ -77,7 +90,21 @@ export default async function(req: Request): Promise<Response> {
       if (!id) filter.is_deleted = false;
       if (id) filter.id = id;
       const records = await svc.entities[entityName].filter(filter);
-      return Response.json({ records });
+      // DAT-001 — diagnóstico de códigos duplicados LEGADOS (somente sinaliza,
+      // nunca apaga): grupos de código com mais de um cupom ativo no evento.
+      let duplicate_codes: any[] = [];
+      if (entityName === 'Coupon') {
+        const byCode = new Map<string, any[]>();
+        for (const r of records) {
+          if (!r.code || r.is_deleted) continue;
+          const code = normalizeCouponCode(r.code);
+          byCode.set(code, [...(byCode.get(code) || []), r]);
+        }
+        duplicate_codes = Array.from(byCode.entries())
+          .filter(([, group]) => group.length > 1)
+          .map(([code, group]) => ({ code, ids: group.map((g: any) => g.id) }));
+      }
+      return Response.json({ records, duplicate_codes });
     }
 
     if (!authorized) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
@@ -85,8 +112,25 @@ export default async function(req: Request): Promise<Response> {
     if (action === 'create') {
       const clean: any = { event_id: eventId };
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
-      if (entityName === 'Coupon' && clean.code) clean.code = String(clean.code).toUpperCase().trim();
+      if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
+      // DAT-001 — unicidade de código por evento no create.
+      if (entityName === 'Coupon' && clean.code) {
+        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code);
+        if (dups.length > 0) {
+          return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
+        }
+      }
       const record = await svc.entities[entityName].create(clean);
+      // DAT-001 — concorrência no create: re-checa pós-create. Duplicata
+      // concorrente → a própria criação é desfeita (soft delete) e o chamador
+      // recebe conflito controlado.
+      if (entityName === 'Coupon' && clean.code) {
+        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code, record.id);
+        if (dups.length > 0) {
+          try { await svc.entities.Coupon.update(record.id, { is_deleted: true }); } catch {}
+          return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
+        }
+      }
       return Response.json({ record });
     }
 
@@ -97,7 +141,14 @@ export default async function(req: Request): Promise<Response> {
       const clean: any = {};
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
       delete clean.is_deleted;
-      if (entityName === 'Coupon' && clean.code) clean.code = String(clean.code).toUpperCase().trim();
+      if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
+      // DAT-001 — unicidade de código por evento no update (exclui o próprio).
+      if (entityName === 'Coupon' && clean.code) {
+        const dups = await findDuplicateCouponCodes(svc, eventId, clean.code, id);
+        if (dups.length > 0) {
+          return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
+        }
+      }
       const record = await svc.entities[entityName].update(id, clean);
       return Response.json({ record });
     }

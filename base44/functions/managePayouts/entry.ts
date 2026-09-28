@@ -152,6 +152,19 @@ export default async function(req: Request): Promise<Response> {
       const auth = await verifyEventMembership(base44, user, ev.id, EVENT_MANAGER_ROLES);
       if (!auth.authorized) throw { status: 403, message: "Sem permissão para este evento." };
     };
+    // FIN-003 — autorização FINANCEIRA separada da operacional: apenas admin
+    // global ou o proprietário/gerente responsável pelo evento/conta pode
+    // executar ações que afetam o recebimento (onboarding, reserva de saldo,
+    // sincronização com vínculo de eventos). O papel 'team' (e manager de outro
+    // evento, já barrado pelo escopo do requireManager) mantém apenas a leitura
+    // sanitizada (getEventPayout).
+    const requireFinancialOwner = async (ev: any) => {
+      if (isAdmin) return;
+      if (ev.manager_id && ev.manager_id === user.id) return;
+      const account = await resolveEventAccount(svc, ev);
+      if (account && account.manager_user_id === user.id) return;
+      throw { status: 403, message: "Ações financeiras são exclusivas do administrador ou do organizador responsável pelo evento." };
+    };
 
     try {
       // ===== Organizador =====
@@ -185,6 +198,7 @@ export default async function(req: Request): Promise<Response> {
         if (!eventId) return Response.json({ error: "eventId obrigatório." }, { status: 400 });
         const event = await loadEvent();
         await requireManager(event);
+        await requireFinancialOwner(event);
         const organizerId = event.manager_id || user.id;
 
         let account = (await svc.entities.PayoutAccount.filter({ manager_user_id: organizerId, is_deleted: false }))[0] || null;
@@ -239,6 +253,7 @@ export default async function(req: Request): Promise<Response> {
         if (!eventId) return Response.json({ error: "eventId obrigatório." }, { status: 400 });
         const event = await loadEvent();
         await requireManager(event);
+        await requireFinancialOwner(event);
         const account = await resolveEventAccount(svc, event);
         if (!account?.stripe_account_id) {
           return Response.json({ error: "Nenhuma conta conectada para este evento." }, { status: 404 });
@@ -266,6 +281,7 @@ export default async function(req: Request): Promise<Response> {
         if (!eventId) return Response.json({ error: "eventId obrigatório." }, { status: 400 });
         const event = await loadEvent();
         await requireManager(event);
+        await requireFinancialOwner(event);
         const account = await resolveEventAccount(svc, event);
         if (!account?.stripe_account_id) {
           return Response.json({ error: "Nenhuma conta conectada para este evento." }, { status: 404 });

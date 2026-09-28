@@ -71,6 +71,10 @@
       "type": "string",
       "description": "ID do Refund no Stripe (re_) criado por esta solicita\u00e7\u00e3o \u2014 o webhook charge.refunded casa o reembolso espec\u00edfico por este ID, evitando associa\u00e7\u00e3o errada quando h\u00e1 estornos concorrentes no mesmo pagamento."
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "DAT-002 \u2014 Chave de idempot\u00eancia Stripe usada na cria\u00e7\u00e3o do refund desta solicita\u00e7\u00e3o (\u00fanica por tentativa). Persistida para o reconciler de estornos re-tentar com a MESMA chave quando a resposta do Stripe se perdeu (falha de rede) e a solicita\u00e7\u00e3o ficou pendente sem stripe_refund_id."
+    },
     "processed_at": {
       "type": "string",
       "format": "date-time"

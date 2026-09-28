@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 
 /**
  * Migração ponte: espelha os papéis administrativos atuais do Participant (role_in_event)
@@ -11,8 +12,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
     if (user.role !== 'admin') {
       return Response.json({ error: 'Forbidden — apenas admin' }, { status: 403 });
     }

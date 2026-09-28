@@ -319,6 +319,42 @@ export async function releaseReservations(svc: any, orderItems: any[]): Promise<
   }
 }
 
+// FIN-002 — Reserva ATÔMICA do uso do cupom no checkout (antes de devolver o
+// client_secret): CAS uses_count < max_uses + $inc. Checkouts concorrentes não
+// conseguem reservar além do teto — a validação de carrinho (não-atômica) não
+// basta. Cupons ilimitados (max_uses=0) não reservam nem contam (comportamento
+// preservado: contados no fulfillment, sem teto).
+export async function reserveCouponUse(svc: any, coupon: any): Promise<boolean> {
+  if (!coupon || !(Number(coupon.max_uses) > 0)) return true;
+  const res = await svc.entities.Coupon.updateMany(
+    { id: coupon.id, uses_count: { $lt: Number(coupon.max_uses) } },
+    { $inc: { uses_count: 1 } }
+  );
+  return !!(res && res.updated);
+}
+
+// FIN-002 — Devolve o uso do cupom reservado por um pedido (expiração,
+// cancelamento, re-checkout com novo carrinho). EXATAMENTE-UMA-VEZ via CAS no
+// marker do pedido (coupon_uses_counted): reexecuções (webhook duplicado,
+// re-varredura do expirador, polling) não devolvem duas vezes.
+export async function releaseCouponUse(svc: any, order: any): Promise<void> {
+  if (!order || !order.coupon_id || order.coupon_uses_counted !== true) return;
+  try {
+    const unmarked = await svc.entities.Order.updateMany(
+      { id: order.id, coupon_uses_counted: true },
+      { $set: { coupon_uses_counted: false } }
+    );
+    if (unmarked && unmarked.updated) {
+      await svc.entities.Coupon.updateMany(
+        { id: order.coupon_id, uses_count: { $gt: 0 } },
+        { $inc: { uses_count: -1 } }
+      );
+    }
+  } catch (err: any) {
+    console.error("[releaseCouponUse] failed:", err?.message || err);
+  }
+}
+
 // Encerra um pagamento cujo PaymentIntent foi cancelado — EXATAMENTE UMA VEZ
 // (P0): CAS duplo — só a chamada que executa pending→expired no Payment devolve
 // as reservas, e só a que executa pending→cancelled no Order encerra o pedido.
@@ -350,6 +386,9 @@ export async function expirePaymentOnce(svc: any, payment: any): Promise<{ expir
     { $set: { status: "cancelled" } }
   );
   if (orderClaim && orderClaim.updated) {
+    // FIN-002 — devolve o uso do cupom reservado pelo checkout abandonado.
+    const orderRec = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
+    await releaseCouponUse(svc, orderRec);
     const orderItems = await svc.entities.OrderItem.filter({ order_id: payment.order_id, is_deleted: false });
     await releaseReservations(svc, orderItems);
     for (let k = 0; k < orderItems.length; k++) {

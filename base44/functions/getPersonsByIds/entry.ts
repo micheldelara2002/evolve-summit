@@ -3,6 +3,7 @@
 // aos quais tem acesso (canAccessEventData) e só recebe Persons que são
 // participantes (Person vinculado via Participant.person_id) nesses eventos.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { canAccessEventData } from '../../shared/eventAuth.ts';
 import { validIds } from '../../shared/idGuard.ts';
 
@@ -12,8 +13,10 @@ const MAX_EVENTS = 10;
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Não autenticado.' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const body = await req.json().catch(() => ({}));
     const personIds = validIds(body.personIds).slice(0, MAX_PERSONS);

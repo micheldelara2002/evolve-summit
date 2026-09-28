@@ -4,6 +4,7 @@
 // Autorização: participante ativo do evento da sessão (resolvido server-side,
 // nunca confia no participantId do cliente), admin ou gestor do evento.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { resolveSessionCaller } from '../../shared/sessionAuth.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { isValidId } from '../../shared/idGuard.ts';
@@ -11,8 +12,10 @@ import { isValidId } from '../../shared/idGuard.ts';
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Não autenticado.' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const body = await req.json().catch(() => ({}));
     const sessionId = body.sessionId;

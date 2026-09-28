@@ -111,6 +111,43 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: msg }, { status: 403 });
     }
 
+    // ===== DAT-002 — Idempotência de identidade de estorno =====
+    // A mesma identidade semântica (payment + refund_type + itens afetados)
+    // NUNCA cria uma segunda RefundRequest nem uma segunda reserva de teto.
+    // Pendente/em andamento ou já processada → resposta idempotente (o chamador
+    // recebe o estado atual, sem novo disparo). Solicitações FALHADAS permitem
+    // nova tentativa — cada tentativa usa uma nova chave Stripe.
+    const sortedItemKey = itemIds && itemIds.length > 0 ? [...itemIds].sort().join("_") : "all";
+    const samePaymentReqs = await svc.entities.RefundRequest.filter({
+      payment_id: payment.id,
+      refund_type: refundType,
+      is_deleted: false,
+      status: { $in: ["pending", "approved", "processed", "failed"] },
+    });
+    const sameIdentity = samePaymentReqs.filter((r: any) =>
+      (r.order_item_ids || []).slice().sort().join("_") === sortedItemKey
+    );
+    const activeSame = sameIdentity.filter((r: any) => r.status !== "failed");
+    if (activeSame.length > 0) {
+      const dup = activeSame[0];
+      if (dup.status === "pending" || dup.status === "approved") {
+        return Response.json({
+          ok: true,
+          idempotent_replay: true,
+          refund_request_id: dup.id,
+          refund_status: dup.status,
+          message: "Já existe uma solicitação de estorno equivalente em andamento — aguarde a confirmação.",
+        });
+      }
+      return Response.json({
+        ok: true,
+        already_processed: true,
+        refund_request_id: dup.id,
+        refund_status: "processed",
+        message: "Esta solicitação de estorno já foi processada.",
+      });
+    }
+
     // ===== Pedidos 100% gratuitos: cancelamento local + e-mail (sem Stripe) =====
     const isFree = payment.provider === "free" ||
       String(payment.intent_id || "").startsWith("free_") ||
@@ -285,9 +322,12 @@ export default async function(req: Request): Promise<Response> {
     // RefundRequest ANTES do Stripe: o webhook charge.refunded procura a
     // solicitação correspondente (cancel_item usa order_item_ids) — ela precisa
     // existir quando o webhook chegar.
-    const idemKey = refundType === "cancel_item"
-      ? `refund_${payment.id}_item_${[...(itemIds || [])].sort().join("_")}`
-      : `refund_${payment.id}_${refundType}`;
+    // DAT-002 — chave por TENTATIVA: o Stripe casheia a chave por 24h — reusar
+    // a chave de uma tentativa FALHA devolveria o refund antigo para sempre.
+    // Tentativas com a mesma identidade numeram a chave; a identidade pendente
+    // nunca chega aqui (retorno idempotente acima).
+    const failedAttempts = sameIdentity.filter((r: any) => r.status === "failed").length;
+    const idemKey = `refund_${payment.id}_${refundType}_${sortedItemKey}_t${failedAttempts + 1}`;
     const refundRequest = await svc.entities.RefundRequest.create({
       order_id: order.id,
       payment_id: payment.id,
@@ -301,6 +341,7 @@ export default async function(req: Request): Promise<Response> {
       policy_decision: evalResult.decision,
       status: "pending",
       order_item_ids: itemIds || [],
+      idempotency_key: idemKey,
     });
 
     // Trail — solicitação de estorno (pedido pago) com solicitante, valor e IP.
@@ -326,16 +367,36 @@ export default async function(req: Request): Promise<Response> {
     });
 
     let refund;
+    const refundCall = () => createRefund({
+      paymentIntentId: payment.intent_id,
+      amountCents: isPartial ? refundAmountCents : undefined,
+      reason: reason || "requested_by_customer",
+      idempotencyKey: idemKey,
+      reverseTransfer: !!payment.destination_account_id,
+      refundApplicationFee: !!payment.destination_account_id,
+    });
     try {
-      refund = await createRefund({
-        paymentIntentId: payment.intent_id,
-        amountCents: isPartial ? refundAmountCents : undefined,
-        reason: reason || "requested_by_customer",
-        idempotencyKey: idemKey,
-        reverseTransfer: !!payment.destination_account_id,
-        refundApplicationFee: !!payment.destination_account_id,
-      });
+      try {
+        refund = await refundCall();
+      } catch (firstErr: any) {
+        // DAT-002 — convergência de falha de rede: re-tenta com a MESMA chave.
+        // Se o primeiro tentativo criou o refund, o Stripe devolve o MESMO
+        // objeto; se não chegou ao Stripe, cria agora. Só erro DEFINITIVO
+        // (resposta síncrona do Stripe) derruba a solicitação.
+        console.error('[requestRefund] first refund attempt failed, retrying with same idempotency key:', firstErr?.message || firstErr);
+        refund = await refundCall();
+      }
     } catch (err: any) {
+      const isNetworkError = err instanceof TypeError || /fetch|network/i.test(String(err?.message || ""));
+      if (isNetworkError) {
+        // Falha de rede em AMBAS as tentativas — o refund PODE ter sido criado
+        // no Stripe (resposta perdida). Mantém a solicitação pendente, a
+        // reserva do teto e a trava dos ingressos (direção segura: nunca
+        // re-dispara, nunca destrava ingresso com dinheiro possivelmente
+        // devolvido). O reconciler de estornos re-tenta com a MESMA chave.
+        console.error('[requestRefund] refund network failure (kept pending for reconciler):', err?.message || err);
+        return Response.json({ error: 'Não foi possível confirmar o estorno no Stripe. A solicitação permanece em andamento — aguarde alguns minutos e verifique o status antes de tentar novamente.' }, { status: 502 });
+      }
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: err?.message || String(err) }); } catch {}
       // Devolve a reserva do teto — o estorno não aconteceu.
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}

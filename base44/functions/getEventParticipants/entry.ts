@@ -136,13 +136,19 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ participants: out });
     }
 
-    // ===== Lookup global para dedup da importação CSV (campos mínimos) =====
+    // ===== Lookup para dedup da importação CSV (campos mínimos) =====
+    // INF-001 — escopo ESTRITO do evento autorizado: o gate valida o event_id
+    // e a query consulta SOMENTE participantes dele (antes: todos os
+    // participantes de TODOS os eventos — vazamento cross-event de PII).
+    // O CPF é mantido por ser tecnicamente indispensável à deduplicação de
+    // documento na importação CSV (importador reporta mesmo-CPF no PRÓPRIO
+    // evento); nunca sai do escopo do evento autorizado.
     if (op === "import_lookup") {
       const eventId = String(body.event_id || "");
       if (!eventId) return Response.json({ error: "event_id obrigatório." }, { status: 400 });
       const mgr = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
       if (!mgr.authorized) return Response.json({ error: "Sem permissão." }, { status: 403 });
-      const all = await svc.entities.Participant.filter({ is_deleted: false });
+      const all = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
       const out: any[] = [];
       for (let i = 0; i < all.length; i++) {
         out.push({

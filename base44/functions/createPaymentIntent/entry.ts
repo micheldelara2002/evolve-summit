@@ -5,7 +5,7 @@ import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
 import { findActiveDuplicateEmails } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, ensureCompanionInvites } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse } from "../../shared/commerceFulfillment.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
@@ -162,6 +162,9 @@ export default async function(req: Request): Promise<Response> {
           }
         }
         if (!alreadyPaid) {
+          // FIN-002 — devolve o uso do cupom reservado pelo checkout anterior
+          // antes de sobrescrever o pedido (o novo carrinho pode não usá-lo).
+          await releaseCouponUse(svc, prev);
           const prevItems = await svc.entities.OrderItem.filter({ order_id: prev.id, is_deleted: false });
           for (const it of prevItems) {
             try {
@@ -267,6 +270,12 @@ export default async function(req: Request): Promise<Response> {
     let coupon: any = null;
     if (couponCode) {
       const coupons = await svc.entities.Coupon.filter({ event_id: eventId, code: String(couponCode).toUpperCase().trim(), is_deleted: false });
+      // DAT-001 — seleção DETERMINÍSTICA (defesa adicional para duplicatas
+      // legadas): sempre o cupom mais antigo do código (created_date + id).
+      coupons.sort((a: any, b: any) =>
+        (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
+        (a.id < b.id ? -1 : 1)
+      );
       coupon = coupons[0] || null;
     }
     const totals = calculateCart(lines, coupon, now);
@@ -276,6 +285,24 @@ export default async function(req: Request): Promise<Response> {
         await svc.entities.SalesLot.updateMany({ id: lotId }, { $inc: { quantity_reserved: -demandByLot[lotId] } });
       }
       return Response.json({ error: totals.coupon_message || 'Cupom inválido.' }, { status: 400 });
+    }
+
+    // FIN-002 — reserva ATÔMICA do uso do cupom ANTES de criar o pedido/devolver
+    // o client_secret: checkouts concorrentes não ultrapassam max_uses (a
+    // validação de carrinho acima não é atômica). A reserva fica associada ao
+    // pedido via marker coupon_uses_counted; expiração/cancelamento/abandono
+    // devolvem (releaseCouponUse). Cupons ilimitados (max_uses=0) não reservam
+    // (continuam contados no fulfillment, sem teto).
+    let couponUseReserved = false;
+    if (coupon && Number(coupon.max_uses) > 0) {
+      const reserved = await reserveCouponUse(svc, coupon);
+      if (!reserved) {
+        for (const lotId of reservedLots) {
+          try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
+        }
+        return Response.json({ error: 'Cupom esgotado — o limite de utilizações foi atingido enquanto você finalizava a compra.' }, { status: 409 });
+      }
+      couponUseReserved = true;
     }
 
     // Create Order — ou reusa o pedido pendente anterior (mesmo comprador/evento).
@@ -291,6 +318,10 @@ export default async function(req: Request): Promise<Response> {
       total: totals.total,
       coupon_id: coupon?.id || '',
       coupon_code: coupon?.code || '',
+      // FIN-002 — marker da reserva atômica feita no checkout (o fulfillment
+      // NÃO conta de novo: fulfills marcam o uso apenas para pedidos legados
+      // criados antes da reserva em checkout).
+      coupon_uses_counted: couponUseReserved,
       currency: 'BRL',
       reserved_until: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min to pay
       fulfillment_status: 'pending',
@@ -301,6 +332,31 @@ export default async function(req: Request): Promise<Response> {
       order = { ...reusableOrder, ...orderPayload, id: reusableOrder.id };
     } else {
       order = await svc.entities.Order.create(orderPayload);
+
+      // FIN-001 — dedup pós-create: duas PRIMEIRAS requisições concorrentes do
+      // mesmo comprador/evento podem ambas não encontrar pedido pendente e
+      // criar dois Orders. Sobrevivente determinístico (created_date + id):
+      // o perdedor cancela a SI MESMO via CAS, devolve SUAS reservas (lotes +
+      // cupom) e recebe 409 controlado — nunca dois client secrets ativos.
+      const pendingNow = await svc.entities.Order.filter({ buyer_user_id: user.id, event_id: eventId, status: 'pending', is_deleted: false });
+      if (pendingNow.length > 1) {
+        pendingNow.sort((a: any, b: any) =>
+          (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
+          (a.id < b.id ? -1 : 1)
+        );
+        const survivor = pendingNow[0];
+        if (survivor.id !== order.id) {
+          for (const lotId of Object.keys(demandByLot)) {
+            try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
+          }
+          await releaseCouponUse(svc, order);
+          await svc.entities.Order.updateMany(
+            { id: order.id, status: 'pending' },
+            { $set: { status: 'cancelled', error_reason: 'Checkout concorrente — prevaleceu o checkout anterior do mesmo comprador.' } }
+          );
+          return Response.json({ error: 'Outro checkout deste evento acabou de começar (outra aba/dispositivo). Tente novamente em instantes.' }, { status: 409 });
+        }
+      }
     }
 
     // Create OrderItems.
@@ -424,10 +480,11 @@ export default async function(req: Request): Promise<Response> {
       }
       if (!intent) throw new Error('Stripe devolveu um PaymentIntent inválido após as retentativas.');
     } catch (err: any) {
-      // Rollback: release reservations + cancel order.
+      // Rollback: release reservations + coupon use + cancel order.
       for (const lotId of reservedLots) {
         await svc.entities.SalesLot.updateMany({ id: lotId }, { $inc: { quantity_reserved: -demandByLot[lotId] } });
       }
+      await releaseCouponUse(svc, order);
       await svc.entities.Order.update(order.id, { status: 'cancelled', error_reason: err?.message });
       console.error('[createPaymentIntent] Stripe error:', err?.message || err);
       return Response.json({ error: `Falha ao iniciar pagamento: ${err?.message || 'erro Stripe'}` }, { status: 502 });

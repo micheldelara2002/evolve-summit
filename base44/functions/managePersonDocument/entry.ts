@@ -1,5 +1,6 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.40";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { resolveUserPersonId } from "../../shared/eventAuth.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -13,7 +14,10 @@ export default async function(req: Request): Promise<Response> {
     if (!operation) return Response.json({ error: "operation é obrigatório." }, { status: 400 });
 
     const isAdmin = user.role === "admin";
-    const callerPersonId = user.person_id || null;
+    // SEC-001 — person_id do chamador derivado NO SERVIDOR (resolve a Person
+    // ativa pelo e-mail da conta autenticada), nunca do corpo da requisição:
+    // o documento só pode ser criado/vinculado à própria Person.
+    const callerPersonId = isAdmin ? null : await resolveUserPersonId(base44, user);
     if (!isAdmin && !callerPersonId) return Response.json({ error: "Usuário sem Person vinculada." }, { status: 403 });
 
     if (operation === "create") {

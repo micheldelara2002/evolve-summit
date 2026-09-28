@@ -4,6 +4,7 @@
 // Admin pode tudo. Gestor (EventMembership manager/team) opera Persons vinculadas
 // a participantes do evento (ou cria novas). RLS Person é admin-only — via service role.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { validIds, isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';
@@ -42,8 +43,10 @@ function matchesQuery(person, query) {
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Não autenticado.' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
 
     const body = await req.json().catch(() => ({}));
     const op = String(body.op || '');

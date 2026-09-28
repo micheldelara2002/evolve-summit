@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 
 // P0.3 — Reconstrói os buckets globais diários de users/persons/partners a partir das
@@ -69,8 +70,10 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
+    const guard = await requireActiveUser(base44);
+    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
+    const user = guard.user;
     if (user.role !== 'admin') return Response.json({ error: 'Forbidden — admin only' }, { status: 403 });
     const { dryRun = false } = await req.json().catch(() => ({}));
     const svc = base44.asServiceRole;
