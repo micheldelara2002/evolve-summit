@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { retrievePaymentIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, ensureCompanionInvites, captureStripeFee, expirePaymentOnce } from "../../shared/commerceFulfillment.ts";

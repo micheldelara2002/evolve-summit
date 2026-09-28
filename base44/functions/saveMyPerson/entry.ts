@@ -2,7 +2,7 @@
 // Sanitiza campos, valida email, e cria com contact_email = user.email quando
 // não existe. Contador global de persons (bucket diário) é idempotente via
 // Person.metrics_inc. RLS Person é admin-only — escrita só por aqui (service role).
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';

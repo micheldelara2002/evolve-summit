@@ -1,5 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 
 function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }) {
   switch (limiteTipo) {
@@ -15,7 +16,7 @@ function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }
   }
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -92,10 +93,7 @@ Deno.serve(async (req) => {
       if (afterResgate.length > 1) {
         // P0 residual: deterministic tiebreaker (created_date + id) — concurrent requests
         // must agree on the single survivor, otherwise both delete each other and both increment.
-        const sorted = [...afterResgate].sort((a, b) => {
-          const dc = new Date(a.created_date) - new Date(b.created_date);
-          return dc !== 0 ? dc : a.id.localeCompare(b.id);
-        });
+        const sorted = [...afterResgate].sort(deterministicCompare);
         const duplicates = sorted.slice(1);
         const isMyTxDuplicate = duplicates.some((d) => d.id === resgateTx.id);
         // P0 residual: idempotent deletes — a concurrent request may have already
@@ -153,10 +151,7 @@ Deno.serve(async (req) => {
     if (afterCreate.length > limit) {
       // P0 residual: deterministic tiebreaker (created_date + id) — concurrent requests
       // must agree on the single survivor, otherwise both delete each other and both increment.
-      const sorted = [...afterCreate].sort((a, b) => {
-        const dc = new Date(a.created_date) - new Date(b.created_date);
-        return dc !== 0 ? dc : a.id.localeCompare(b.id);
-      });
+      const sorted = [...afterCreate].sort(deterministicCompare);
       const duplicates = sorted.slice(limit);
       const isMyTxDuplicate = duplicates.some((d) => d.id === tx.id);
       // P0 residual: idempotent deletes — a concurrent request may have already
@@ -179,4 +174,4 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

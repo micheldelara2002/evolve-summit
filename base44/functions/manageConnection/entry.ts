@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 function sanitizeText(text) {
@@ -31,7 +31,7 @@ async function getUserPersonIds(svc, user) {
   return persons.map((p) => p.id);
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}
 
 async function handleSendRequest(base44, { eventId, requesterPersonId, requesterName, receiverPersonId, receiverName }, user) {
   const svc = base44.asServiceRole;

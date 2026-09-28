@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_CURATOR_ROLES } from "../../shared/eventAuth.ts";
 import { incUniqueParticipant, incParticipantsByRole, moveParticipantsByRole } from "../../shared/businessMetrics.ts";

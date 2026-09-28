@@ -63,7 +63,7 @@
 //   $in (1 query/batch). Sem Sets globais, sem User.list() sem paginação.
 // =============================================================================
 
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
@@ -468,7 +468,7 @@ async function countRecipientsByStatus(
 // =============================================================================
 // Main handler
 // =============================================================================
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   const stats = {
     resolutionBatches: 0,
     deliveryBatches: 0,
@@ -669,4 +669,4 @@ Deno.serve(async (req) => {
     stats.totalTimeMs = Date.now() - stats.startTime;
     return Response.json({ error: error.message, stats }, { status: 500 });
   }
-});
+}

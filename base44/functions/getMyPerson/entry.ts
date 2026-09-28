@@ -1,7 +1,7 @@
 // getMyPerson — Lote 4. Leitura da PRÓPRIA Person do usuário autenticado.
 // Person tem RLS admin-only; todo acesso de app user passa por aqui.
 // Resolução: user.person_id (link explícito) → contact_email → Participant.email (legado).
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { isValidId } from '../../shared/idGuard.ts';
 

@@ -2,7 +2,7 @@
 // presenças (SessionAttendance) DAS PRÓPRIAS sessões do palestrante. IDs
 // malformados são descartados (idGuard). Não-admin só recebe sessões onde é o
 // speaker (Session.speaker_id → Participant vinculado por person_id/email).
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { resolveUserPersonId } from '../../shared/eventAuth.ts';
 import { validIds } from '../../shared/idGuard.ts';

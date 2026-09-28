@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import {
@@ -23,7 +23,7 @@ import {
 //   incPartners           { createdDateISO }                            — bucket global partners
 //   decPartners           { createdDateISO }                            — soft-delete de Partner
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -149,4 +149,4 @@ Deno.serve(async (req) => {
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
-});
+}

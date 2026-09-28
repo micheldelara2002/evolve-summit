@@ -4,7 +4,7 @@
 //   action='unregister' → marca is_present=false
 // Autorização: o participante é do próprio chamador (email/person_id), admin,
 // ou gestor do evento. Contadores de leads (sessão) incrementados aqui.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { resolveUserPersonId, verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { validIds } from '../../shared/idGuard.ts';

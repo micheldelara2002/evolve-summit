@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, dayKeyOf } from "../../shared/businessPeriod.ts";
 import { scanAll } from "../../shared/completeScan.ts";

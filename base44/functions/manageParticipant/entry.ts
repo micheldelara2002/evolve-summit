@@ -5,7 +5,7 @@
 // PersonDocument, Import) — passam por aqui com service role.
 // Contadores (maintainBusinessCounter) e auditoria (logAuditEvent) seguem no
 // frontend, best-effort como hoje; a função apenas grava o registro.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
@@ -229,11 +229,30 @@ export default async function(req) {
     if (op === 'findPersonsByDocument') {
       const digits = normDigits(body.digits);
       if (digits.length < 3) return Response.json({ person_ids: [] });
-      const docs = await base44.asServiceRole.entities.PersonDocument.filter({ status: 'active' });
-      const ids = [...new Set(
-        docs.filter((d) => normDigits(d.document_number).includes(digits)).map((d) => d.person_id)
-      )];
-      return Response.json({ person_ids: ids.slice(0, 100) });
+      // P1 (auditoria 2026-09-28) — escopo do PRÓPRIO evento (padrão INF-002):
+      // antes carregava TODOS os documentos ativos do sistema (full scan global
+      // + substring = PERF-002 real) e devolvia person_ids de pessoas de
+      // QUALQUER evento — vazamento cross-event de PII para gerentes. Agora a
+      // busca cobre apenas as Persons vinculadas a participantes deste evento,
+      // com $in fatiado por 500 (sem scan global).
+      const parts = await base44.asServiceRole.entities.Participant.filter({
+        event_id: eventId,
+        is_deleted: false,
+      });
+      const personIds = [...new Set(parts.map((p) => p.person_id).filter(Boolean))];
+      if (personIds.length === 0) return Response.json({ person_ids: [] });
+      const matched = new Set();
+      for (let i = 0; i < personIds.length; i += 500) {
+        const chunk = personIds.slice(i, i + 500);
+        const docs = await base44.asServiceRole.entities.PersonDocument.filter({
+          person_id: { $in: chunk },
+          status: 'active',
+        });
+        for (const d of docs) {
+          if (normDigits(d.document_number).includes(digits)) matched.add(d.person_id);
+        }
+      }
+      return Response.json({ person_ids: [...matched].slice(0, 100) });
     }
 
     if (op === 'importCreate') {
@@ -258,13 +277,9 @@ export default async function(req) {
       for (const key of ['status', 'success_count', 'error_count', 'duplicate_count', 'errors_detail']) {
         if (key in src) data[key] = src[key];
       }
-      await base44.asServiceRole.entities.Import.update(importId, {
-        status: data.status,
-        success_count: data.success_count,
-        error_count: data.error_count,
-        duplicate_count: data.duplicate_count,
-        errors_detail: data.errors_detail,
-      });
+      // P3 — envia apenas as chaves presentes em src: passar chaves ausentes
+      // explicitamente podia limpar contadores/status em updates parciais.
+      await base44.asServiceRole.entities.Import.update(importId, data);
       return Response.json({ ok: true });
     }
 

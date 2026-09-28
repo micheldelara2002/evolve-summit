@@ -1,6 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { canAccessEventData } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 export default async function(req) {
   try {
@@ -13,10 +13,11 @@ export default async function(req) {
     const { id, eventId, ...payload } = body;
     if (!eventId) return Response.json({ error: 'eventId é obrigatório.' }, { status: 400 });
 
-    // Revalidate event membership before any write — the executeRaffle draw already
-    // validated, but the save itself did not revalidate. Now it does.
-    const ok = await canAccessEventData(base44, user, eventId);
-    if (!ok) return Response.json({ error: 'Sem permissão para salvar sorteios neste evento.' }, { status: 403 });
+    // P1 (auditoria 2026-09-28) — gate alinhado ao executeRaffle: manager/team
+    // do PRÓPRIO evento (ou admin). O canAccessEventData anterior (nível
+    // participante) permitia a qualquer participante gravar sorteios via API.
+    const { authorized } = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+    if (!authorized) return Response.json({ error: 'Sem permissão para salvar sorteios neste evento.' }, { status: 403 });
 
     if (id) {
       // Update path: revalidate that the existing raffle belongs to this event.

@@ -2,7 +2,7 @@
 // movido para o servidor. Valida que o participante é do próprio usuário
 // (email/person_id), snapshot dos dados da Person, e incrementa contadores
 // de leads do evento (bucket diário com partner_id).
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { resolveUserPersonId } from '../../shared/eventAuth.ts';
 import { validIds, isValidId } from '../../shared/idGuard.ts';
 import { incLeads } from '../../shared/businessMetrics.ts';

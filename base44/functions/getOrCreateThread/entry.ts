@@ -1,5 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 
 function sanitizeText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -14,7 +15,7 @@ function sortPersonIds(a, b) {
   return a < b ? [a, b] : [b, a];
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
       event_id: eventId, person_a_id: aId, person_b_id: bId, is_deleted: false,
     });
     if (threads.length > 1) {
-      threads.sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
+      threads.sort(deterministicCompare);
       const duplicates = threads.slice(1);
       for (const d of duplicates) {
         await base44.asServiceRole.entities.ChatThread.update(d.id, { is_deleted: true });
@@ -86,4 +87,4 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

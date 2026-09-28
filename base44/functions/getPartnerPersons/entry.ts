@@ -13,7 +13,7 @@
 //      explicitamente autorizado (savePartnerRep com person_id explícito) — o
 //      partner manager NÃO pesquisa a base inteira.
 //   4. Campos mínimos (id, nome, e-mail, ativo) — sem PII sensível.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { canManagePartnerData } from '../../shared/eventAuth.ts';
 import { isValidId } from '../../shared/idGuard.ts';

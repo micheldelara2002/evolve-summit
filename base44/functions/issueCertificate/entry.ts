@@ -1,8 +1,9 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -78,14 +79,20 @@ Deno.serve(async (req) => {
     }
 
     // Generate unique hash with server-side collision check (up to 5 attempts)
+    // P3 — colisão após 5 tentativas é erro explícito (antes: usava o último
+    // hash SEM checar, podendo gravar código duplicado).
     let finalHash = generateSecureHash();
+    let hashOk = false;
     for (let attempt = 0; attempt < 5; attempt++) {
       const collision = await base44.asServiceRole.entities.Certificate.filter({
         hash_code: finalHash,
         is_deleted: false,
       });
-      if (!collision || collision.length === 0) break;
+      if (!collision || collision.length === 0) { hashOk = true; break; }
       finalHash = generateSecureHash();
+    }
+    if (!hashOk) {
+      return Response.json({ error: 'Colisão de código de validação — tente novamente.' }, { status: 500 });
     }
 
     const certificate = await base44.asServiceRole.entities.Certificate.create({
@@ -108,10 +115,7 @@ Deno.serve(async (req) => {
     // participante/tipo/sessão.
     const allCertificates = await base44.asServiceRole.entities.Certificate.filter(existingFilter);
     if (allCertificates.length > 1) {
-      allCertificates.sort((a: any, b: any) =>
-        (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
-        (a.id < b.id ? -1 : 1)
-      );
+      allCertificates.sort(deterministicCompare);
       const survivor = allCertificates[0];
       const duplicateIds = allCertificates.slice(1).map((c: any) => c.id);
       try {
@@ -126,7 +130,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}
 
 function generateSecureHash() {
   const bytes = new Uint8Array(12);

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, dayKeyOf } from "../../shared/businessPeriod.ts";
@@ -210,7 +210,7 @@ async function sumBucketsByEvent(svc: any): Promise<Map<string, any>> {
   return out;
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
@@ -343,4 +343,4 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

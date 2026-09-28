@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from "base44:runtime";
 import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
 import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";

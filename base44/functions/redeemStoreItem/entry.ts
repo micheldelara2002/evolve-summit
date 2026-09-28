@@ -1,5 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 
 // P0.3 + P0 residual — Points/Redemption integrity.
 //
@@ -36,7 +37,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 //   2. idempotency_key is bound to operation context (event + participant + item).
 //      A key reused for a different operation returns 409 conflict, never
 //      returns another operation's redemption.
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
@@ -180,10 +181,7 @@ Deno.serve(async (req) => {
       status: { $ne: 'cancelado' },
     });
     if (sameKeyRedemptions.length > 1) {
-      const sorted = [...sameKeyRedemptions].sort((a, b) => {
-        const dc = new Date(a.created_date) - new Date(b.created_date);
-        return dc !== 0 ? dc : a.id.localeCompare(b.id);
-      });
+      const sorted = [...sameKeyRedemptions].sort(deterministicCompare);
       const survivor = sorted[0];
 
       if (redemption.id !== survivor.id) {
@@ -209,10 +207,7 @@ Deno.serve(async (req) => {
       is_deleted: false,
       status: { $ne: 'cancelado' },
     });
-    const sortedAfter = [...allRedemptionsAfter].sort((a, b) => {
-      const dc = new Date(a.created_date) - new Date(b.created_date);
-      return dc !== 0 ? dc : a.id.localeCompare(b.id);
-    });
+    const sortedAfter = [...allRedemptionsAfter].sort(deterministicCompare);
     let cumulative = 0;
     let myRedemptionOverflowed = false;
     for (const r of sortedAfter) {
@@ -258,4 +253,4 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

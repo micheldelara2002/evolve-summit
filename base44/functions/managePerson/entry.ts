@@ -3,7 +3,7 @@
 //   op='save'   { eventId?, personId?, data } → create/update autorizado
 // Admin pode tudo. Gestor (EventMembership manager/team) opera Persons vinculadas
 // a participantes do evento (ou cria novas). RLS Person é admin-only — via service role.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { validIds, isValidId } from '../../shared/idGuard.ts';

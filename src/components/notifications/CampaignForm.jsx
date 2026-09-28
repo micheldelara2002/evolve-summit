@@ -196,7 +196,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
           Salvar Rascunho
         </Button>
         <Button
-          onClick={() => sendMutation.mutate(buildPayload("processing"))}
+          onClick={() => sendMutation.mutate(buildPayload("draft"))}
           disabled={!isValid || isPending || isReadOnly}
         >
           <Send className="w-4 h-4 mr-2" />

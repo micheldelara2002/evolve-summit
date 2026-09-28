@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { ensurePollCounters, publishPollResults } from "../../shared/pollRealtime.ts";

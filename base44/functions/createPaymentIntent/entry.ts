@@ -1,4 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";
 import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
@@ -290,10 +291,7 @@ export default async function(req: Request): Promise<Response> {
       const coupons = await svc.entities.Coupon.filter({ event_id: eventId, code: String(couponCode).toUpperCase().trim(), is_deleted: false });
       // DAT-001 — seleção DETERMINÍSTICA (defesa adicional para duplicatas
       // legadas): sempre o cupom mais antigo do código (created_date + id).
-      coupons.sort((a: any, b: any) =>
-        (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
-        (a.id < b.id ? -1 : 1)
-      );
+      coupons.sort(deterministicCompare);
       coupon = coupons[0] || null;
     }
     const totals = calculateCart(lines, coupon, now);
@@ -362,10 +360,7 @@ export default async function(req: Request): Promise<Response> {
       // cupom) e recebe 409 controlado — nunca dois client secrets ativos.
       const pendingNow = await svc.entities.Order.filter({ buyer_user_id: user.id, event_id: eventId, status: 'pending', is_deleted: false });
       if (pendingNow.length > 1) {
-        pendingNow.sort((a: any, b: any) =>
-          (new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) ||
-          (a.id < b.id ? -1 : 1)
-        );
+        pendingNow.sort(deterministicCompare);
         const survivor = pendingNow[0];
         if (survivor.id !== order.id) {
           for (const lotId of Object.keys(demandByLot)) {

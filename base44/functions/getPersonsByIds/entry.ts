@@ -2,7 +2,7 @@
 // Admin: retorna qualquer Person solicitada. Não-admin: deve indicar eventIds
 // aos quais tem acesso (canAccessEventData) e só recebe Persons que são
 // participantes (Person vinculado via Participant.person_id) nesses eventos.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { canAccessEventData } from '../../shared/eventAuth.ts';
 import { validIds } from '../../shared/idGuard.ts';

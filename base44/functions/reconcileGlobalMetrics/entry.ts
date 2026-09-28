@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 
@@ -67,7 +67,7 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
   return { metricType, total, days: dayCounts.size, bucketsWritten: buckets.length, backfilled };
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
@@ -86,4 +86,4 @@ Deno.serve(async (req) => {
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
-});
+}

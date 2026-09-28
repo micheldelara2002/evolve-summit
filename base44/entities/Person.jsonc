@@ -61,24 +61,12 @@
       "default": false,
       "description": "P1 \u2014 Marker de idempot\u00eancia do counter global de persons. true = o bucket global di\u00e1rio de persons j\u00e1 foi incrementado para esta Person (via getOrCreatePerson ou maintainBusinessCounter incPersons). Replays subsequentes s\u00e3o no-op, prevenindo infla\u00e7\u00e3o ilimitada do counter por chamadas repetidas do mesmo usu\u00e1rio."
     },
-    "checkout_lock_event_id": {
-      "type": "string",
-      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28). Mantido por hist\u00f3rico; o lock vivo de checkout agora usa checkout_lock_events + CheckoutLock."
-    },
-    "checkout_lock_order_id": {
-      "type": "string",
-      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28)."
-    },
-    "checkout_lock_expires_at": {
-      "type": "string",
-      "description": "LEGADO (FIN-001 r1) \u2014 n\u00e3o lido/escrito desde r2 (2026-09-28)."
-    },
     "checkout_lock_events": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "FIN-001 r2 \u2014 Port\u00e3o at\u00f4mico de locks de checkout SIMULT\u00c2NEOS por evento: CAS { checkout_lock_events: { $ne: eventId } } + $push garante EXATAMENTE um vencedor por (comprador, evento) em corrida, e eventos distintos coexistem sem interfer\u00eancia. Cada elemento \u00e9 um event_id com lock vivo; o $pull condicional na libera\u00e7\u00e3o \u00e9 idempotente e escopado por evento. Os detalhes (pedido, TTL) ficam na entidade CheckoutLock."
+      "description": "FIN-001 r2 \u2014 Port\u00e3o at\u00f4mico de locks de checkout SIMULT\u00c2NEOS por evento: CAS { checkout_lock_events: { $ne: eventId } } + $push garante EXATAMENTE um vencedor por (comprador, evento) em corrida, e eventos distintos coexistem sem interfer\u00eancia. Cada elemento \u00e9 um event_id com lock vivo; o $pull condicional na libera\u00e7\u00e3o \u00e9 idempotente e escopado por evento. Os detalhes (pedido, TTL) ficam na entidade CheckoutLock. (Campos escalares do lock r1 foram removidos do schema na auditoria 2026-09-28.)"
     }
   },
   "required": [

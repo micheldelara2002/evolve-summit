@@ -14,8 +14,9 @@
 // Detalhes do lock (pedido pendente, TTL) ficam na entidade CheckoutLock,
 // escritos APENAS pelo vencedor do portão — sem corrida de escrita.
 //
-// Campos escalares legados (checkout_lock_event_id/order_id/expires_at) são
-// mantidos por histórico: NENHUM código os lê ou escreve desde r2.
+// Campos escalares legados (checkout_lock_event_id/order_id/expires_at) foram
+// REMOVIDOS do schema da Person (auditoria 2026-09-28): nenhum código os lê ou
+// escreve desde r2; valores antigos permanecem apenas no banco.
 //
 // Semântica:
 //   - claimCheckoutLock: portão CAS; portão travado + registro ativo não

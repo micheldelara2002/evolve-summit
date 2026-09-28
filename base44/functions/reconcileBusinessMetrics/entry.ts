@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 
 // P0.3 — Reconstrói MetricBucket de um evento a partir das entidades
@@ -54,7 +54,7 @@ function dayKey(iso: string): string {
 
 const BATCH = 500;
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     // SEC-004 — guard de conta ativa: conta excluída com token válido é bloqueada.
@@ -177,4 +177,4 @@ Deno.serve(async (req) => {
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
-});
+}

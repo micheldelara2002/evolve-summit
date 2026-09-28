@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { normalizeParticipantEmail } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento)
