@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useOutletContext, useNavigate } from "react-router-dom";
-import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
+import { getEventSessions, fetchAllEventParticipants } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -43,7 +43,7 @@ function PeopleContent({ eventId, hasAccess }) {
   const [showImport, setShowImport] = useState(false);
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => fetchEventParticipants(eventId),
+    queryFn: () => fetchAllEventParticipants(eventId),
   });
   // Session tem RLS admin-only — leitura via getEventSessions (admin OU gerente/equipe).
   const { data: sessions = [] } = useQuery({

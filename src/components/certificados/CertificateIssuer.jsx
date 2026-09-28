@@ -5,7 +5,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { fetchEventParticipants } from "@/lib/participantApi";
+import { fetchAllEventParticipants } from "@/lib/participantApi";
+import { scanAllRecords } from "@/lib/fetchAll";
 import { listEventConfig } from "@/lib/eventConfigApi";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -94,10 +95,11 @@ export default function CertificateIssuer({ eventId, event, user }) {
   const [previewData, setPreviewData] = useState(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [batchStatus, setBatchStatus] = useState(null); // { total, done, errors }
+  const [visibleCerts, setVisibleCerts] = useState(30);
 
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => fetchEventParticipants(eventId),
+    queryFn: () => fetchAllEventParticipants(eventId),
   });
 
   const { data: sessions = [] } = useQuery({
@@ -107,7 +109,10 @@ export default function CertificateIssuer({ eventId, event, user }) {
 
   const { data: certificates = [] } = useQuery({
     queryKey: ["certificates", eventId],
-    queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: () => scanAllRecords(
+      (q, sort, limit, skip) => base44.entities.Certificate.filter(q, sort, limit, skip),
+      { event_id: eventId, is_deleted: false }
+    ),
   });
 
   const { data: customTemplates = [] } = useQuery({
@@ -370,7 +375,7 @@ export default function CertificateIssuer({ eventId, event, user }) {
         {certificates.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-6">Nenhum certificado emitido ainda.</p>
         )}
-        {certificates.slice(0, 30).map((cert) => {
+        {certificates.slice(0, visibleCerts).map((cert) => {
           const participant = participants.find((p) => p.id === cert.participant_id);
           const session = sessions.find((s) => s.id === cert.session_id);
           return (
@@ -393,11 +398,16 @@ export default function CertificateIssuer({ eventId, event, user }) {
                 <span className="font-mono text-[10px] text-muted-foreground">{cert.hash_code}</span>
               </div>
             </div>
-          );
-        })}
-      </div>
+            );
+            })}
+            {certificates.length > visibleCerts && (
+            <Button variant="outline" size="sm" onClick={() => setVisibleCerts((v) => v + 30)}>
+              Mostrar mais ({certificates.length - visibleCerts} restantes)
+            </Button>
+            )}
+            </div>
 
-      {/* Preview modal */}
+            {/* Preview modal */}
       {previewData && (
         <CertPreviewModal
           open={!!previewData}

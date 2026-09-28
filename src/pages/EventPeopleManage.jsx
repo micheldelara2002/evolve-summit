@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEventAccess } from "@/hooks/useEventAccess";
-import { getEventSessions, fetchEventParticipants } from "@/lib/participantApi";
+import { getEventSessions, fetchAllEventParticipants } from "@/lib/participantApi";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import ListSkeleton from "@/components/ui/ListSkeleton";
@@ -25,7 +25,7 @@ export default function EventPeopleManage() {
 
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
-    queryFn: () => fetchEventParticipants(eventId),
+    queryFn: () => fetchAllEventParticipants(eventId),
     enabled: !!eventId && hasAccess,
   });
 

@@ -85,6 +85,25 @@ export async function fetchEventParticipants(eventId, opts = {}) {
   return out.participants || [];
 }
 
+/**
+ * TODOS os participantes do evento, em páginas encadeadas (limit+skip).
+ * P2 (auditoria 2026-09-28) — sem isso a chamada única trunca silenciosamente
+ * no limite do backend (1.000) e a gestão não vê o resto da lista.
+ */
+export async function fetchAllEventParticipants(eventId) {
+  const BATCH = 2000; // MAX_LIMIT do backend
+  const all = [];
+  let skip = 0;
+  while (true) {
+    const out = await invokeRead({ op: "event", event_id: eventId, limit: BATCH, skip });
+    const parts = out.participants || [];
+    all.push(...parts);
+    if (!out.has_more || parts.length === 0) break;
+    skip += BATCH;
+  }
+  return all;
+}
+
 export async function fetchMyEventsParticipantsPage({ limit, skip } = {}) {
   const out = await invokeRead({ op: "my_events", limit, skip });
   return { participants: out.participants || [], hasMore: !!out.has_more };

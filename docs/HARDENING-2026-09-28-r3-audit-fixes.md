@@ -55,6 +55,29 @@ em cancelamento manual, timeout de dispatch global).
 - **manageParticipant/importUpdate**: update de importação envia apenas as
   chaves presentes (antes podia zerar contadores em updates parciais).
 
+## P2 — Lote aprovado em 2026-09-28 (item 3, agendamento, segue on hold)
+
+- **Fim da truncagem silenciosa nas listas grandes (PERF)**: participante e
+  certificados agora carregam TODAS as páginas encadeadas —
+  `fetchAllEventParticipants` (lotes de 2.000 via getEventParticipants com
+  limit/skip) nas telas de Pessoas (gestão + módulo) e no emissor de
+  certificados; `scanAllRecords` (src/lib/fetchAll.js) para o histórico de
+  certificados. O histórico ganhou "Mostrar mais" (+30) — antes exibia só os
+  30 primeiros sem aviso. Total exibido passa a refletir o conjunto real.
+- **Disparo de campanhas grandes resumível**: dispatchNotificationCampaign
+  ganhou orçamento de tempo por invocação (15s). Orçamento estourado na
+  RESOLUÇÃO → status 'failed' (reassumível; dedup por $in torna a
+  re-resolução idempotente). Estourado na ENTREGA → 'partially_sent'; a
+  retomada PULA a fase 1 (recipients já existem) e só entrega — sem custo de
+  re-resolver a audiência a cada rodada. Erro inesperado pós-claim reverte
+  para 'failed' — campanha nunca mais fica presa em 'processing'. O service
+  do frontend encadeia rodadas (has_more) até esgotar a fila (máx. 30).
+- **Contadores de pontos/resgates (drift por cancelamento fora do fluxo)**:
+  o reconciler admin-only reconcileParticipantCounters (ledger como fonte da
+  verdade) ganhou acesso na UI — card "Pontos e resgates" na aba Loja (admin):
+  verificação em dry-run com resumo do drift e aplicação da correção.
+- Segredo legado `SCHEDULER_INTERNAL_TOKEN` removido manualmente pelo usuário.
+
 ## Verificação
 
 - `vite build` OK (frontend).

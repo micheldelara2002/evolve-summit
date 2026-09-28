@@ -69,6 +69,15 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 
 const BATCH_SIZE = 500;
 
+// P2 (2026-09-28) — Orçamento de tempo por invocação: campanhas MUITO grandes
+// não cabem numa única execução da função. Ao atingir o orçamento, o handler
+// encerra de forma limpa em um status REASSUMÍVEL (failed durante a resolução,
+// partially_sent durante a entrega) e responde has_more=true — o service do
+// frontend encadeia novas invocações até esgotar a fila. Sem isso, o timeout
+// da plataforma deixaria a campanha presa em 'processing' (nunca reassumível)
+// para sempre.
+const TIME_BUDGET_MS = 15_000;
+
 type Recipient = { user_id: string; name: string; email: string; role: string };
 type YieldedBatch = { recipients: Recipient[] };
 
@@ -469,6 +478,14 @@ async function countRecipientsByStatus(
 // Main handler
 // =============================================================================
 export default async function(req: Request): Promise<Response> {
+  // Estado do claim — usado no catch externo para REVERTER a campanha presa em
+  // 'processing' para 'failed' (reassumível) em erro inesperado.
+  let claimed = false;
+  let claimedCampaignId = "";
+  let svc: any = null;
+  let phase1Incomplete = false;
+  let phase2Incomplete = false;
+
   const stats = {
     resolutionBatches: 0,
     deliveryBatches: 0,
@@ -542,9 +559,9 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
-    const svc = base44.asServiceRole;
+    svc = base44.asServiceRole;
 
-    // === Lock atômico da campanha (compare-and-swap em status) ===
+    // === Lock atômico da campanha (compare-and-swap em status) === da campanha (compare-and-swap em status) ===
     // updateMany condicional = CAS: só um worker consegue virar status para
     // "processing" a partir de draft/scheduled (novo envio) ou
     // partially_sent/failed (retry de pendentes). Concorrentes recebem 409 —
@@ -558,6 +575,8 @@ export default async function(req: Request): Promise<Response> {
     if (!claim || !claim.updated) {
       return Response.json({ error: 'Envio já em andamento ou já concluído.' }, { status: 409 });
     }
+    claimed = true;
+    claimedCampaignId = campaign.id;
     // Auditoria da assunção do lock: quem assumiu o envio e quando.
     try {
       await svc.entities.AuditLog.create({
@@ -573,25 +592,46 @@ export default async function(req: Request): Promise<Response> {
 
     // === Phase 1: Resolve audience + create recipients as "pending" ===
     // Batched: O(batch) memory. No User.list() global. No global recipients Set.
-    try {
-      for await (const { recipients } of resolveAudienceBatches(svc, {
-        scopeType: campaign.scope_type,
-        scopeEventId: campaign.scope_event_id,
-        audienceType: campaign.audience_type,
-        audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
-        senderUser: user,
-        senderPartnerId,
-      })) {
-        await processRecipientBatch(svc, campaign.id, recipients, stats);
+    //
+    // Retomada de partially_sent PULA a resolução — os recipients já existem,
+    // falta apenas a entrega (fase 2). Sem isso, cada rodada de retomada de uma
+    // campanha grande re-resolveria a audiência inteira antes de entregar.
+    // campaign.status é o status PRÉ-claim (registro lido antes do CAS).
+    if (campaign.status !== 'partially_sent') {
+      try {
+        for await (const { recipients } of resolveAudienceBatches(svc, {
+          scopeType: campaign.scope_type,
+          scopeEventId: campaign.scope_event_id,
+          audienceType: campaign.audience_type,
+          audienceSegments: campaign.audience_payload ? JSON.parse(campaign.audience_payload) : [],
+          senderUser: user,
+          senderPartnerId,
+        })) {
+          // Orçamento esgotado no meio da resolução: encerra em 'failed'
+          // (reassumível pelo claim). A dedup por $in da fase 1 torna a
+          // re-resolução da próxima rodada idempotente — sem duplicatas.
+          if (Date.now() - stats.startTime >= TIME_BUDGET_MS) {
+            phase1Incomplete = true;
+            break;
+          }
+          await processRecipientBatch(svc, campaign.id, recipients, stats);
+        }
+      } catch (e) {
+        await svc.entities.NotificationCampaign.update(campaign.id, { status: "failed" });
+        stats.queries++;
+        return Response.json({
+          ok: false,
+          error: 'Falha ao resolver destinatários: ' + e.message,
+          stats,
+        }, { status: 500 });
       }
-    } catch (e) {
-      await svc.entities.NotificationCampaign.update(campaign.id, { status: "failed" });
-      stats.queries++;
-      return Response.json({
-        ok: false,
-        error: 'Falha ao resolver destinatários: ' + e.message,
-        stats,
-      }, { status: 500 });
+      if (phase1Incomplete) {
+        try {
+          await svc.entities.NotificationCampaign.update(campaign.id, { status: "failed" });
+          stats.queries++;
+        } catch {}
+        return Response.json({ ok: true, has_more: true, phase: 'resolution', stats });
+      }
     }
 
     // === Phase 2: Materialize in-app — process pending/processing/failed → sent ===
@@ -637,6 +677,12 @@ export default async function(req: Request): Promise<Response> {
 
       stats.deliveryBatches++;
       if (batch.length < BATCH_SIZE) break;
+      // Orçamento esgotado com fila ainda cheia: encerra em 'partially_sent'
+      // (reassumível; a próxima rodada pula a fase 1 e só entrega).
+      if (Date.now() - stats.startTime >= TIME_BUDGET_MS) {
+        phase2Incomplete = true;
+        break;
+      }
     }
 
     // === Final count (paginated, O(batch) memory) ===
@@ -659,6 +705,7 @@ export default async function(req: Request): Promise<Response> {
 
     return Response.json({
       ok: true,
+      has_more: phase2Incomplete,
       recipients_count: counts.total,
       delivered_count: counts.sent,
       failed_count: counts.failed,
@@ -667,6 +714,14 @@ export default async function(req: Request): Promise<Response> {
     });
   } catch (error) {
     stats.totalTimeMs = Date.now() - stats.startTime;
+    // Campanha presa em 'processing' NUNCA seria reassumida (o claim só aceita
+    // draft/scheduled/partially_sent/failed). Erro inesperado após o claim →
+    // reverte para 'failed' (retomável). Best-effort.
+    if (claimed && svc && claimedCampaignId) {
+      try {
+        await svc.entities.NotificationCampaign.update(claimedCampaignId, { status: "failed" });
+      } catch {}
+    }
     return Response.json({ error: error.message, stats }, { status: 500 });
   }
 }

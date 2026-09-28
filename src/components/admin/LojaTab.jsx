@@ -14,6 +14,7 @@ import { Plus, Search, MoreVertical, Pencil, Trash2, ToggleLeft, ToggleRight, Im
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
 import { uploadFile } from "@/lib/apiClient";
+import ReconcileCountersCard from "@/components/admin/ReconcileCountersCard";
 
 const PAGE_SIZE = 10;
 
@@ -295,6 +296,9 @@ export default function LojaTab({ eventId, hasAccess, user }) {
           </Button>
         )}
       </div>
+
+      {/* Reconciliação de contadores (admin) — P2 auditoria 2026-09-28 */}
+      {user?.role === "admin" && <ReconcileCountersCard eventId={eventId} />}
 
       {/* Loading */}
       {isLoading && (

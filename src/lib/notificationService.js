@@ -58,15 +58,23 @@ export function getAllowedSegments(user, scopeType, scopeEventId, memberships = 
  * (A resolução de destinatários é feita server-side em dispatchNotificationCampaign.)
  */
 export async function dispatchCampaign(campaign, senderUser, senderPartnerId) {
-  // Dispatch server-side — resolve recipients, deduplicate, create, and update status
-  const response = await base44.functions.invoke('dispatchNotificationCampaign', {
-    campaign,
-    senderPartnerId,
-  });
-  const result = response.data;
+  // Dispatch server-side em RODADAS ENCADEADAS: campanhas muito grandes não
+  // cabem numa única invocação — a função encerra no orçamento de tempo em
+  // status reassumível (failed/partially_sent) e responde has_more=true.
+  // Cada rodada retoma exatamente de onde parou (claim CAS no servidor).
+  const MAX_ROUNDS = 30;
+  let result = null;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const response = await base44.functions.invoke('dispatchNotificationCampaign', {
+      campaign,
+      senderPartnerId,
+    });
+    result = response.data;
 
-  if (!result?.ok) {
-    throw new Error(result?.error || 'Falha no envio da campanha.');
+    if (!result?.ok) {
+      throw new Error(result?.error || 'Falha no envio da campanha.');
+    }
+    if (!result?.has_more) break;
   }
 
   // Auditoria (best-effort, não bloqueia o envio)
