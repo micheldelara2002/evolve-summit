@@ -30,7 +30,13 @@
 //     confirmado (fulfillment), sem tocar locks de outros eventos.
 //
 // O lock é camada PRÉ-Order: o CAS do pedido (reuso + dedup pós-create)
-// permanece como defesa secundária — nunca removê-lo.
+// permanece como defesa secundária — nunca removê-lo. Observado ao vivo em
+// 2026-09-28: lag de visibilidade do registro pode levar um concorrente ao
+// caminho stale_orphan enquanto o vencedor legitimo ainda está criando o
+// registro — nesse caso o vencedor tem o gate liberado por baixo dos panos,
+// MAS o CAS do pedido é o árbitro final: a corrida terminou 1×200 + 1×409
+// com exatamente um checkout pagável e nenhum lock órfão. A janela de
+// tolerância (REGISTRY_SETTLE_*) reduz, não elimina, esse caso raro.
 
 export const CHECKOUT_LOCK_TTL_MS = 15 * 60 * 1000;
 
