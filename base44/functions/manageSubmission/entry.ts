@@ -83,7 +83,7 @@ export default async function(req: Request): Promise<Response> {
           registration_status: 'registered',
           created_day: new Date().toISOString().slice(0, 10),
         });
-        // P0.3 — mantém EventStats + MetricBucket do dashboard (unique + participants_by_role)
+        // P0.3 — mantém MetricBucket do dashboard (unique + participants_by_role)
         await incUniqueParticipant(svc, eventId, participant.created_date);
         await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
       } else if (participant.role_in_event !== 'speaker') {

@@ -1,8 +1,7 @@
 // P0.3 — Business Dashboard materialization helpers.
 //
-// P2 — FONTE ÚNICA: MetricBucket. EventStats é LEGADO: não é mais escrito no
-// caminho incremental (inc/dec abaixo) nem lido pelo dashboard — apenas o
-// reconcileBusinessMetrics o reconstrói por completo, como referência histórica.
+// P2 — FONTE ÚNICA: MetricBucket. EventStats foi APOSENTADO e a entidade
+// removida (DAT-003): nenhum caminho incremental ou dashboard a lê/escreve.
 //
 // MetricBucket = série temporal diária:
 //   unique_participants (por evento)

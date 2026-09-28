@@ -69,15 +69,25 @@ export default async function(req: Request): Promise<Response> {
     }
     const svc = base44.asServiceRole;
 
-    const staleOrders = await svc.entities.Order.filter({
-      status: 'pending',
-      is_deleted: false,
-      reserved_until: { $lt: new Date().toISOString() },
-    });
+    // PERF-003 — a query já é LIMITADA no banco (antes: carregava TODOS os
+    // pedidos vencidos e só depois limitava o processamento a 50). Ordenação
+    // determinística por reserved_until (mais antigos primeiro); limite+1
+    // revela has_more sem carregar a lista inteira.
+    const staleOrders = await svc.entities.Order.filter(
+      {
+        status: 'pending',
+        is_deleted: false,
+        reserved_until: { $lt: new Date().toISOString() },
+      },
+      'reserved_until',
+      MAX_ORDERS_PER_RUN + 1
+    );
+    const hasMoreStale = staleOrders.length > MAX_ORDERS_PER_RUN;
+    if (hasMoreStale) staleOrders.pop();
 
     let expired = 0;
     let keptAlive = 0;
-    const limit = Math.min(staleOrders.length, MAX_ORDERS_PER_RUN);
+    const limit = staleOrders.length;
     for (let i = 0; i < limit; i++) {
       const order = staleOrders[i];
 
@@ -393,7 +403,9 @@ export default async function(req: Request): Promise<Response> {
       reconcile_completed: reconcileCompleted,
       refunds_reconciled: refundsReconciled,
       refunds_failed: refundsFailed,
-      remaining: Math.max(0, staleOrders.length - limit),
+      // Aproximação com a query limitada: 1 = ainda há vencidos além deste
+      // lote (próxima varredura pega), 0 = varredura completa.
+      remaining: hasMoreStale ? 1 : 0,
     });
   } catch (error: any) {
     console.error('[expireStaleReservations]', error?.message || error);

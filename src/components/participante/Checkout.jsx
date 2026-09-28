@@ -16,7 +16,6 @@ export default function Checkout({ eventId }) {
   const [publishableKey, setPublishableKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [iframeBlocked, setIframeBlocked] = useState(false);
   const [refundPolicy, setRefundPolicy] = useState(null);
 
   // Política de estorno do evento (padrão global + override) — informada ao comprador.
@@ -32,12 +31,6 @@ export default function Checkout({ eventId }) {
   const couponCode = location.state?.couponCode;
 
   useEffect(() => {
-    // Block checkout inside an iframe (Stripe requires top-level window).
-    if (window.self !== window.top) {
-      setIframeBlocked(true);
-      setLoading(false);
-      return;
-    }
     if (!items || items.length === 0) {
       navigate(`/event/${eventId}`, { replace: true });
       return;
@@ -50,11 +43,6 @@ export default function Checkout({ eventId }) {
         // Free order (100% discount) — already fulfilled server-side, no Stripe needed.
         if (res.free) {
           setIntent(res);
-          return;
-        }
-        // Paid order — Stripe requires a top-level window (not inside an iframe).
-        if (window.self !== window.top) {
-          setIframeBlocked(true);
           return;
         }
         const ticketData = await getEventTickets(eventId);
@@ -71,17 +59,6 @@ export default function Checkout({ eventId }) {
     })();
     return () => { cancelled = true; };
   }, [eventId]);
-
-  if (iframeBlocked) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-20 text-center space-y-3">
-        <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
-        <h2 className="text-lg font-display font-bold">Checkout indisponível</h2>
-        <p className="text-sm text-muted-foreground">O pagamento só funciona no app publicado, não dentro do preview. Abra o app em uma nova aba para finalizar a compra.</p>
-        <Button variant="outline" onClick={() => navigate(`/event/${eventId}`)}><ArrowLeft className="w-4 h-4 mr-2" /> Voltar</Button>
-      </div>
-    );
-  }
 
   if (loading) {
     return (

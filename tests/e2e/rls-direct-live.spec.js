@@ -9,7 +9,7 @@ const PERSONAS = {
   speaker: ['E2E_SPEAKER_EMAIL', 'E2E_SPEAKER_PASSWORD'],
   partner: ['E2E_PARTNER_EMAIL', 'E2E_PARTNER_PASSWORD'],
 };
-const ADMIN_ONLY = ['AuditLog','Import','EventStats','AwardCategory','MetricBucket','Certificate','Session','Track','Room','AwardConfig','CallForPapers','Badge','StoreItem','ScoringRule','CertificateTemplate'];
+const ADMIN_ONLY = ['AuditLog','Import','AwardCategory','MetricBucket','Certificate','Session','Track','Room','AwardConfig','CallForPapers','Badge','StoreItem','ScoringRule','CertificateTemplate'];
 const SENSITIVE_NO_RLS = ['Lead','NotificationCampaign','Participant','Partner','PartnerRepresentative','Person','PersonDocument','SessionAttendance','SessionQuestion','SessionReview'];
 
 async function clientFor(role) {

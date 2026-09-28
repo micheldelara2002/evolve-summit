@@ -24,7 +24,7 @@ import { requireActiveUser } from '../../shared/accountSecurity.ts';
 //
 // Preservado (intocado): PointTransaction, StoreRedemption, SessionReview,
 // SessionQuestion, Certificate, PartnerRepresentative, MetricBucket,
-// EventStats, Event, e demais entidades não relacionadas à identidade.
+// Event, e demais entidades não relacionadas à identidade.
 // Nenhuma reconciliação de métricas é executada — anonimizar PII não altera
 // somas de pontos, contadores ou ranking.
 

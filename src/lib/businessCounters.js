@@ -1,4 +1,4 @@
-// P0.3 — Helpers de manutenção dos counters materializados (EventStats/MetricBucket).
+// P0.3 — Helpers de manutenção dos counters materializados (MetricBucket).
 // Best-effort: a mutation principal já sucedeu; falha aqui NÃO bloqueia e NÃO avisa —
 // a reconciliação (reconcileBusinessMetrics / reconcileGlobalMetrics) corrige qualquer drift.
 import { base44 } from "@/api/base44Client";

@@ -17,7 +17,7 @@
     },
     "sender_user_id": {
       "type": "string",
-      "description": "ID do usu\u00e1rio emissor"
+      "description": "ID do usu\u00e1rio emissor. SEC-005 \u2014 a cria\u00e7\u00e3o via SDK exige sender_user_id = usu\u00e1rio autenticado (ou admin): campanha nunca \u00e9 atribu\u00edda a terceiros; o disparo (dispatchNotificationCampaign) valida papel/membership do emissor."
     },
     "sender_role": {
       "type": "string",
@@ -159,9 +159,7 @@
           }
         },
         {
-          "user_condition": {
-            "role": "user"
-          }
+          "data.sender_user_id": "{{user.id}}"
         }
       ]
     },

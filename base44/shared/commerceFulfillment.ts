@@ -477,7 +477,7 @@ export async function applyConfirmedStripeRefund(
   return { usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL };
 }
 
-// Process a successful refund: cancel participants + tickets + EventStats.
+// Process a successful refund: cancel participants + tickets + counters (MetricBucket).
 export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string): Promise<{ usedSkipped: number }> {
   let usedSkipped = 0;
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });

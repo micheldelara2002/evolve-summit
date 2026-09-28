@@ -7,7 +7,7 @@ import {
   incLeads, incUsers, incPersons, incPartners, decPartners,
 } from "../../shared/businessMetrics.ts";
 
-// P0.3 — Ponto único de manutenção dos counters materializados (EventStats/MetricBucket)
+// P0.3 — Ponto único de manutenção dos counters materializados (MetricBucket)
 // chamado pelo frontend após mutations de Participant/Lead/Person/Partner e pelo workflow
 // app_user_auth:signup (incUsers). Best-effort: a mutation principal já sucedeu; falha aqui
 // não bloqueia — reconcile corrige drift.

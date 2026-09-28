@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 
-// P0.3 — Reconstrói EventStats + MetricBucket de um evento a partir das entidades
+// P0.3 — Reconstrói MetricBucket de um evento a partir das entidades
 // autoritativas (Participant is_deleted:false, Lead). Admin-only, bounded por
 // cursor/batches (BATCH=500). É a rede de segurança para drift nos counters.
 //
@@ -120,14 +120,14 @@ Deno.serve(async (req) => {
       if (batch.length < BATCH) break;
     }
 
-    // --- Estado atual (soma TODAS as linhas de EventStats — consistente com o read-side,
-    //     que soma tudo para tolerar a race do ensureEventStats que pode criar duplicatas) ---
-    const existing = await svc.entities.EventStats.filter({ event_id: eventId });
+    // --- Estado atual (DAT-003 — EventStats foi APOSENTADO; a fonte única é
+    //     MetricBucket, somado aqui exatamente como o read-side do dashboard) ---
+    const existingBuckets = await svc.entities.MetricBucket.filter({ event_id: eventId });
     let currentUnique = 0;
     let currentLeads = 0;
-    for (const s of existing) {
-      currentUnique += s.unique_participants_count || 0;
-      currentLeads += s.total_leads_count || 0;
+    for (const b of existingBuckets) {
+      if (b.metric_type === 'unique_participants') currentUnique += b.value || 0;
+      else if (b.metric_type === 'leads') currentLeads += b.value || 0;
     }
     const drift = {
       unique: totalUnique - currentUnique,
@@ -143,16 +143,6 @@ Deno.serve(async (req) => {
         drift,
       });
     }
-
-    // --- Aplicar EventStats (recria limpo) ---
-    if (existing.length > 0) {
-      await svc.entities.EventStats.deleteMany({ event_id: eventId });
-    }
-    await svc.entities.EventStats.create({
-      event_id: eventId,
-      unique_participants_count: totalUnique,
-      total_leads_count: totalLeads,
-    });
 
     // --- Aplicar MetricBucket (recria limpo: unique_participants + participants_by_role + leads) ---
     await svc.entities.MetricBucket.deleteMany({ event_id: eventId });

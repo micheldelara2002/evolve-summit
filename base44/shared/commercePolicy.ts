@@ -116,12 +116,18 @@ export function fromCents(cents: number): number {
 }
 
 // Generate a short unique hash for ticket validation.
+// SEC-006 — fonte criptográfica (crypto.getRandomValues), não Math.random:
+// o hash valida a entrada física do evento e não pode ser previsível.
 export function generateTicketHash(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const segments = [8, 4, 4];
+  const total = segments.reduce((s, n) => s + n, 0);
+  const random = new Uint32Array(total);
+  crypto.getRandomValues(random);
+  let idx = 0;
   return segments.map(len => {
     let s = '';
-    for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    for (let i = 0; i < len; i++) s += chars[random[idx++] % chars.length];
     return s;
   }).join('-');
 }
