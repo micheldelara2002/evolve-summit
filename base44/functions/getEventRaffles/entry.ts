@@ -24,10 +24,28 @@ export default async function(req) {
     const isMgmt = user.role === 'admin' ||
       (await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES)).authorized;
     if (!isMgmt) {
+      const svc = base44.asServiceRole;
       const partnerIds = await resolveUserPartnerIds(base44, user);
-      if (partnerIds.length > 0) {
-        raffles = raffles.filter((r) => r.context === 'partner' && partnerIds.includes(r.context_ref_id));
-      }
+      // Sorteios do PRÓPRIO palestrante (context='speaker' + participant próprio,
+      // ancorado na membership speaker e/ou e-mail do usuário).
+      const speakerMemberships = await svc.entities.EventMembership.filter({
+        event_id: eventId, user_id: user.id, role: 'speaker', is_active: true, is_deleted: false,
+      });
+      const personIds = [...new Set((speakerMemberships || []).map((m) => m.person_id).filter(Boolean))];
+      const [ownByPerson, ownByEmail] = await Promise.all([
+        personIds.length
+          ? svc.entities.Participant.filter({ event_id: eventId, is_deleted: false, person_id: { $in: personIds } })
+          : Promise.resolve([]),
+        user.email
+          ? svc.entities.Participant.filter({ event_id: eventId, is_deleted: false, email: user.email })
+          : Promise.resolve([]),
+      ]);
+      const ownPartIds = [...new Set([...(ownByPerson || []), ...(ownByEmail || [])].map((p) => p.id))];
+      // Sem papel de gestão: apenas os próprios sorteios de estande OU de
+      // palestrante — vencedores de outros parceiros/palestrantes não vazam.
+      raffles = raffles.filter((r) =>
+        (r.context === 'partner' && partnerIds.includes(r.context_ref_id)) ||
+        (r.context === 'speaker' && ownPartIds.includes(r.context_ref_id)));
     }
     return Response.json({ raffles });
   } catch (error) {

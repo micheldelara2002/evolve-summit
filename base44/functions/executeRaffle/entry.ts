@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES, canAccessPartnerData } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES, canAccessPartnerData, verifyOwnSpeakerScope } from "../../shared/eventAuth.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -45,6 +45,39 @@ export default async function(req: Request): Promise<Response> {
       }
       participants = await svc.entities.Participant.filter({
         id: { $in: leadPartIds },
+        is_deleted: false,
+        registration_status: { $ne: 'cancelled' },
+      });
+    } else if (context === 'speaker' && contextRefId) {
+      // Sorteio do PALESTRANTE (2026-09-29): pool = presenças registradas
+      // nas PRÓPRIAS sessões do palestrante — nunca o universo do evento.
+      const isMgmt = user.role === 'admin' ||
+        (await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES)).authorized;
+      if (!isMgmt) {
+        const ownScope = await verifyOwnSpeakerScope(base44, user, eventId, contextRefId);
+        if (!ownScope) {
+          return Response.json({ error: 'Sem permissão para sortear como palestrante neste evento.' }, { status: 403 });
+        }
+      }
+      const sessions = await svc.entities.Session.filter({
+        event_id: eventId, speaker_id: contextRefId, is_deleted: false,
+      });
+      const sessionIds = [...new Set((sessions || []).map((s: any) => s.id).filter(Boolean))];
+      if (sessionIds.length === 0) {
+        return Response.json({ error: 'Sem sessões elegíveis disponíveis.' }, { status: 400 });
+      }
+      const attendances = await svc.entities.SessionAttendance.filter({
+        session_id: { $in: sessionIds },
+      });
+      const attPartIds = [...new Set(
+        (attendances || []).filter((a: any) => a.is_present !== false)
+          .map((a: any) => a.participant_id).filter(Boolean)
+      )];
+      if (attPartIds.length === 0) {
+        return Response.json({ error: 'Sem presenças elegíveis disponíveis.' }, { status: 400 });
+      }
+      participants = await svc.entities.Participant.filter({
+        id: { $in: attPartIds },
         is_deleted: false,
         registration_status: { $ne: 'cancelled' },
       });

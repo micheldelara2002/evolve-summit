@@ -73,6 +73,34 @@ export async function resolveUserPersonId(base44, user) {
 }
 
 /**
+ * Sorteio do PALESTRANTE (2026-09-29): autoriza sorteios escopados às PRÓPRIAS
+ * sessões do palestrante. Exige membership ativa com papel 'speaker' no evento
+ * E que o participant_id informado (context_ref_id) pertença ao próprio usuário
+ * (person_id ou e-mail). Gestores (manager/team) e admin sempre passam.
+ */
+export async function verifyOwnSpeakerScope(base44, user, eventId, participantId) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (!eventId || !participantId) return false;
+
+  const spk = await verifyEventMembership(base44, user, eventId, ['speaker']);
+  if (!spk.authorized) return false;
+
+  const parts = await base44.asServiceRole.entities.Participant.filter({
+    id: participantId,
+    event_id: eventId,
+    is_deleted: false,
+  });
+  if (!parts?.length) return false;
+  const part = parts[0];
+  if (part.person_id) {
+    const personId = await resolveUserPersonId(base44, user);
+    if (personId) return part.person_id === personId;
+  }
+  return (part.email || '').toLowerCase() === (user.email || '').toLowerCase();
+}
+
+/**
  * Autorização de leitura/escrita de dados de um evento (Lote 1 RLS):
  * admin, OU qualquer EventMembership ativa no evento, OU Participant ativo
  * (não cancelado) vinculado ao usuário por e-mail ou person_id.

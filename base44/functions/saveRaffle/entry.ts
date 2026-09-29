@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES, canAccessPartnerData } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES, canAccessPartnerData, verifyOwnSpeakerScope } from "../../shared/eventAuth.ts";
 
 export default async function(req) {
   try {
@@ -28,21 +28,28 @@ export default async function(req) {
         existingRaffle = (await svc.entities.Raffle.filter({ id, is_deleted: false }))[0] || null;
       }
       const effContext = existingRaffle ? existingRaffle.context : payload.context;
-      const effPartnerId = existingRaffle ? existingRaffle.context_ref_id : payload.context_ref_id;
-      if (effContext !== 'partner' || !effPartnerId) {
+      const effRefId = existingRaffle ? existingRaffle.context_ref_id : payload.context_ref_id;
+      if (effContext === 'partner' && effRefId) {
+        const partnerOk = await canAccessPartnerData(base44, user, effRefId);
+        if (!partnerOk) {
+          return Response.json({ error: 'Sem permissão para salvar sorteios deste parceiro.' }, { status: 403 });
+        }
+        const link = await svc.entities.EventPartner.filter({
+          event_id: eventId, partner_id: effRefId, is_active: true, is_deleted: false,
+        });
+        if (!link?.length) {
+          return Response.json({ error: 'Parceiro não está ativo neste evento.' }, { status: 403 });
+        }
+      } else if (effContext === 'speaker' && effRefId) {
+        // Caminho PALESTRANTE: salva apenas sorteios escopados às próprias sessões.
+        const ownScope = await verifyOwnSpeakerScope(base44, user, eventId, effRefId);
+        if (!ownScope) {
+          return Response.json({ error: 'Sem permissão para salvar sorteios deste palestrante.' }, { status: 403 });
+        }
+      } else {
         return Response.json({ error: 'Sem permissão para salvar sorteios neste evento.' }, { status: 403 });
       }
-      const partnerOk = await canAccessPartnerData(base44, user, effPartnerId);
-      if (!partnerOk) {
-        return Response.json({ error: 'Sem permissão para salvar sorteios deste parceiro.' }, { status: 403 });
-      }
-      const link = await svc.entities.EventPartner.filter({
-        event_id: eventId, partner_id: effPartnerId, is_active: true, is_deleted: false,
-      });
-      if (!link?.length) {
-        return Response.json({ error: 'Parceiro não está ativo neste evento.' }, { status: 403 });
-      }
-      // Parceiro não pode alterar o contexto/titular de um sorteio existente.
+      // Escopo não-gestor não pode alterar o contexto/titular de um sorteio existente.
       if (existingRaffle) {
         delete payload.context;
         delete payload.context_ref_id;
