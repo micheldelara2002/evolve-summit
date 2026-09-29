@@ -101,6 +101,16 @@ export async function getMyMemberships(userId) {
 const MANAGEMENT_ROLES = ["manager", "team"];
 
 /**
+ * Acesso FINANCEIRO do evento (2026-09-29): comércio (preços/lotes/cupons),
+ * relatórios, pedidos, estornos e payout — exclusivo do GERENTE (+admin).
+ * O 'team' mantém apenas o operacional.
+ */
+export function hasFinanceAccess(user, memberships = []) {
+  if (isAdmin(user)) return true;
+  return (memberships || []).some((m) => m.role === "manager");
+}
+
+/**
  * Validação de contexto de evento. Retorna:
  *   - event: o registro do evento (ou null)
  *   - memberships: EventMemberships ativas do usuário neste evento
@@ -132,11 +142,13 @@ export function useEventAccess(eventId) {
 
   const hasManagementRole = eventMemberships.some((m) => MANAGEMENT_ROLES.includes(m.role));
   const hasAccess = isAdmin(user) || hasManagementRole;
+  const hasFinance = hasFinanceAccess(user, eventMemberships);
 
   return {
     event,
     memberships: eventMemberships,
     hasAccess,
+    hasFinanceAccess: hasFinance,
     loading: eventLoading || membershipsLoading,
   };
 }

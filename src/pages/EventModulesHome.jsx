@@ -22,7 +22,7 @@ const LEGACY_TAB_MAP = {
 };
 
 export default function EventModulesHome() {
-  const { eventId } = useOutletContext();
+  const { eventId, hasFinanceAccess: hasFinance } = useOutletContext();
   const [searchParams] = useSearchParams();
   const tab = searchParams.get("tab");
 
@@ -32,10 +32,10 @@ export default function EventModulesHome() {
     return <Navigate to={`/events/${eventId}/${mapped}`} replace />;
   }
 
-  return <EventModulesHomeContent eventId={eventId} />;
+  return <EventModulesHomeContent eventId={eventId} hasFinanceAccess={hasFinance} />;
 }
 
-function EventModulesHomeContent({ eventId }) {
+function EventModulesHomeContent({ eventId, hasFinanceAccess }) {
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
     queryFn: () => fetchEventParticipants(eventId),
@@ -46,9 +46,11 @@ function EventModulesHomeContent({ eventId }) {
     queryFn: () => base44.entities.Certificate.filter({ event_id: eventId, is_deleted: false }),
   });
 
+  // Resumo financeiro — exclusivo do gerente (+admin); 'team' não consulta.
   const { data: sales } = useQuery({
     queryKey: ["event-sales-summary", eventId],
     queryFn: () => getEventSalesSummary(eventId),
+    enabled: !!hasFinanceAccess,
   });
 
   const stats = [
@@ -94,7 +96,7 @@ function EventModulesHomeContent({ eventId }) {
       )}
 
       {/* Module navigation cards */}
-      <EventModuleNav eventId={eventId} />
+      <EventModuleNav eventId={eventId} hasFinanceAccess={hasFinanceAccess} />
     </div>
   );
 }

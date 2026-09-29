@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 
 // Admin/event-manager commerce config CRUD.
@@ -101,7 +101,7 @@ export default async function(req: Request): Promise<Response> {
 
     if (action === 'setPolicy') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
-      const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
       if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
       const event = (await svc.entities.Event.filter({ id: eventId }))[0];
       await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(data) });
@@ -111,7 +111,7 @@ export default async function(req: Request): Promise<Response> {
 
     if (action === 'setRequiresPayment') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
-      const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
       if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
       await svc.entities.Event.update(eventId, { requires_payment: !!data.requires_payment });
       return Response.json({ ok: true, requires_payment: !!data.requires_payment });
@@ -124,7 +124,7 @@ export default async function(req: Request): Promise<Response> {
     if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
 
     const isAdmin = user.role === 'admin';
-    const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+    const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
     const authorized = isAdmin || managerAuth.authorized;
 
     if (action === 'list') {

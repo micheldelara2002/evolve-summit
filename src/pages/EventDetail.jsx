@@ -12,7 +12,7 @@ export default function EventDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const { event, hasAccess, loading } = useEventAccess(eventId);
+  const { event, hasAccess, hasFinanceAccess: hasFinance, loading } = useEventAccess(eventId);
 
   if (loading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (!event) return <p className="text-center py-12 text-muted-foreground">{t("events.noEvents")}</p>;
@@ -67,7 +67,7 @@ export default function EventDetail() {
         )}
       </div>
 
-      <Outlet context={{ event, eventId, hasAccess, user }} />
+      <Outlet context={{ event, eventId, hasAccess, hasFinanceAccess: hasFinance, user }} />
     </div>
   );
 }

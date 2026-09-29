@@ -6,14 +6,17 @@ import {
   MessageSquare, Ticket, Award, Megaphone, Medal, Wallet,
 } from "lucide-react";
 
-export default function EventModuleNav({ eventId }) {
+export default function EventModuleNav({ eventId, hasFinanceAccess = true }) {
   const sections = [
     {
       title: "Operação",
       modules: [
         { id: "people", label: t("adminSections.people"), icon: Users },
         { id: "partners", label: t("adminSections.partners"), icon: Handshake },
-        { id: "tickets", label: t("adminSections.tickets"), icon: Wallet },
+        // Módulo financeiro (Ingressos) — exclusivo do gerente (+admin).
+        ...(hasFinanceAccess
+          ? [{ id: "tickets", label: t("adminSections.tickets"), icon: Wallet }]
+          : []),
         { id: "certificates", label: t("adminSections.certificates"), icon: Award },
       ],
     },

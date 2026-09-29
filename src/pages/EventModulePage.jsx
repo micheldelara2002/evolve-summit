@@ -19,6 +19,7 @@ import EventStructureManager from "@/components/admin/EventStructureManager";
 import CallForPapersTab from "@/components/admin/cfp/CallForPapersTab";
 import PremiacaoTab from "@/components/admin/PremiacaoTab";
 import CommerceModule from "@/components/admin/commerce/CommerceModule";
+import FinanceRestrictedNotice from "@/components/admin/commerce/FinanceRestrictedNotice";
 
 const MODULE_TITLES = {
   people: t("adminSections.people"),
@@ -72,7 +73,7 @@ function RankingContent({ eventId }) {
 }
 
 export default function EventModulePage({ module }) {
-  const { event, eventId, hasAccess, user } = useOutletContext();
+  const { event, eventId, hasAccess, hasFinanceAccess, user } = useOutletContext();
   const navigate = useNavigate();
 
   return (
@@ -105,7 +106,13 @@ export default function EventModulePage({ module }) {
       {module === "certificates" && <CertificadosTab eventId={eventId} user={user} />}
       {module === "cfp" && <CallForPapersTab eventId={eventId} hasAccess={hasAccess} user={user} />}
       {module === "premiacao" && <PremiacaoTab eventId={eventId} hasAccess={hasAccess} user={user} />}
-      {module === "tickets" && <CommerceModule eventId={eventId} hasAccess={hasAccess} user={user} event={event} />}
+      {/* Módulo financeiro — exclusivo do gerente (+admin) */}
+      {module === "tickets" &&
+        (hasFinanceAccess ? (
+          <CommerceModule eventId={eventId} hasAccess={hasAccess} user={user} event={event} />
+        ) : (
+          <FinanceRestrictedNotice />
+        ))}
     </div>
   );
 }

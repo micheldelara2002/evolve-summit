@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { fulfillOrder, captureStripeFee, FULFILLING_STALE_MS } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 import { retrievePaymentIntent } from "../../shared/stripeClient.ts";
@@ -31,7 +31,9 @@ export default async function(req: Request): Promise<Response> {
 
     // Autorização: comprador, admin ou gestor/equipe do evento.
     if (payment.buyer_user_id !== user.id && user.role !== 'admin') {
-      const mgrAuth = await verifyEventMembership(base44, user, payment.event_id, EVENT_MANAGER_ROLES);
+      // 2026-09-29 — retry de emissão é FLUXO DE COMPRA: exclusivo do gerente
+      // (+admin). O comprador do pedido continua autorizado na condição acima.
+      const mgrAuth = await verifyEventMembership(base44, user, payment.event_id, EVENT_FINANCE_ROLES);
       if (!mgrAuth.authorized) {
         return Response.json({ error: 'Sem permissão.' }, { status: 403 });
       }

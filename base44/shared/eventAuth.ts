@@ -6,6 +6,11 @@
 //   import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 export const EVENT_MANAGER_ROLES = ['manager', 'team'];
+// Papel FINANCEIRO do evento (2026-09-29): comércio (preços/lotes/cupons),
+// relatórios financeiros, estornos e retry de emissão são exclusivos do
+// GERENTE (+admin). O 'team' mantém apenas o operacional (check-ins,
+// participantes, trilhas, certificados, avaliações, sorteios do evento).
+export const EVENT_FINANCE_ROLES = ['manager'];
 export const EVENT_CURATOR_ROLES = ['curator'];
 
 /**
@@ -176,6 +181,36 @@ export async function canManagePartnerData(base44, user, partnerId) {
   }
   const [byUser, byPerson] = await Promise.all(queries);
   return (byUser?.length > 0) || (byPerson?.length > 0);
+}
+
+/**
+ * Resolve os partner_ids em que o usuário tem vínculo ativo de representante
+ * (qualquer papel: partner_manager ou representative), por user_id ou
+ * person_id. Usado para escopar sorteios/histórico de parceiro.
+ */
+export async function resolveUserPartnerIds(base44, user) {
+  if (!user) return [];
+  const personId = await resolveUserPersonId(base44, user);
+  const queries = [
+    base44.asServiceRole.entities.PartnerRepresentative.filter({
+      user_id: user.id,
+      is_active: true,
+      is_deleted: false,
+    }),
+  ];
+  if (personId) {
+    queries.push(
+      base44.asServiceRole.entities.PartnerRepresentative.filter({
+        person_id: personId,
+        is_active: true,
+        is_deleted: false,
+      })
+    );
+  }
+  const [byUser, byPerson] = await Promise.all(queries);
+  const ids = new Set();
+  for (const r of [...(byUser || []), ...(byPerson || [])]) if (r.partner_id) ids.add(r.partner_id);
+  return [...ids];
 }
 
 /**

@@ -121,6 +121,8 @@ export default function RaffleModal({
         eventId,
         winnerCount: needCount,
         excludeIds: confirmedIds,
+        context,
+        contextRefId,
       });
       const newWinners = response.data.winners;
       const allWinners = [

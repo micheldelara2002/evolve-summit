@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess, lockTicketsForRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
@@ -46,12 +46,15 @@ export default async function(req: Request): Promise<Response> {
     const payment = payments[0];
     if (!payment) return Response.json({ error: "Pagamento não encontrado." }, { status: 404 });
 
-    // Authorization: buyer, admin, or event manager/team (gestão do evento).
+    // Authorization: buyer, admin, or event MANAGER (financeiro — 2026-09-29:
+    // estorno é fluxo de compra, exclusivo do gerente; 'team' não acessa).
+    let isEventManager = false;
     if (payment.buyer_user_id !== user.id && !isAdmin) {
-      const mgrAuth = await verifyEventMembership(base44, user, payment.event_id, EVENT_MANAGER_ROLES);
+      const mgrAuth = await verifyEventMembership(base44, user, payment.event_id, EVENT_FINANCE_ROLES);
       if (!mgrAuth.authorized) {
         return Response.json({ error: "Sem permissão." }, { status: 403 });
       }
+      isEventManager = true;
     }
 
     if (payment.status !== "succeeded") {
@@ -67,7 +70,9 @@ export default async function(req: Request): Promise<Response> {
     let override: any = null;
     try { override = event?.refund_policy ? JSON.parse(event.refund_policy) : null; } catch {}
     const policy = resolveRefundPolicy(override, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
-    const isManual = isAdmin && manualApprove;
+    // Override manual (fora da janela da política): admin OU gerente do evento
+    // (financeiro). O comprador nunca — manualApprove exige papel de gestão.
+    const isManual = manualApprove && (isAdmin || isEventManager);
 
     // ===== cancel_item: seleção + rateio proporcional do cupom =====
     // Valor líquido por item = unit_price − desconto do pedido rateado

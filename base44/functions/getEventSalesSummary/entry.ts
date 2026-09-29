@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { scanAll } from "../../shared/completeScan.ts";
 
 // Resumo de vendas de um evento para o gerente/admin: ingressos vendidos,
@@ -26,7 +26,7 @@ export default async function(req: Request): Promise<Response> {
     const { eventId } = body;
     if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
 
-    const { authorized } = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+    const { authorized } = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
     if (!authorized) return Response.json({ error: 'Sem permissão para este evento.' }, { status: 403 });
 
     const svc = base44.asServiceRole;
