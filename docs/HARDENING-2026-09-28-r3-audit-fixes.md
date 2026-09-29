@@ -78,10 +78,53 @@ em cancelamento manual, timeout de dispatch global).
   verificação em dry-run com resumo do drift e aplicação da correção.
 - Segredo legado `SCHEDULER_INTERNAL_TOKEN` removido manualmente pelo usuário.
 
+## Higiene de código — Lote 2026-09-29 (revisão: regras de negócio, código morto, duplicação, performance)
+
+**P0 (corrigido) — cursor `id` no completeScan truncava tudo silenciosamente.**
+Range query `$lt` no campo `id` não funciona no SDK (retorna 0 registros —
+validado na base). scanBatches/scanAll usados por TODAS as funções de
+reconciliação, métricas, expiração e exclusão de conta paravam na 1ª página
+sem erro. Reescrito em **skip-based** (skip+limit determinístico, stop em
+página curta). Migração obrigatória (id-cursor não é suportado).
+
+**P2 — Fim da duplicação entre funções backend (helpers shared):**
+- `completeScan.ts` (scanBatches/scanAll/fetchPage/countAll) substituiu os
+  ~7 loops de paginação manuais (reconcilers de métricas/participantes,
+  deleteMyAccount, disparo de campanhas, getEventOrders).
+- `sanitize.ts` (sanitizeText + sanitizeAllowlisted/sanitizeData) unificou
+  5 cópias de sanitizeText e 2 de sanitizeData com drift entre si.
+- `participantOwnership.ts`, `personPair.ts`, `partnerPublicView.ts`
+  (drift de shape entre as 2 cópias corrigido), `deterministicSurvivor.ts`
+  (tie-break created_date+id em toda deduplicação), `dayKey.ts`.
+- `paymentSanitizer` fundido em getEventOrders (consumidor único).
+
+**P3 — Código morto removido (19 exports, 3 arquivos):**
+- `lib/roleEngine.js` (arquivo) → getMyMemberships consolidado em `access.js`.
+- `src/utils/index.ts` (arquivo, test seed): getStageCredentials e derivados.
+- `base44/shared/paymentSanitizer.ts` (arquivo).
+- access.js: canManageEvent (contraditório), isRepresentative.
+- businessUtils.js: 6 exports mortos (período vive em businessPeriod.ts).
+- businessCounters.js: incLeads/incPersons (mantidos server-side).
+- personApi: listPartnerPersons; redeemService: sortPersonIds duplicado;
+  awardUtils: criteriaMaxTotal; utils: isIframe; apiClient: withTimeout;
+  profileCompleteness: COMPLETENESS_FIELDS; salesExport: buildSalesCsv;
+  participantApi/commerceApi: fetchPage duplicado.
+- Frontend: loops de paginação manuais de fetchAllEventParticipants/
+  fetchAllMyEventsParticipants unificados via scanPagedEndpoint.
+
+**Pendências abertas (P0/P1/P3 de UI):**
+- P0: acesso SDK direto a entidades travadas em redeService,
+  SessionRankingSection e AudienceSelector.
+- P1: consolidar access.js vs useEventAccess.
+- P3: componentizar PessoasTab, ConquistasTab e SessionDetail.
+
 ## Verificação
 
 - `vite build` OK (frontend).
 - Boot-test pós-conversão OK: saveRaffle, manageParticipant, issueCertificate,
   manageConnection respondem 400/401 conforme esperado (parse e deploy OK).
+- Boot-test 2026-09-29 OK: getEventOrders responde 400 ("eventId obrigatório")
+  após fusão do paymentSanitizer — parse e deploy OK.
 - Varreduras: zero `Deno.serve` em funções, zero imports de SDK antigo,
-  zero referências aos campos r1 removidos.
+  zero referências aos campos r1 removidos, zero imports dos módulos removidos
+  (roleEngine, paymentSanitizer, utils/index), zero while(true) não intencional.
