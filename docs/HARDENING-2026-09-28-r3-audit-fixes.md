@@ -112,10 +112,34 @@ página curta). Migração obrigatória (id-cursor não é suportado).
 - Frontend: loops de paginação manuais de fetchAllEventParticipants/
   fetchAllMyEventsParticipants unificados via scanPagedEndpoint.
 
-**Pendências abertas (P0/P1/P3 de UI):**
-- P0: acesso SDK direto a entidades travadas em redeService,
-  SessionRankingSection e AudienceSelector.
-- P1: consolidar access.js vs useEventAccess.
+**P0/P1 de UI — corrigidos em 2026-09-29 (lote P0/P1):**
+- **P0 redeService**: notificações 'sininho' da Rede migradas para o
+  manageConnection (server-side, na própria transição da conexão). Antes o
+  frontend criava campanha/recipient direto do SDK — o RLS de
+  NotificationRecipient.create é admin-only, então falhava SILENTES para
+  não-admins (e a resolução do destinatário varria User.list() do cliente).
+  Agora: best-effort (conexão prevalece se a notificação falhar — regra
+  aprovada), idempotentes por transição de estado (replays não re-notificam),
+  destinatário resolvido por filtro de e-mail no servidor; participante sem
+  conta de app não gera notificação (regra de negócio).
+- **P0 SessionRankingSection**: avaliações/presenças (RLS admin-only) lidas
+  via nova função getSessionRanking (valida EventMembership manager/team do
+  PRÓPRIO evento ou admin; scanAll paginado). Regra aprovada: admin vê tudo;
+  gerente/equipe veem todas as avaliações dos eventos deles; palestrante vê
+  apenas as próprias sessões (fluxo já coberto por getSpeakerSessionFeedback
+  com posse validada server-side, inclusive em eventos distintos).
+- **P0 AudienceSelector**: contagem EXATA de destinatários (regra aprovada)
+  via nova função countCampaignAudience — mesma resolução de audiência do
+  disparo, extraída para shared/campaignAudience.ts (fonte ÚNICA; zero
+  duplicação de lógica), count-only sem writes, autorização espelhada,
+  orçamento de tempo com sinalização de contagem parcial ("N+").
+- **P1**: useEventAccess fundido em access.js (módulo único de permissões),
+  cache compartilhado de memberships (queryKey "my_memberships") entre
+  AudienceSelector e telas/guards de gestão; src/hooks/useEventAccess.js
+  removido; importadores migrados (EventDetail, EventPayout,
+  EventPeopleManage).
+
+**Pendências abertas (P3 de UI):**
 - P3: componentizar PessoasTab, ConquistasTab e SessionDetail.
 
 ## Verificação

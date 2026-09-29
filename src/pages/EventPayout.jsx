@@ -3,7 +3,7 @@ import { ArrowLeft, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EmptyState from "@/components/ui/EmptyState";
 import PayoutPanel from "@/components/pagamentos/PayoutPanel";
-import { useEventAccess } from "@/hooks/useEventAccess";
+import { useEventAccess } from "@/lib/access";
 
 // "Receber minhas vendas" — painel do organizador do evento (gerente/equipe
 // com membership, ou admin). O organizador conecta a conta Stripe da empresa,

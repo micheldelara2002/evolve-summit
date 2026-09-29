@@ -1,4 +1,7 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 
 // ── Admin ───────────────────────────────────────────────────────
 export function isAdmin(user) {
@@ -88,4 +91,52 @@ export async function getMyMemberships(userId) {
     is_active: true,
     is_deleted: false,
   });
+}
+
+// ── Event access (React binding) ─────────────────────────────────
+// P1 (2026-09-29) — useEventAccess fundido neste módulo (extinto
+// src/hooks/useEventAccess.js): UMA única fonte de permissões e cache
+// COMPARTILHADO de memberships (queryKey "my_memberships") entre todas as
+// telas (AudienceSelector, guards e páginas de gestão do evento).
+const MANAGEMENT_ROLES = ["manager", "team"];
+
+/**
+ * Validação de contexto de evento. Retorna:
+ *   - event: o registro do evento (ou null)
+ *   - memberships: EventMemberships ativas do usuário neste evento
+ *   - hasAccess: true se admin OU se possui papel de gestão (manager/team)
+ *   - loading: true enquanto busca evento + memberships
+ */
+export function useEventAccess(eventId) {
+  const { user } = useAuth();
+
+  const { data: event, isLoading: eventLoading } = useQuery({
+    queryKey: ["event", eventId],
+    queryFn: async () => {
+      const list = await base44.entities.Event.filter({ id: eventId });
+      return list[0] || null;
+    },
+    enabled: !!eventId,
+  });
+
+  const { data: memberships = [], isLoading: membershipsLoading } = useQuery({
+    queryKey: ["my_memberships", user?.id],
+    queryFn: () => getMyMemberships(user.id),
+    enabled: !!user?.id,
+  });
+
+  const eventMemberships = useMemo(
+    () => (eventId ? memberships.filter((m) => m.event_id === eventId) : []),
+    [memberships, eventId]
+  );
+
+  const hasManagementRole = eventMemberships.some((m) => MANAGEMENT_ROLES.includes(m.role));
+  const hasAccess = isAdmin(user) || hasManagementRole;
+
+  return {
+    event,
+    memberships: eventMemberships,
+    hasAccess,
+    loading: eventLoading || membershipsLoading,
+  };
 }

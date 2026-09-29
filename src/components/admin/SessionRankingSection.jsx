@@ -1,6 +1,9 @@
 /**
- * Ranking de Sessões para o Gerente do Evento — indicadores por sessão
+ * Ranking de Sessões para a Gestão do Evento — indicadores por sessão
  * com score ponderado (média * taxa). Somente leitura.
+ * P0 (2026-09-29): dados lidos via getSessionRanking (backend valida
+ * EventMembership manager/team do próprio evento ou admin — antes a leitura
+ * direta do SDK só funcionava para admin).
  * Mínimo 5 avaliações para ranking principal; abaixo = "Em observação".
  */
 import { useMemo } from "react";
@@ -12,25 +15,19 @@ import { buildSessionMetrics } from "@/lib/rankingUtils";
 const MEDAL = ["#FFD700", "#C0C0C0", "#CD7F32"];
 
 export default function SessionRankingSection({ eventId, sessions = [] }) {
-  const { data: reviews = [], isLoading } = useQuery({
-    queryKey: ["session-ranking-reviews", eventId],
+  // P0 — avaliações/presenças (RLS admin-only) lidas via backend.
+  const { data: rankingData, isLoading } = useQuery({
+    queryKey: ["session-ranking", eventId],
     queryFn: async () => {
-      if (!eventId) return [];
-      const all = await base44.entities.SessionReview.filter({ event_id: eventId });
-      return all;
+      if (!eventId) return { reviews: [], attendances: [] };
+      const res = await base44.functions.invoke("getSessionRanking", { eventId });
+      return res.data || { reviews: [], attendances: [] };
     },
     enabled: !!eventId,
   });
 
-  const { data: attendances = [] } = useQuery({
-    queryKey: ["session-ranking-attendances", eventId],
-    queryFn: async () => {
-      if (!eventId) return [];
-      const all = await base44.entities.SessionAttendance.filter({ event_id: eventId });
-      return all;
-    },
-    enabled: !!eventId,
-  });
+  const reviews = rankingData?.reviews || [];
+  const attendances = rankingData?.attendances || [];
 
   const metrics = useMemo(
     () => buildSessionMetrics(sessions, reviews, attendances),

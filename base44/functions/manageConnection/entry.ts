@@ -20,6 +20,60 @@ async function getUserPersonIds(svc, user) {
   return persons.map((p) => p.id);
 }
 
+// P0 (2026-09-29) — Notificação 'sininho' da Rede, criada SERVER-SIDE na própria
+// transação da conexão. Antes o frontend criava campanha/recipient direto do
+// SDK após o manageConnection — mas o RLS de NotificationRecipient.create é
+// admin-only: a notificação falhava SILENCIOSAMENTE para não-admins (e a
+// resolução do destinatário varria User.list() do cliente).
+//
+// Idempotência: disparada APENAS em transições de estado (request_sent cria o
+// pedido uma única vez; accepted só no pending→accepted) — replays
+// (already_pending/already_accepted) não notificam de novo.
+// BEST-EFFORT: erro na notificação NÃO desfaz a conexão (regra de negócio).
+async function sendConnectionNotification(svc, user, eventId, personId, { title, message, ctaLabel, ctaTarget }) {
+  try {
+    if (!personId) return;
+    const persons = await svc.entities.Person.filter({ id: personId });
+    const person = persons?.[0];
+    const email = person?.contact_email;
+    if (!email) return;
+    // Destinatário resolvido por filtro de e-mail no servidor — nunca User.list().
+    const variants = email === email.toLowerCase() ? [email] : [email, email.toLowerCase()];
+    const users = await svc.entities.User.filter({
+      email: { $in: variants }, account_status: { $ne: "deleted" },
+    });
+    const target = users?.[0];
+    if (!target) return; // sem conta de app → sem notificação (regra de negócio)
+    const now = new Date().toISOString();
+    const campaign = await svc.entities.NotificationCampaign.create({
+      scope_type: "event",
+      scope_event_id: eventId,
+      sender_user_id: user.id,
+      title,
+      message,
+      type: "informativa",
+      audience_type: "manual",
+      priority: "normal",
+      status: "sent",
+      sent_at: now,
+      recipients_count: 1,
+      delivered_count: 1,
+      cta_label: ctaLabel || "",
+      cta_target: ctaTarget || "",
+    });
+    await svc.entities.NotificationRecipient.create({
+      campaign_id: campaign.id,
+      recipient_user_id: target.id,
+      recipient_name: person.full_name || "",
+      recipient_email: (target.email || email).toLowerCase(),
+      delivery_status: "sent",
+      delivered_at: now,
+    });
+  } catch (e) {
+    console.error("rede notification failed:", e);
+  }
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -103,6 +157,13 @@ async function handleSendRequest(base44, { eventId, requesterPersonId, requester
         accepterName: safeReqName,
         accepterParticipantId: requesterPart.id,
       });
+      // Sininho: quem tinha o pedido reverso pendente descobre que foi aceito.
+      await sendConnectionNotification(svc, user, eventId, receiverPersonId, {
+        title: "Conexão aceita!",
+        message: `${safeReqName} aceitou seu pedido de conexão.`,
+        ctaLabel: "Iniciar conversa",
+        ctaTarget: `/evento/${eventId}`,
+      });
       return Response.json({ ok: true, reason: "auto_accepted" });
     }
     return Response.json({ ok: false, reason: "already_pending" });
@@ -116,6 +177,14 @@ async function handleSendRequest(base44, { eventId, requesterPersonId, requester
     receiver_person_id: receiverPersonId,
     receiver_name: safeRcvName,
     status: "pending",
+  });
+
+  // Sininho: o destinatário descobre o novo pedido — best-effort.
+  await sendConnectionNotification(svc, user, eventId, receiverPersonId, {
+    title: "Novo pedido de conexão",
+    message: `${safeReqName} quer se conectar com você.`,
+    ctaLabel: "Ver pedidos",
+    ctaTarget: `/evento/${eventId}`,
   });
 
   return Response.json({ ok: true, reason: "request_sent" });
@@ -165,6 +234,14 @@ async function handleAcceptRequest(base44, { requestId, accepterPersonId, accept
     accepterPersonId: request.receiver_person_id,
     accepterName: safeAccepterName,
     accepterParticipantId: receiverPart.id,
+  });
+
+  // Sininho: o requester descobre que seu pedido foi aceito — best-effort.
+  await sendConnectionNotification(svc, user, effectiveEventId, request.requester_person_id, {
+    title: "Conexão aceita!",
+    message: `${safeAccepterName} aceitou seu pedido de conexão.`,
+    ctaLabel: "Iniciar conversa",
+    ctaTarget: `/evento/${effectiveEventId}`,
   });
 
   return Response.json({ ok: true, reason: "accepted" });

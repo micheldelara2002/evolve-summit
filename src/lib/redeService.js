@@ -1,69 +1,19 @@
 /**
  * Serviço de Rede — conexões estilo LinkedIn + chat 1:1 no contexto do evento.
- * Integra notificações (sininho) e motor de pontuação (conexao_aceita).
+ *
+ * P0 (2026-09-29) — Notificações 'sininho' migradas para o backend: o
+ * manageConnection cria campanha/recipient na própria transação da conexão,
+ * server-side (o RLS de NotificationRecipient.create é admin-only — a criação
+ * direta do frontend falhava silenciosamente para não-admins, e a resolução do
+ * destinatário varria User.list() do cliente). Best-effort: falha na notificação
+ * NÃO desfaz a conexão.
  */
 import { base44 } from "@/api/base44Client";
-import { sanitizeText } from "@/utils/sanitize";
-import { fetchPersonsByIds } from "@/lib/personApi";
-
-/** Busca user_id pelo email da Person (para entregar notificação no sininho). */
-async function findUserIdByEmail(email) {
-  if (!email) return null;
-  try {
-    const users = await base44.entities.User.list();
-    const u = users.find((x) => x.email?.toLowerCase() === email.toLowerCase());
-    return u?.id || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Busca Person por ID (para notificar o requester ao aceitar). */
-async function getPersonById(personId, eventId) {
-  try {
-    const persons = await fetchPersonsByIds([eventId], [personId]);
-    return persons?.[0] || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Cria NotificationCampaign + NotificationRecipient para um único destinatário (sininho). */
-async function sendDirectNotification({ eventId, recipientPerson, title, message, ctaLabel, ctaTarget }) {
-  if (!recipientPerson?.contact_email) return;
-  const userId = await findUserIdByEmail(recipientPerson.contact_email);
-  if (!userId) return;
-  try {
-    const campaign = await base44.entities.NotificationCampaign.create({
-      scope_type: "event",
-      scope_event_id: eventId,
-      title,
-      message,
-      type: "informativa",
-      audience_type: "manual",
-      priority: "normal",
-      status: "sent",
-      sent_at: new Date().toISOString(),
-      recipients_count: 1,
-      delivered_count: 1,
-      cta_label: ctaLabel || undefined,
-      cta_target: ctaTarget || undefined,
-    });
-    await base44.entities.NotificationRecipient.create({
-      campaign_id: campaign.id,
-      recipient_user_id: userId,
-      recipient_name: recipientPerson.full_name,
-      delivery_status: "sent",
-      delivered_at: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.error("rede notification failed:", e);
-  }
-}
 
 /**
  * Envia pedido de conexão.
- * Regras: não para si, não duplica, auto-aceita se há pedido reverso pendente.
+ * Regras (server-side): não para si, não duplica, auto-aceita se há pedido
+ * reverso pendente. Notificações criadas pelo próprio backend.
  * @returns {Promise<{ ok: boolean, reason: string }>}
  */
 export async function sendConnectionRequest({ eventId, requesterPerson, receiverPerson, requesterParticipantId }) {
@@ -76,32 +26,7 @@ export async function sendConnectionRequest({ eventId, requesterPerson, receiver
     receiverName: receiverPerson.full_name,
     requesterParticipantId,
   });
-  const result = response.data;
-
-  if (result.ok) {
-    const safeReqName = sanitizeText(requesterPerson.full_name);
-    if (result.reason === "request_sent") {
-      await sendDirectNotification({
-        eventId,
-        recipientPerson: receiverPerson,
-        title: "Novo pedido de conexão",
-        message: `${safeReqName} quer se conectar com você.`,
-        ctaLabel: "Ver pedidos",
-        ctaTarget: `/evento/${eventId}`,
-      });
-    } else if (result.reason === "auto_accepted") {
-      await sendDirectNotification({
-        eventId,
-        recipientPerson: receiverPerson,
-        title: "Conexão aceita!",
-        message: `${safeReqName} aceitou seu pedido de conexão.`,
-        ctaLabel: "Iniciar conversa",
-        ctaTarget: `/evento/${eventId}`,
-      });
-    }
-  }
-
-  return result;
+  return response.data;
 }
 
 export async function acceptConnectionRequest({ request, eventId, accepterPerson, accepterParticipantId }) {
@@ -113,24 +38,7 @@ export async function acceptConnectionRequest({ request, eventId, accepterPerson
     accepterName: accepterPerson.full_name,
     accepterParticipantId,
   });
-  const result = response.data;
-
-  if (result.ok && result.reason === "accepted") {
-    const safeAccepterName = sanitizeText(accepterPerson.full_name);
-    const requesterPerson = await getPersonById(request.requester_person_id, eventId);
-    if (requesterPerson) {
-      await sendDirectNotification({
-        eventId,
-        recipientPerson: requesterPerson,
-        title: "Conexão aceita!",
-        message: `${safeAccepterName} aceitou seu pedido de conexão.`,
-        ctaLabel: "Iniciar conversa",
-        ctaTarget: `/evento/${eventId}`,
-      });
-    }
-  }
-
-  return result;
+  return response.data;
 }
 
 export async function refuseConnectionRequest({ requestId, myPersonId: _myPersonId = null }) {

@@ -2,7 +2,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { isAdmin } from "@/lib/access";
 import { useParams, useNavigate, Link, Outlet } from "react-router-dom";
 import { t } from "@/lib/i18n";
-import { useEventAccess } from "@/hooks/useEventAccess";
+import { useEventAccess } from "@/lib/access";
 import StatusBadge from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil } from "lucide-react";
