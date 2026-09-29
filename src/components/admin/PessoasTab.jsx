@@ -1,95 +1,29 @@
 /**
- * Tela única "Pessoas do Evento"
+ * Tela única "Pessoas do Evento" (container — P3 componentização).
  * Fluxo: busca Person global → associa ao evento (upsert Participant)
  *        ou cria nova Person e associa automaticamente.
- * - Chips de papéis, coluna parceiro, menu de contexto — mantidos.
+ * Tabela/ferramentas e diálogos extraídos em ./pessoas/*.
  * - partner_rep NÃO é atribuído manualmente aqui (vem da tela de Partner).
  */
 import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { searchPersons, saveManagedPerson } from "@/lib/personApi";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { logAudit } from "@/lib/audit";
-import { incParticipantCounter, decParticipantCounter, moveParticipantRoleCounter } from "@/lib/businessCounters";
+import { decParticipantCounter } from "@/lib/businessCounters";
 import { t } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, UserCog, Upload, Download, MoreVertical, UserPlus, QrCode } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
-import PersonFormDialog from "@/components/admin/PersonFormDialog";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 import QRScanner from "@/components/participante/QRScanner";
 import { checkinTicket } from "@/lib/commerceApi";
-import {
-  createParticipant,
-  updateParticipant,
-  softDeleteParticipant,
-  getEventReviewers,
-  getReviewerMembership,
-  findPersonIdsByDocument,
-} from "@/lib/participantApi";
+import { updateParticipant, softDeleteParticipant, getEventReviewers } from "@/lib/participantApi";
+import PessoasToolbar from "@/components/admin/pessoas/PessoasToolbar";
+import PessoasTable from "@/components/admin/pessoas/PessoasTable";
+import AddPersonToEventDialog from "@/components/admin/pessoas/AddPersonToEventDialog";
+import EditParticipantDataDialog from "@/components/admin/pessoas/EditParticipantDataDialog";
+import EditRolesDialog from "@/components/admin/pessoas/EditRolesDialog";
 
-// ── Role display ──────────────────────────────────────────────────────────────
-const ROLE_COLORS = {
-  attendee:    "bg-slate-100 text-slate-700",
-  speaker:     "bg-violet-100 text-violet-700",
-  team:        "bg-emerald-100 text-emerald-700",
-  manager:     "bg-amber-100 text-amber-700",
-  partner_rep: "bg-sky-100 text-sky-700",
-  reviewer:    "bg-cyan-100 text-cyan-700",
-};
-
-const ROLE_LABELS = {
-  attendee:    "Participante",
-  speaker:     "Palestrante",
-  team:        "Equipe",
-  manager:     "Gerente",
-  partner_rep: "Representante",
-  reviewer:    "Avaliador",
-};
-
-// ── Role rules ────────────────────────────────────────────────────────────────
-// Only allowed accumulation: speaker + partner_rep.
-// All others are mutually exclusive.
-function getDisabledRoles(selected) {
-  const disabled = new Set();
-  if (selected.includes("manager"))     { disabled.add("team"); disabled.add("speaker"); }
-  if (selected.includes("team"))        { disabled.add("manager"); disabled.add("speaker"); }
-  if (selected.includes("speaker"))     { disabled.add("manager"); disabled.add("team"); }
-  // attendee is always implicit, never in disabled
-  return disabled;
-}
-
-// ── Build display row ─────────────────────────────────────────────────────────
-function buildRow(participant, eventPartners, allPartners) {
-  // Derive roles list for display
-  const roles = [];
-  if (participant.role_in_event && participant.role_in_event !== "attendee") {
-    roles.push(participant.role_in_event);
-  }
-  if (roles.length === 0) roles.push("attendee");
-
-  // Partner name from EventPartner → Partner lookup via person_id (best effort)
-  // partner_rep participants have person_id; find EventPartner via... we don't have direct link here.
-  // Use person_id to find PartnerRepresentative → partner_id → EventPartner → Partner name
-  // For now: show partner from EventPartner list if participant is partner_rep
-  let partnerName = "";
-  // We'll resolve this in the component with a map passed in
-
-  return { ...participant, derivedRoles: roles, partnerName };
-}
-
-// ── Main export ───────────────────────────────────────────────────────────────
 export default function PessoasTab({
   eventId, participants, sessions = [], hasAccess,
   onShowImport, showImport, onHideImport,
@@ -143,19 +77,19 @@ export default function PessoasTab({
   });
   const reviewerPersonIds = useMemo(() => new Set(reviewerMemberships.map((m) => m.person_id).filter(Boolean)), [reviewerMemberships]);
 
-  const partnerMap = Object.fromEntries(allPartners.map((p) => [p.id, p]));
-  const eventPartnerSet = new Set(eventPartners.map((ep) => ep.partner_id));
+  const partnerMap = useMemo(() => Object.fromEntries(allPartners.map((p) => [p.id, p])), [allPartners]);
+  const eventPartnerSet = useMemo(() => new Set(eventPartners.map((ep) => ep.partner_id)), [eventPartners]);
 
   // Build partner name for partner_rep participants
   // person_id → PartnerRepresentative → partner_id → EventPartner (must be in event) → Partner.trade_name
-  function getPartnerName(participant) {
+  const getPartnerName = useMemo(() => (participant) => {
     if (participant.role_in_event !== "partner_rep") return "";
     if (!participant.person_id) return "";
     const rep = globalReps.find((r) => r.person_id === participant.person_id);
     if (!rep) return "";
     if (!eventPartnerSet.has(rep.partner_id)) return "";
     return partnerMap[rep.partner_id]?.trade_name || "";
-  }
+  }, [globalReps, eventPartnerSet, partnerMap]);
 
   const rows = useMemo(() => participants.map((p) => {
     const roles = [];
@@ -163,11 +97,11 @@ export default function PessoasTab({
     if (p.role_in_event && p.role_in_event !== "attendee") roles.push(p.role_in_event);
     if (roles.length === 0) roles.push("attendee");
     return { ...p, derivedRoles: roles, partnerName: getPartnerName(p) };
-   
-  }), [participants, globalReps, eventPartners, allPartners, reviewerPersonIds]);
+
+  }), [participants, getPartnerName, reviewerPersonIds]);
 
   // Unique partners in this event (for filter dropdown)
-  const partnerNamesInEvent = [...new Set(rows.map((r) => r.partnerName).filter(Boolean))];
+  const partnerNamesInEvent = useMemo(() => [...new Set(rows.map((r) => r.partnerName).filter(Boolean))], [rows]);
 
   const filtered = useMemo(() => rows.filter((p) => {
     const q = search.toLowerCase();
@@ -274,152 +208,33 @@ export default function PessoasTab({
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Nome, CPF ou e-mail..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
-        </div>
-        <Select value={filterRole} onValueChange={setFilterRole}>
-          <SelectTrigger className="h-9 w-36"><SelectValue placeholder="Papel" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos papéis</SelectItem>
-            <SelectItem value="attendee">Participante</SelectItem>
-            <SelectItem value="speaker">Palestrante</SelectItem>
-            <SelectItem value="team">Equipe</SelectItem>
-            <SelectItem value="manager">Gerente</SelectItem>
-            <SelectItem value="reviewer">Avaliador</SelectItem>
-            <SelectItem value="partner_rep">Representante</SelectItem>
-          </SelectContent>
-        </Select>
-        {partnerNamesInEvent.length > 0 && (
-          <Select value={filterPartner} onValueChange={setFilterPartner}>
-            <SelectTrigger className="h-9 w-36"><SelectValue placeholder="Parceiro" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos parceiros</SelectItem>
-              {partnerNamesInEvent.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        <div className="flex gap-2 ml-auto">
-          {hasAccess && (
-            <Button variant="outline" size="sm" className="gap-1" onClick={() => setScannerOpen(true)}>
-              <QrCode className="w-4 h-4" /> Check-in QR
-            </Button>
-          )}
-          <Button variant="outline" size="sm" className="gap-1" onClick={handleExportCsv}>
-            <Download className="w-4 h-4" /> Exportar
-          </Button>
-          {hasAccess && (
-            <Button variant="outline" size="sm" className="gap-1" onClick={onShowImport}>
-              <Upload className="w-4 h-4" /> CSV
-            </Button>
-          )}
-          {hasAccess && (
-            <Button size="sm" className="gap-1" onClick={() => setAddDialog(true)}>
-              <UserPlus className="w-4 h-4" /> Adicionar pessoa
-            </Button>
-          )}
-        </div>
-      </div>
+      <PessoasToolbar
+        search={search}
+        onSearchChange={setSearch}
+        filterRole={filterRole}
+        onFilterRoleChange={setFilterRole}
+        filterPartner={filterPartner}
+        onFilterPartnerChange={setFilterPartner}
+        partnerNames={partnerNamesInEvent}
+        hasAccess={hasAccess}
+        onScan={() => setScannerOpen(true)}
+        onExport={handleExportCsv}
+        onImport={onShowImport}
+        onAdd={() => setAddDialog(true)}
+      />
 
-      {/* Table */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/60 text-left">
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Nome</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">CPF</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">E-mail</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Telefone</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Papéis</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">Parceiro</th>
-                {hasAccess && <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-center">Check-in</th>}
-                {hasAccess && <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground text-right">Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((pessoa, idx) => (
-                <tr key={pessoa.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"} hover:bg-muted/40 transition-colors`}>
-                  <td className="px-3 py-2.5 text-sm font-medium">{pessoa.full_name}</td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground hidden sm:table-cell font-mono">{pessoa.cpf || "—"}</td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell max-w-[160px] truncate">{pessoa.email}</td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground hidden lg:table-cell">{pessoa.phone || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-1">
-                      {pessoa.derivedRoles.map((role) => (
-                        <span key={role} className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[role] || "bg-muted text-muted-foreground"}`}>
-                          {ROLE_LABELS[role] || role}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{pessoa.partnerName || "—"}</td>
-                  {hasAccess && (
-                    <td className="px-3 py-2.5 text-center">
-                      <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="inline-flex items-center justify-center">
-                              <Switch
-                                checked={pessoa.checkin_status === "confirmed"}
-                                onCheckedChange={() => handleToggleCheckin(pessoa)}
-                              />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            {pessoa.checkin_status === "confirmed"
-                              ? `Confirmado em ${pessoa.checkin_at ? new Date(pessoa.checkin_at).toLocaleString("pt-BR") : ""} — clique para desfazer`
-                              : "Pendente — clique para confirmar check-in"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </td>
-                  )}
-                  {hasAccess && (
-                    <td className="px-3 py-2.5 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditDataDialog(pessoa)}>
-                            <Pencil className="w-4 h-4 mr-2" /> Editar dados
-                          </DropdownMenuItem>
-                          {pessoa.role_in_event !== "partner_rep" && (
-                            <DropdownMenuItem onClick={() => setEditRolesDialog(pessoa)}>
-                              <UserCog className="w-4 h-4 mr-2" /> Editar papéis
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem className="text-destructive" onClick={() => setRemoveTarget(pessoa)}>
-                            <Trash2 className="w-4 h-4 mr-2" /> Remover do evento
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <p className="text-center text-muted-foreground py-8 text-sm">{t("common.noData")}</p>
-        )}
-      </div>
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{filtered.length} pessoa(s)</span>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
-            <span className="px-2">pág. {page}/{totalPages}</span>
-            <Button size="sm" variant="outline" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Próxima</Button>
-          </div>
-        )}
-      </div>
+      <PessoasTable
+        rows={paginated}
+        filteredCount={filtered.length}
+        totalPages={totalPages}
+        page={page}
+        onPageChange={setPage}
+        hasAccess={hasAccess}
+        onToggleCheckin={handleToggleCheckin}
+        onEditData={setEditDataDialog}
+        onEditRoles={setEditRolesDialog}
+        onRemove={setRemoveTarget}
+      />
 
       {/* Dialogs */}
       {addDialog && (
@@ -473,402 +288,5 @@ export default function PessoasTab({
         onConfirm={() => handleRemove(removeTarget)}
       />
     </div>
-  );
-}
-
-// ── Add person to event ───────────────────────────────────────────────────────
-// Step 1: search existing Person
-// Step 2a: associate found person
-// Step 2b: create new Person (via PersonFormDialog) then associate
-function AddPersonToEventDialog({ eventId, existingParticipants, user, onClose, onSuccess }) {
-  const [step, setStep] = useState("search"); // "search" | "create" | "confirm_dup"
-  const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState(null); // null = not searched yet
-  const [searching, setSearching] = useState(false);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [associating, setAssociating] = useState(false);
-  const [dupCandidate, setDupCandidate] = useState(null); // potential duplicate to confirm
-
-  const alreadyInEvent = new Set(
-    existingParticipants.filter((p) => p.person_id).map((p) => p.person_id)
-  );
-  const alreadyByEmail = new Set(
-    existingParticipants.map((p) => p.email).filter(Boolean)
-  );
-
-  const handleSearch = async () => {
-    if (!searchQ.trim()) return;
-    setSearching(true);
-    const q = searchQ.trim().toLowerCase();
-    // Search Person global — via backend (admin OU gestor do evento) — Lote 4
-    const all = await searchPersons(eventId, q);
-    const results = all;
-    // Document search: only if query has digits, scoped to persons already loaded
-    let extra = [];
-    const digits = q.replace(/\D/g, "");
-    if (digits.length >= 3) {
-      const { person_ids } = await findPersonIdsByDocument(eventId, digits);
-      const docPersonIds = new Set(person_ids || []);
-      extra = all.filter((p) => docPersonIds.has(p.id) && !results.find((r) => r.id === p.id));
-    }
-    setSearchResults([...results, ...extra]);
-    setSearching(false);
-  };
-
-  const associatePerson = async (person) => {
-    // Check if already in event
-    if (alreadyInEvent.has(person.id)) {
-      toast.error("Esta pessoa já está associada a este evento.");
-      return;
-    }
-    if (alreadyByEmail.has(person.contact_email) && person.contact_email) {
-      toast.error("Já existe um participante com este e-mail neste evento.");
-      return;
-    }
-    setAssociating(true);
-    const created = await createParticipant(eventId, {
-      event_id: eventId,
-      full_name: person.full_name,
-      email: person.contact_email || "",
-      phone: person.phone || "",
-      company: person.company || "",
-      job_title: person.job_title || "",
-      bio: person.bio || "",
-      linkedin: person.linkedin || "",
-      person_id: person.id,
-      role_in_event: "attendee",
-      registration_status: "registered",
-      created_day: new Date().toISOString().slice(0, 10),
-      is_deleted: false,
-    });
-    await incParticipantCounter(eventId, created?.created_date, "attendee");
-    logAudit({ event_id: eventId, action: "create", entity_type: "Participant", entity_id: person.id, user,
-      details: { field: "vínculo_evento", new_value: "associado" } });
-    setAssociating(false);
-    onSuccess();
-    onClose();
-    toast.success("Pessoa associada ao evento.");
-  };
-
-  const handlePersonCreated = async (newPerson) => {
-    // After creating Person, associate immediately
-    await associatePerson(newPerson);
-  };
-
-  if (step === "create") {
-    return (
-      <PersonFormDialog
-        person={null}
-        eventId={eventId}
-        onClose={() => setStep("search")}
-        onSaved={handlePersonCreated}
-      />
-    );
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Adicionar pessoa ao evento</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 py-1">
-          <p className="text-xs text-muted-foreground">
-            Busque uma pessoa já cadastrada no sistema ou crie uma nova.
-          </p>
-
-          {/* Search box */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="Nome, e-mail ou documento..."
-              value={searchQ}
-              onChange={(e) => { setSearchQ(e.target.value); setSearchResults(null); }}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="flex-1"
-            />
-            <Button type="button" variant="outline" onClick={handleSearch} disabled={searching || !searchQ.trim()}>
-              {searching ? "..." : <Search className="w-4 h-4" />}
-            </Button>
-          </div>
-
-          {/* Results */}
-          {searchResults !== null && (
-            <div className="space-y-1 max-h-56 overflow-y-auto">
-              {searchResults.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-3">
-                  Nenhuma pessoa encontrada.
-                </p>
-              ) : (
-                searchResults.map((p) => {
-                  const inEvent = alreadyInEvent.has(p.id) || (p.contact_email && alreadyByEmail.has(p.contact_email));
-                  return (
-                    <div
-                      key={p.id}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-colors ${inEvent ? "opacity-50 border-border" : "border-border hover:bg-muted/40 cursor-pointer"}`}
-                      onClick={() => !inEvent && associatePerson(p)}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{p.full_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{p.contact_email || "sem e-mail"}</p>
-                      </div>
-                      {inEvent ? (
-                        <span className="text-xs text-muted-foreground shrink-0 ml-2">Já no evento</span>
-                      ) : (
-                        <Button size="sm" variant="outline" className="shrink-0 ml-2" disabled={associating} onClick={(e) => { e.stopPropagation(); associatePerson(p); }}>
-                          Associar
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
-          <Button variant="outline" className="flex-1 gap-1" onClick={() => setStep("create")}>
-            <Plus className="w-4 h-4" /> Criar nova pessoa
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Edit participant data (updates Participant record + optionally syncs Person) ──
-function EditParticipantDataDialog({ participant, eventId, user, onClose, onSuccess }) {
-  const [form, setForm] = useState({
-    full_name: participant.full_name || "",
-    email: participant.email || "",
-    cpf: participant.cpf || "",
-    phone: participant.phone || "",
-    company: participant.company || "",
-    job_title: participant.job_title || "",
-    linkedin: participant.linkedin || "",
-    instagram: participant.instagram || "",
-    youtube: participant.youtube || "",
-    website: participant.website || "",
-    bio: participant.bio || "",
-  });
-  const [saving, setSaving] = useState(false);
-  const update = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    await updateParticipant(eventId, participant.id, { ...form, cpf: form.cpf.replace(/\D/g, "") });
-    // If linked to a Person, sync name/email/phone to Person global (via backend — Lote 4)
-    if (participant.person_id) {
-      await saveManagedPerson({
-        eventId,
-        personId: participant.person_id,
-        data: {
-          full_name: form.full_name,
-          contact_email: form.email,
-          phone: form.phone,
-          company: form.company,
-          job_title: form.job_title,
-          bio: form.bio,
-          linkedin: form.linkedin,
-        },
-      });
-    }
-    logAudit({ event_id: eventId, action: "update", entity_type: "Participant", entity_id: participant.id, user });
-    setSaving(false);
-    onSuccess();
-    onClose();
-    toast.success(t("events.saveSuccess"));
-  };
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="font-display">Editar dados — {participant.full_name}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1"><Label>Nome *</Label><Input value={form.full_name} onChange={(e) => update("full_name", e.target.value)} required /></div>
-            <div className="col-span-2 space-y-1"><Label>E-mail</Label><Input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></div>
-            <div className="space-y-1"><Label>CPF</Label><Input value={form.cpf} onChange={(e) => update("cpf", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Telefone</Label><Input value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Empresa</Label><Input value={form.company} onChange={(e) => update("company", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Cargo</Label><Input value={form.job_title} onChange={(e) => update("job_title", e.target.value)} /></div>
-            <div className="space-y-1"><Label>LinkedIn</Label><Input value={form.linkedin} onChange={(e) => update("linkedin", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Instagram</Label><Input value={form.instagram} onChange={(e) => update("instagram", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Youtube</Label><Input value={form.youtube} onChange={(e) => update("youtube", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Site</Label><Input value={form.website} onChange={(e) => update("website", e.target.value)} /></div>
-            <div className="col-span-2 space-y-1"><Label>Sobre mim</Label><Textarea value={form.bio} onChange={(e) => update("bio", e.target.value)} rows={2} /></div>
-          </div>
-          {participant.person_id && (
-            <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-              Esta pessoa está vinculada a um cadastro global. As alterações serão sincronizadas automaticamente.
-            </p>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-            <Button type="submit" disabled={saving}>{saving ? t("common.loading") : t("common.save")}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Edit roles dialog ─────────────────────────────────────────────────────────
-// partner_rep is NOT assignable here; shown as read-only chip if present.
-function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSuccess }) {
-  const isPartnerRep = pessoa.role_in_event === "partner_rep";
-
-  const [roles, setRoles] = useState(() => {
-    if (isPartnerRep) return []; // managed elsewhere
-    const r = [];
-    if (["speaker", "team", "manager"].includes(pessoa.role_in_event)) r.push(pessoa.role_in_event);
-    return r;
-  });
-  const [isReviewer, setIsReviewer] = useState(false);
-  const [reviewerMembership, setReviewerMembership] = useState(null);
-  const [reviewerUserId, setReviewerUserId] = useState("");
-  const [checkingReviewer, setCheckingReviewer] = useState(!isPartnerRep && !!pessoa.person_id);
-  const [saving, setSaving] = useState(false);
-  const [conflict, setConflict] = useState(null);
-  const queryClient = useQueryClient();
-
-  const disabledRoles = useMemo(() => getDisabledRoles(roles), [roles]);
-
-  // Resolve existing reviewer membership + linked user_id (by email)
-  useEffect(() => {
-    if (isPartnerRep || !pessoa.person_id) { setCheckingReviewer(false); return; }
-    (async () => {
-      try {
-        const res = await getReviewerMembership(eventId, pessoa.person_id);
-        if (res.membership) { setReviewerMembership(res.membership); setIsReviewer(true); }
-        setReviewerUserId(res.linked_user_id);
-      } finally { setCheckingReviewer(false); }
-    })();
-  }, [isPartnerRep, pessoa.person_id, pessoa.email, eventId]);
-
-  const toggleRole = (role) => {
-    setConflict(null);
-    if (role === "reviewer") { setIsReviewer((v) => !v); return; }
-    if (roles.includes(role)) {
-      setRoles((prev) => prev.filter((r) => r !== role));
-    } else if (!disabledRoles.has(role)) {
-      setRoles((prev) => [...prev, role]);
-    }
-  };
-
-  const handleSave = async () => {
-    // Block remove speaker if person has sessions
-    if (pessoa.role_in_event === "speaker" && !roles.includes("speaker")) {
-      const hasSessions = sessions.some((s) => s.speaker_id === pessoa.id);
-      if (hasSessions) {
-        setConflict("Não é possível alterar o papel: esta pessoa possui sessão associada. Edite a sessão primeiro.");
-        return;
-      }
-    }
-
-    setSaving(true);
-    try {
-      // Papel no Participant (speaker/team/manager/attendee)
-      let newRole = "attendee";
-      if (roles.includes("manager")) newRole = "manager";
-      else if (roles.includes("speaker")) newRole = "speaker";
-      else if (roles.includes("team")) newRole = "team";
-      if (newRole !== pessoa.role_in_event) {
-        await updateParticipant(eventId, pessoa.id, { role_in_event: newRole });
-        // P0.3 — move o bucket participants_by_role do papel antigo para o novo (unique não muda)
-        await moveParticipantRoleCounter(eventId, pessoa.created_date, pessoa.role_in_event, newRole);
-        logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
-          details: { field: "role_in_event", old_value: pessoa.role_in_event, new_value: newRole } });
-      }
-
-      // Avaliador — gerenciado via EventMembership (independente do role_in_event)
-      if (!pessoa.person_id && isReviewer) {
-        setConflict("Esta pessoa não tem perfil global (Person) vinculado; não é possível designá-la como avaliadora.");
-        setSaving(false);
-        return;
-      }
-      if (isReviewer && !reviewerMembership) {
-        await setReviewerMembership(eventId, {
-          enable: true,
-          person_id: pessoa.person_id,
-          person_name: pessoa.full_name,
-          user_email: pessoa.email || "",
-        });
-      } else if (!isReviewer && reviewerMembership) {
-        await setReviewerMembership(eventId, {
-          enable: false,
-          membership_id: reviewerMembership.id,
-          person_id: pessoa.person_id,
-        });
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["event-reviewers", eventId] });
-      onSuccess();
-      onClose();
-      toast.success(t("events.saveSuccess"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const ROLE_OPTIONS = [
-    { value: "speaker",  label: "Palestrante" },
-    { value: "team",     label: "Equipe" },
-    { value: "manager",  label: "Gerente" },
-    { value: "reviewer", label: "Avaliador" },
-  ];
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader><DialogTitle className="font-display">Papéis — {pessoa.full_name}</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-2">
-          {isPartnerRep ? (
-            <div className="text-sm text-muted-foreground bg-sky-50 rounded-lg px-3 py-2">
-              Esta pessoa é Representante de Parceiro. O papel é gerenciado na aba <strong>Parceiros</strong>.
-            </div>
-          ) : (
-            <>
-              <p className="text-xs text-muted-foreground">Participante é implícito. Selecione papéis adicionais:</p>
-              <div className="grid grid-cols-2 gap-2">
-                {ROLE_OPTIONS.map(({ value, label }) => {
-                  const active = value === "reviewer" ? isReviewer : roles.includes(value);
-                  const disabled = value === "reviewer" ? false : disabledRoles.has(value);
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => toggleRole(value)}
-                      disabled={disabled}
-                      className={`rounded-xl border p-3 text-sm font-medium transition-colors text-center
-                        ${active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"}
-                        ${disabled ? "opacity-35 cursor-not-allowed" : "hover:bg-muted/40"}`}
-                    >
-                      {label}{active && " ✓"}
-                    </button>
-                  );
-                })}
-              </div>
-              {checkingReviewer && <p className="text-xs text-muted-foreground">Verificando status de avaliador…</p>}
-              {isReviewer && !reviewerUserId && !checkingReviewer && (
-                <p className="text-xs text-warning bg-warning/10 rounded-lg px-3 py-2">
-                  Esta pessoa não tem conta de acesso (User) com este e-mail. Convide-a para que consiga acessar o painel de avaliação.
-                </p>
-              )}
-            </>
-          )}
-          {conflict && <p className="text-sm text-destructive bg-red-50 rounded-lg px-3 py-2">{conflict}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-          {!isPartnerRep && (
-            <Button onClick={handleSave} disabled={saving}>{saving ? t("common.loading") : t("common.save")}</Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

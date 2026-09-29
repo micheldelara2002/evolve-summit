@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, CalendarClock } from "lucide-react";
 import AudienceSelector from "./AudienceSelector";
 import { dispatchCampaign } from "@/lib/notificationService";
 import { isAdmin, isPartnerManager } from "@/lib/access";
@@ -38,6 +38,15 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     cta_target: campaign?.cta_target || "",
   });
   const [audience, setAudience] = useState(parseInitialAudience);
+
+  // P2 — Agendamento: datetime-local ↔ ISO (input local, persistência UTC).
+  const toLocalInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [scheduledAt, setScheduledAt] = useState(() => toLocalInput(campaign?.scheduled_at));
 
   const saveDraftMutation = useMutation({
     mutationFn: (data) => {
@@ -70,6 +79,47 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     onError: (e) => toast.error("Erro ao enviar: " + e.message),
   });
 
+  // P2 — Agendar: permissão validada NO MOMENTO DO AGENDAMENTO (server-side,
+  // mesma autorização do disparo — countCampaignAudience). A campanha fica
+  // 'scheduled' e a varredura de manutenção dispara sozinha no scheduled_at.
+  const scheduleMutation = useMutation({
+    mutationFn: async () => {
+      await base44.functions.invoke("countCampaignAudience", {
+        scopeEventId: scopeEventId || null,
+        audienceType: audience.type === "segment" ? "segment" : audience.type,
+        audienceSegments: audience.type === "segment" ? audience.segments : [],
+        senderPartnerId: partnerId || null,
+      });
+      const data = buildPayload("scheduled");
+      data.scheduled_at = new Date(scheduledAt).toISOString();
+      // Audiências de parceiro: o partner_id precisa ser persistido — o disparo
+      // agendado roda em service role, sem o contexto do navegador.
+      if (partnerId && ["my_leads", "partner_leads"].includes(audience.type)) {
+        data.audience_payload = JSON.stringify({ partner_id: partnerId });
+      }
+      if (campaign?.id) return base44.entities.NotificationCampaign.update(campaign.id, data);
+      return base44.entities.NotificationCampaign.create(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
+      toast.success("Campanha agendada! O envio dispara automaticamente na data — você não precisa ficar online.");
+      onClose?.();
+    },
+    onError: (e) => toast.error("Erro ao agendar: " + (e.message || "")),
+  });
+
+  const handleSchedule = () => {
+    if (!scheduledAt) {
+      toast.error("Escolha a data e a hora do envio.");
+      return;
+    }
+    if (new Date(scheduledAt).getTime() <= Date.now()) {
+      toast.error("A data do agendamento deve ser futura.");
+      return;
+    }
+    scheduleMutation.mutate();
+  };
+
   const buildPayload = (status) => ({
     title: sanitizeText(form.title),
     message: sanitizeText(form.message),
@@ -91,7 +141,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
   });
 
   const isValid = form.title.trim() && form.message.trim();
-  const isPending = saveDraftMutation.isPending || sendMutation.isPending;
+  const isPending = saveDraftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -185,6 +235,29 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
           </div>
         </CardContent>
       </Card>
+
+      {/* P2 — Agendamento: disparo automático pela varredura de manutenção */}
+      <div className="flex items-end gap-3">
+        <div className="space-y-1 flex-1">
+          <Label>Agendar envio</Label>
+          <Input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            O envio dispara automaticamente na data escolhida — sem depender do seu navegador.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleSchedule}
+          disabled={!isValid || isPending || isReadOnly}
+        >
+          <CalendarClock className="w-4 h-4 mr-2" />
+          {scheduleMutation.isPending ? "Agendando..." : "Agendar"}
+        </Button>
+      </div>
 
       <div className="flex justify-end gap-3">
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
