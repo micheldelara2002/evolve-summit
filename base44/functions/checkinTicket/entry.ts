@@ -112,15 +112,31 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
+    // P2 (2026-09-29) — DEDUPE DE AUDITORIA na escrita: scanners sem sincronia
+    // atômica de hardware podiam disparar a mesma confirmação em sequência
+    // rápida e duplicar o AuditLog. Guarda de idempotência por (entidade+ação+
+    // registro) em janela curta (5 min): se o log de checkin mais recente
+    // deste ingresso já existe dentro da janela, não cria outro. O check-in em
+    // si permanece idempotente pelo claim CAS acima — só o log é guardado.
     try {
-      await svc.entities.AuditLog.create({
-        action: 'status_change',
-        entity_type: 'Ticket',
-        entity_id: ticket.id,
-        details: JSON.stringify({ type: 'ticket_checkin', hash_code: ticket.hash_code }),
-        event_id: ticket.event_id,
-        user_id: user.id,
-      });
+      const recent = await svc.entities.AuditLog.filter(
+        { entity_type: 'Ticket', entity_id: ticket.id, action: 'status_change' },
+        '-created_date', 1
+      );
+      const last = recent?.[0];
+      const isRecentCheckin = !!last && !!last.created_date &&
+        (Date.now() - new Date(last.created_date).getTime()) < 5 * 60 * 1000 &&
+        String(last.details || '').includes('ticket_checkin');
+      if (!isRecentCheckin) {
+        await svc.entities.AuditLog.create({
+          action: 'status_change',
+          entity_type: 'Ticket',
+          entity_id: ticket.id,
+          details: JSON.stringify({ type: 'ticket_checkin', hash_code: ticket.hash_code }),
+          event_id: ticket.event_id,
+          user_id: user.id,
+        });
+      }
     } catch {}
 
     return Response.json({

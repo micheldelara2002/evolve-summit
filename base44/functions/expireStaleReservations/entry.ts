@@ -3,6 +3,7 @@ import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund } from "../../shared/stripeClient.ts";
 import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
+import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -52,6 +53,21 @@ const MAINTENANCE_THROTTLE_MS = 4 * 60 * 1000; // janela mínima entre execuçõ
 const MAX_RECONCILE_PER_RUN = 25;
 const MAX_REFUND_RECONCILE_PER_RUN = 25;
 
+// Campanhas agendadas (P2 2026-09-29) — a mesma varredura dispara campanhas
+// 'scheduled' vencidas e retoma disparos automáticos interrompidos, sem
+// depender do navegador do operador. Permissão CONFIADA no agendamento (regra
+// aprovada). Orçamento próprio por disparo + teto por rodada + teto de
+// tentativas (falhas NÃO reassumíveis) — ver reconciler de campanhas abaixo.
+const MAX_CAMPAIGNS_PER_RUN = 2;
+const CAMPAIGN_DISPATCH_BUDGET_MS = 8_000;
+const CAMPAIGN_SWEEP_MAX_ELAPSED_MS = 15_000; // só roda se a rodada ainda está no começo
+const MAX_AUTO_DISPATCH_ATTEMPTS = 5;
+
+// Reconciler de resgates (P2 2026-09-29) — drift do contador redeemed_total.
+const REDEMPTION_PAGE_SIZE = 500;
+const MAX_REDEMPTION_SCAN_PER_RUN = 2000;
+const MAX_REDEMPTION_FIXES_PER_RUN = 100;
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -64,6 +80,7 @@ export default async function(req: Request): Promise<Response> {
     // spam de log).
     const svc = base44.asServiceRole;
     const nowIso = new Date().toISOString();
+    const runStartMs = Date.now();
     const existingSettings = await svc.entities.PlatformSetting.filter({ key: 'maintenance' });
     let maintenanceSetting: any = existingSettings[0] || null;
     let lastRun: any = null;
@@ -72,7 +89,8 @@ export default async function(req: Request): Promise<Response> {
     if (maintenanceSetting && lastRunAtMs && Date.now() - lastRunAtMs < MAINTENANCE_THROTTLE_MS) {
       return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}) });
     }
-    const claimedJson = JSON.stringify({ last_run_at: nowIso, summary: lastRun?.summary || null });
+    // Cursor do reconciler de resgates sobrevive ao claim (varredura contínua).
+    const claimedJson = JSON.stringify({ last_run_at: nowIso, summary: lastRun?.summary || null, redemption_skip: Number(lastRun?.redemption_skip) || 0 });
     if (maintenanceSetting) {
       const claim = await svc.entities.PlatformSetting.updateMany(
         { key: 'maintenance', value_json: maintenanceSetting.value_json },
@@ -435,6 +453,156 @@ export default async function(req: Request): Promise<Response> {
       console.error('[expireStaleReservations] refund reconcile failed:', refundErr?.message || refundErr);
     }
 
+    // ===== Reconciler de resgates: drift do contador redeemed_total =====
+    // P2 — resgates cancelados/soft-deletados FORA do fluxo (ex.: cancelamento
+    // manual direto no registro) deixam Participant.redeemed_total divergido do
+    // ledger (StoreRedemption). Recalcula o somatório NÃO-cancelado por
+    // participante e corrige diferenças de forma idempotente (CAS $ne no valor
+    // esperado — no-op quando já correto). CONVERGENTE entre rodadas via cursor
+    // de varredura persistido (redemption_skip na config 'maintenance'): a
+    // janela avança a cada execução e recomeça (wrap) ao atingir o fim — bases
+    // grandes são cobertas integralmente ao longo das rodadas. Escaneia TODOS
+    // os resgates (inclusive cancelados/deletados): participante cujo somatório
+    // do ledger caiu a 0 mas cujo contador ficou >0 também é corrigido.
+    let redemptionsScanned = 0;
+    let redemptionFixes = 0;
+    let nextRedemptionSkip = Number(lastRun?.redemption_skip) || 0;
+    try {
+      const sums = new Map<string, number>();
+      const cursorStart = Number(lastRun?.redemption_skip) || 0;
+      let scanned = 0;
+      let reachedEnd = false;
+      while (scanned < MAX_REDEMPTION_SCAN_PER_RUN) {
+        const page = await svc.entities.StoreRedemption.filter({}, 'id', REDEMPTION_PAGE_SIZE, cursorStart + scanned);
+        if (!page || page.length === 0) { reachedEnd = true; break; }
+        for (let i = 0; i < page.length; i++) {
+          const r = page[i];
+          if (!r.participant_id) continue;
+          const active = r.status !== 'cancelado' && !r.is_deleted;
+          sums.set(r.participant_id, (sums.get(r.participant_id) || 0) + (active ? (r.pontos_debitados || 0) : 0));
+        }
+        scanned += page.length;
+        if (page.length < REDEMPTION_PAGE_SIZE) { reachedEnd = true; break; }
+      }
+      nextRedemptionSkip = reachedEnd ? 0 : cursorStart + scanned;
+      redemptionsScanned = scanned;
+
+      const ids = Array.from(sums.keys());
+      for (let i = 0; i < ids.length; i += REDEMPTION_PAGE_SIZE) {
+        const chunk = ids.slice(i, i + REDEMPTION_PAGE_SIZE);
+        const parts = await svc.entities.Participant.filter({ id: { $in: chunk } }, 'id', chunk.length);
+        for (let j = 0; j < parts.length; j++) {
+          if (redemptionFixes >= MAX_REDEMPTION_FIXES_PER_RUN) break;
+          const expected = sums.get(parts[j].id) || 0;
+          if ((Number(parts[j].redeemed_total) || 0) === expected) continue;
+          try {
+            const fix = await svc.entities.Participant.updateMany(
+              { id: parts[j].id, redeemed_total: { $ne: expected } },
+              { $set: { redeemed_total: expected } }
+            );
+            if (fix && fix.updated) redemptionFixes++;
+          } catch {}
+        }
+      }
+    } catch (redemptionErr: any) {
+      console.error('[expireStaleReservations] redemption reconcile failed:', redemptionErr?.message || redemptionErr);
+      nextRedemptionSkip = Number(lastRun?.redemption_skip) || 0;
+    }
+
+    // ===== Campanhas agendadas: disparo automático + retomada =====
+    // 'scheduled' com scheduled_at vencido dispara AGORA (permissão confiada
+    // no agendamento — regra aprovada). 'partially_sent'/'failed' de campanhas
+    // AGENDADAS (scheduled_at presente) são retomadas nas execuções seguintes —
+    // o encadeamento não depende do navegador do operador (mitiga o timeout da
+    // campanha global). Falhas NÃO reassumíveis consomem auto_dispatch_attempts;
+    // atingido o teto, a campanha fica 'failed' para retry manual. Campanhas de
+    // envio imediato (sem scheduled_at) NÃO são retomadas automaticamente.
+    let campaignsDispatched = 0;
+    let campaignsFailed = 0;
+    try {
+      if (Date.now() - runStartMs < CAMPAIGN_SWEEP_MAX_ELAPSED_MS) {
+        const dueScheduled = await svc.entities.NotificationCampaign.filter(
+          {
+            status: 'scheduled',
+            is_deleted: false,
+            scheduled_at: { $lte: new Date().toISOString() },
+          },
+          'scheduled_at',
+          MAX_CAMPAIGNS_PER_RUN + 2
+        );
+        const candidates: any[] = [];
+        for (let i = 0; i < dueScheduled.length && candidates.length < MAX_CAMPAIGNS_PER_RUN; i++) {
+          if ((Number(dueScheduled[i].auto_dispatch_attempts) || 0) < MAX_AUTO_DISPATCH_ATTEMPTS) candidates.push(dueScheduled[i]);
+        }
+        // Retomada: apenas campanhas originalmente agendadas (scheduled_at
+        // presente — envio imediato não grava o campo e não casa a query).
+        if (candidates.length < MAX_CAMPAIGNS_PER_RUN) {
+          const resumable = await svc.entities.NotificationCampaign.filter(
+            {
+              status: { $in: ['partially_sent', 'failed'] },
+              is_deleted: false,
+              scheduled_at: { $gte: '1970-01-01T00:00:00.000Z' },
+            },
+            'scheduled_at',
+            MAX_CAMPAIGNS_PER_RUN + 2
+          );
+          for (let i = 0; i < resumable.length && candidates.length < MAX_CAMPAIGNS_PER_RUN; i++) {
+            if ((Number(resumable[i].auto_dispatch_attempts) || 0) < MAX_AUTO_DISPATCH_ATTEMPTS) candidates.push(resumable[i]);
+          }
+        }
+
+        for (let i = 0; i < candidates.length; i++) {
+          if (Date.now() - runStartMs >= CAMPAIGN_SWEEP_MAX_ELAPSED_MS) break;
+          const c = candidates[i];
+          // Emissor: resolvido do sender_user_id (o disparo é service role).
+          // Conta excluída → senderUser null: audiências de parceiro/palestrante
+          // que dependem dele resolvem vazio; o envio prossegue (regra do
+          // agendamento confiável).
+          let senderUser: any = null;
+          if (c.sender_user_id) {
+            try { senderUser = (await svc.entities.User.filter({ id: c.sender_user_id }))[0] || null; } catch {}
+          }
+          // Audiências de parceiro: partner_id persistido no agendamento
+          // (audience_payload JSON {partner_id}).
+          let senderPartnerId: string | null = null;
+          if (c.audience_type === 'my_leads' || c.audience_type === 'partner_leads') {
+            try { senderPartnerId = JSON.parse(c.audience_payload || '{}').partner_id || null; } catch { senderPartnerId = null; }
+          }
+          try {
+            const r = await dispatchCampaignCore(svc, {
+              campaign: c,
+              senderUser,
+              senderPartnerId,
+              auditUserId: c.sender_user_id || 'system',
+              timeBudgetMs: CAMPAIGN_DISPATCH_BUDGET_MS,
+            });
+            if (r.ok) {
+              campaignsDispatched++;
+              continue;
+            }
+            if (r.claimed) {
+              // Falha — só consome tentativa se NÃO for reassumível (rodadas
+              // encerradas por orçamento têm has_more e continuam na próxima).
+              if (!r.has_more) {
+                try {
+                  await svc.entities.NotificationCampaign.updateMany({ id: c.id }, { $inc: { auto_dispatch_attempts: 1 } });
+                } catch {}
+              }
+              campaignsFailed++;
+            }
+            // !claimed → outro dispatcher (manual/agendado concorrente) venceu
+            // o claim; ignora silenciosamente.
+          } catch (campaignErr: any) {
+            console.error('[expireStaleReservations] campaign dispatch failed:', c.id, campaignErr?.message || campaignErr);
+            try { await svc.entities.NotificationCampaign.updateMany({ id: c.id }, { $inc: { auto_dispatch_attempts: 1 } }); } catch {}
+            campaignsFailed++;
+          }
+        }
+      }
+    } catch (campaignSweepErr: any) {
+      console.error('[expireStaleReservations] campaign sweep failed:', campaignSweepErr?.message || campaignSweepErr);
+    }
+
     // Resumo da rodada persistido na config (resposta das chamadas throttled)
     // + auditoria da execução real (sem PII — apenas contadores).
     const summary = {
@@ -448,11 +616,17 @@ export default async function(req: Request): Promise<Response> {
       // Aproximação com a query limitada: 1 = ainda há vencidos além deste
       // lote (próxima varredura pega), 0 = varredura completa.
       remaining: hasMoreStale ? 1 : 0,
+      // Reconciler de resgates (P2 2026-09-29) — sem PII, apenas contadores.
+      redemptions_scanned: redemptionsScanned,
+      redemption_fixes: redemptionFixes,
+      // Campanhas agendadas (P2 2026-09-29).
+      campaigns_dispatched: campaignsDispatched,
+      campaigns_failed: campaignsFailed,
     };
     if (maintenanceSetting) {
       try {
         await svc.entities.PlatformSetting.update(maintenanceSetting.id, {
-          value_json: JSON.stringify({ last_run_at: nowIso, summary }),
+          value_json: JSON.stringify({ last_run_at: nowIso, summary, redemption_skip: nextRedemptionSkip }),
         });
       } catch {}
     }

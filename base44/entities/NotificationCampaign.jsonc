@@ -1,6 +1,7 @@
 {
   "name": "NotificationCampaign",
   "type": "object",
+  "description": "Campanha de notifica\u00e7\u00f5es. Agendamento (P2 2026-09-29): status 'scheduled' + scheduled_at futuro dispara AUTOMATICAMENTE pela varredura de manuten\u00e7\u00e3o (expireStaleReservations), em service role, confiando na permiss\u00e3o validada no agendamento (regra aprovada \u2014 sem revalida\u00e7\u00e3o de membership no disparo). Audi\u00eancias de parceiro agendadas persistem o partner_id no audience_payload (JSON {partner_id}) \u2014 o disparo service role n\u00e3o tem o contexto do navegador. Retomadas reassum\u00edveis (has_more) n\u00e3o consomem o teto de tentativas.",
   "properties": {
     "scope_type": {
       "type": "string",
@@ -17,7 +18,7 @@
     },
     "sender_user_id": {
       "type": "string",
-      "description": "ID do usu\u00e1rio emissor. SEC-005 \u2014 a cria\u00e7\u00e3o via SDK exige sender_user_id = usu\u00e1rio autenticado (ou admin): campanha nunca \u00e9 atribu\u00edda a terceiros; o disparo (dispatchNotificationCampaign) valida papel/membership do emissor."
+      "description": "ID do usu\u00e1rio emissor. SEC-005 \u2014 a cria\u00e7\u00e3o via SDK exige sender_user_id = usu\u00e1rio autenticado (ou admin): campanha nunca \u00e9 atribu\u00edda a terceiros; o disparo (dispatchNotificationCampaign) valida papel/membership do emissor; o disparo AGENDADO confia na permiss\u00e3o validada no agendamento (countCampaignAudience no momento de agendar)."
     },
     "sender_role": {
       "type": "string",
@@ -73,7 +74,7 @@
     },
     "audience_payload": {
       "type": "string",
-      "description": "JSON com dados de segmenta\u00e7\u00e3o (nullable)"
+      "description": "JSON de segmenta\u00e7\u00e3o (segmentos) ou, para audi\u00eancias de parceiro AGENDADAS, JSON {partner_id} \u2014 contexto necess\u00e1rio ao disparo autom\u00e1tico em service role (nullable)"
     },
     "priority": {
       "type": "string",
@@ -97,12 +98,17 @@
         "failed"
       ],
       "default": "draft",
-      "description": "Status da campanha"
+      "description": "Status da campanha. 'scheduled' = aguardando o scheduled_at \u2014 a varredura de manuten\u00e7\u00e3o dispara automaticamente; 'partially_sent'/'failed' de campanhas agendadas tamb\u00e9m s\u00e3o retomadas automaticamente (encadeamento sem depender do navegador do operador)"
     },
     "scheduled_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Data/hora de envio agendado (nullable)"
+      "description": "Data/hora de envio agendado (nullable). Presente apenas em campanhas agendadas \u2014 usado pela varredura para selecionar vencidas E para retomar disparos autom\u00e1ticos interrompidos (campanhas de envio imediato n\u00e3o s\u00e3o retomadas automaticamente)"
+    },
+    "auto_dispatch_attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "P2 (2026-09-29) \u2014 Contador de rodadas do disparo autom\u00e1tico que terminaram em falha N\u00c3O reassum\u00edvel (erro de resolu\u00e7\u00e3o de audi\u00eancia/erro inesperado). Rodadas encerradas por or\u00e7amento de tempo (has_more) N\u00c3O consomem o teto. Ao atingir o teto (5), a varredura para de tentar automaticamente \u2014 a campanha fica 'failed' para retry/avalia\u00e7\u00e3o manual (o claim manual continua aceitando failed)."
     },
     "sent_at": {
       "type": "string",
