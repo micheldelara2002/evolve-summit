@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { scanAll } from "../../shared/completeScan.ts";
 import {
   canAccessEventData,
   canAccessPartnerData,
@@ -158,7 +159,11 @@ export default async function(req: Request): Promise<Response> {
       if (!eventId) return Response.json({ error: "event_id obrigatório." }, { status: 400 });
       const mgr = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
       if (!mgr.authorized) return Response.json({ error: "Sem permissão." }, { status: 403 });
-      const all = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
+      // P1 (2026-09-29) — varredura completa paginada (scanAll): o filter sem
+      // limite era TRUNCADO silenciosamente pelo teto default da plataforma e
+      // a deduplicação via só a primeira página — duplicatas entravam pela
+      // importação em eventos grandes. Teto agora EXPLÍCITO (complete=false).
+      const { items: all, complete } = await scanAll(svc.entities.Participant, { event_id: eventId, is_deleted: false });
       const out: any[] = [];
       for (let i = 0; i < all.length; i++) {
         out.push({
@@ -169,7 +174,7 @@ export default async function(req: Request): Promise<Response> {
           person_id: all[i].person_id || "",
         });
       }
-      return Response.json({ participants: out });
+      return Response.json({ participants: out, complete });
     }
 
     return Response.json({ error: "Operação desconhecida." }, { status: 400 });

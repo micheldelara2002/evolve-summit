@@ -122,5 +122,6 @@ export async function fetchPartnerSpeakerParticipants(partnerId) {
 
 export async function fetchGlobalParticipantLookup(eventId) {
   const out = await invokeRead({ op: "import_lookup", event_id: eventId });
-  return out.participants || [];
+  // complete: varredura cobriu TODOS os participantes do evento (sem truncagem).
+  return { participants: out.participants || [], complete: out.complete !== false };
 }

@@ -79,7 +79,11 @@ export default function Checkout({ eventId }) {
   }
 
   if (intent?.free) {
-    return <SuccessScreen eventId={eventId} />;
+    // P1 — sucesso apenas com emissão concluída; falha transiente mostra
+    // 'Inscrição em processamento' (reconciler agendado recupera).
+    return intent.fulfillment_status === "fulfilled"
+      ? <SuccessScreen eventId={eventId} />
+      : <ProcessingScreen eventId={eventId} />;
   }
 
   const stripe = publishableKey ? loadStripe(publishableKey) : null;
@@ -203,6 +207,29 @@ function SuccessScreen({ eventId }) {
         </Button>
         <Button variant="outline" onClick={() => navigate(`/event/${eventId}`)} className="w-full">
           Entrar no evento <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ProcessingScreen({ eventId }) {
+  const navigate = useNavigate();
+  return (
+    <div className="max-w-md mx-auto px-4 py-12 text-center space-y-5">
+      <Loader2 className="w-16 h-16 animate-spin text-primary mx-auto" />
+      <div>
+        <h2 className="text-xl font-display font-bold">Inscrição em processamento</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Recebemos seu pedido. A emissão dos ingressos está em andamento e será concluída automaticamente em instantes.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button onClick={() => navigate("/my-tickets")} className="w-full">
+          <Ticket className="w-4 h-4 mr-2" /> Meus ingressos
+        </Button>
+        <Button variant="outline" onClick={() => navigate(`/event/${eventId}`)} className="w-full">
+          Voltar ao evento <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>
     </div>

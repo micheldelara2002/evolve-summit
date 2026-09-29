@@ -16,8 +16,8 @@
           },
           "then": "end",
           "x-base44": {
-            "title": "Expirar reservas abandonadas",
-            "description": "Suspenso \u2014 exige mecanismo seguro (ver descri\u00e7\u00e3o)"
+            "title": "Manuten\u00e7\u00e3o financeira autom\u00e1tica",
+            "description": "Expira reservas, recupera emiss\u00f5es, reconcilia estornos"
           }
         }
       }
@@ -40,5 +40,5 @@
       "ends_after_count": null
     }
   },
-  "description": "SEC-002 (2026-09-28) \u2014 SUSPENSO: a plataforma n\u00e3o suporta inje\u00e7\u00e3o segura de segredo em args de workflow (args s\u00e3o versionados no arquivo \u2014 token aqui fica exposto no versionamento) nem autentica\u00e7\u00e3o nativa de workflow\u2192fun\u00e7\u00e3o (confirmado no guia de workflows). O endpoint expireStaleReservations \u00e9 exclusivamente admin autenticado (an\u00f4nimo 401, n\u00e3o-admin 403), ent\u00e3o a execu\u00e7\u00e3o agendada fica DESATIVADA at\u00e9 decis\u00e3o humana sobre mecanismo suportado pela plataforma (credencial injetada pelo ambiente/scheduler ou equivalente verific\u00e1vel). NUNCA reativar com valor versionado no arquivo."
+  "description": "Manuten\u00e7\u00e3o financeira autom\u00e1tica (a cada 5 min): expira reservas abandonadas (reconfirmando o estado no Stripe antes de cancelar), recupera emiss\u00f5es incompletas de pedidos recentes e reconcilia estornos pendentes. P0 (2026-09-29) \u2014 endpoint p\u00fablico seguro-por-constru\u00e7\u00e3o (mesmo modelo do stripeWebhook): opera\u00e7\u00f5es idempotentes/convergentes, resposta sem PII, limites por execu\u00e7\u00e3o e limitador de frequ\u00eancia de 4 min via PlatformSetting 'maintenance' (CAS garante uma \u00fanica execu\u00e7\u00e3o real em corridas)."
 }

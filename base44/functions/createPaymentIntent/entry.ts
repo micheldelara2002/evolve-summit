@@ -415,11 +415,20 @@ export default async function(req: Request): Promise<Response> {
         refunded_amount: 0,
         fulfillment_status: 'pending',
       });
+      // P1 (2026-09-29) — o resultado REAL da emissão vai na resposta: a tela
+      // de sucesso do checkout só aparece com emissão concluída. Falha → a
+      // resposta carrega pending_retry/erro e o frontend mostra 'Inscrição em
+      // processamento' (o reconciler agendado recupera a emissão).
+      let freeFulfillmentError = '';
       try {
-        await fulfillOrder(svc, freePayment, order, orderItems);
+        const fulfillment = await fulfillOrder(svc, freePayment, order, orderItems);
+        if (!fulfillment.fulfilled) freeFulfillmentError = fulfillment.error || '';
       } catch (err: any) {
-        console.error('[createPaymentIntent] free fulfillment error:', err?.message || err);
+        freeFulfillmentError = err?.message || String(err);
+        console.error('[createPaymentIntent] free fulfillment error:', freeFulfillmentError);
       }
+      const freshPayment = (await svc.entities.Payment.filter({ id: freePayment.id }))[0];
+      const freeFulfillmentStatus = freshPayment?.fulfillment_status || (freeFulfillmentError ? 'pending_retry' : 'fulfilled');
       // Trail — compra gratuita registrada com comprador, carrinho, valores e IP.
       await writeAudit(svc, {
         action: 'create',
@@ -460,6 +469,8 @@ export default async function(req: Request): Promise<Response> {
         total: totals.total,
         subtotal: totals.subtotal,
         discount: totals.discount,
+        fulfillment_status: freeFulfillmentStatus,
+        fulfillment_error: freeFulfillmentError,
       });
     }
 

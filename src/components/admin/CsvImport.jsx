@@ -86,7 +86,11 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       // backend com verificação de gestão do evento (campos mínimos).
       let globalParticipants = [];
       try {
-        globalParticipants = await fetchGlobalParticipantLookup(eventId);
+        const lookup = await fetchGlobalParticipantLookup(eventId);
+        globalParticipants = lookup.participants;
+        if (!lookup.complete) {
+          toast.warning("A deduplicação cobriu apenas parte da base de participantes — pode haver duplicatas; revise o resultado após importar.");
+        }
       } catch {}
 
       // Build lookup maps

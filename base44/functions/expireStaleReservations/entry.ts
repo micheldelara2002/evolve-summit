@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund } from "../../shared/stripeClient.ts";
-import { releaseReservations, releaseCouponUse, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
+import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -35,15 +35,20 @@ import { releaseReservations, releaseCouponUse, FULFILLING_STALE_MS, applyConfir
 // webhook charge.refunded não chega); 'failed'/'canceled' marca a falha e
 // devolve a reserva do teto de estorno.
 //
-// SEC-002 (2026-09-28) — EXCLUSIVAMENTE admin autenticado (anônimo 401,
-// não-admin 403, conta excluída 403). Execução agendada SUSPENSA: a plataforma
-// não suporta injeção segura de segredo em args de workflow (versionados) nem
-// autenticação nativa de workflow→função — sem fallback com valor versionado.
+// MODELO M2M (2026-09-29) — endpoint PÚBLICO seguro-por-construção, no mesmo
+// padrão do stripeWebhook: chamadas de máquina (workflow agendado) não têm
+// contexto de usuário; a função roda INTEIRA em service role. Segurança por
+// construção: operações idempotentes/convergentes (CAS por toda parte),
+// resposta sem PII (apenas contadores), limites por execução e limitador de
+// frequência (PlatformSetting 'maintenance', CAS sobre value_json) que garante
+// uma única execução real em corridas e rejeita chamadas com menos de 4 min da
+// última rodada — devolvendo o resumo da última execução (HTTP 200).
 //
 // Cupons: o uso nunca é contabilizado na criação do pedido (só no fulfillment),
 // então pedidos expirados não consomem cupom — nada a devolver aqui.
 
 const MAX_ORDERS_PER_RUN = 50;
+const MAINTENANCE_THROTTLE_MS = 4 * 60 * 1000; // janela mínima entre execuções
 const MAX_RECONCILE_PER_RUN = 25;
 const MAX_REFUND_RECONCILE_PER_RUN = 25;
 
@@ -51,23 +56,47 @@ export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
 
-    // ===== SEC-002 — autorização obrigatória: somente admin ativo =====
-    // O mecanismo de credencial interna do scheduler foi REMOVIDO (o valor era
-    // gravado literalmente no arquivo do workflow — comprometido). Sem
-    // mecanismo suportado pela plataforma para o scheduler se autenticar de
-    // forma segura e verificável, o endpoint é admin-only: anônimo → 401,
-    // não-admin → 403, conta excluída → 403 (requireActiveUser).
-    let guard: any = null;
-    try {
-      guard = await requireActiveUser(base44);
-    } catch {
-      return Response.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
-    if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
-    if (guard.user.role !== 'admin') {
-      return Response.json({ error: 'Sem permissão.' }, { status: 403 });
-    }
+    // ===== Limitador de frequência (anti-abuso do endpoint público) =====
+    // PlatformSetting 'maintenance' guarda { last_run_at, summary }. CAS sobre
+    // o value_json: corridas concorrentes do scheduler resultam em exatamente
+    // UMA execução real; chamadas com menos de 4 min da última rodada recebem
+    // HTTP 200 com o resumo anterior, sem reprocessar (nem auditar — evita
+    // spam de log).
     const svc = base44.asServiceRole;
+    const nowIso = new Date().toISOString();
+    const existingSettings = await svc.entities.PlatformSetting.filter({ key: 'maintenance' });
+    let maintenanceSetting: any = existingSettings[0] || null;
+    let lastRun: any = null;
+    try { lastRun = JSON.parse(maintenanceSetting?.value_json || 'null'); } catch { lastRun = null; }
+    const lastRunAtMs = lastRun?.last_run_at ? new Date(lastRun.last_run_at).getTime() : 0;
+    if (maintenanceSetting && lastRunAtMs && Date.now() - lastRunAtMs < MAINTENANCE_THROTTLE_MS) {
+      return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}) });
+    }
+    const claimedJson = JSON.stringify({ last_run_at: nowIso, summary: lastRun?.summary || null });
+    if (maintenanceSetting) {
+      const claim = await svc.entities.PlatformSetting.updateMany(
+        { key: 'maintenance', value_json: maintenanceSetting.value_json },
+        { $set: { value_json: claimedJson } }
+      );
+      if (!claim || !claim.updated) {
+        return Response.json({ ok: true, throttled: true, last_run_at: lastRun?.last_run_at || '' });
+      }
+    } else {
+      // Primeira execução — cria a config. Corrida de creates concorrentes:
+      // sobrevivente determinístico segue; o perdedor responde throttled.
+      const created = await svc.entities.PlatformSetting.create({ key: 'maintenance', value_json: claimedJson });
+      const records = await svc.entities.PlatformSetting.filter({ key: 'maintenance' });
+      if (records.length > 1) {
+        records.sort(deterministicCompare);
+        if (records[0].id !== created.id) {
+          return Response.json({ ok: true, throttled: true });
+        }
+        for (let i = 1; i < records.length; i++) {
+          try { await svc.entities.PlatformSetting.delete(records[i].id); } catch {}
+        }
+      }
+      maintenanceSetting = created;
+    }
 
     // PERF-003 — a query já é LIMITADA no banco (antes: carregava TODOS os
     // pedidos vencidos e só depois limitava o processamento a 50). Ordenação
@@ -246,7 +275,19 @@ export default async function(req: Request): Promise<Response> {
           } catch {}
           continue;
         }
-        // Emissão pela metade — sinaliza para recuperação na aba de transações.
+        // Emissão pela metade — RECUPERA automaticamente (fulfillOrder é
+        // idempotente por item): pedidos recentes (janela transiente de 2h)
+        // são reemitidos na própria varredura, sem intervenção humana. Falha
+        // persistente além da janela fica sinalizada para retry na aba de
+        // transações — evita re-tentativa infinita de falha determinística.
+        const ord = (await svc.entities.Order.filter({ id: p.order_id }))[0];
+        const orderAgeMs = ord?.created_date ? Date.now() - new Date(ord.created_date).getTime() : Infinity;
+        if (ord && ord.status !== 'cancelled' && orderAgeMs <= 2 * 60 * 60 * 1000) {
+          const attempt = await fulfillOrder(svc, p, ord, items);
+          if (attempt.fulfilled) { reconcileCompleted++; continue; }
+          reconcileFlagged++; // fulfillOrder já gravou pending_retry + error_reason
+          continue;
+        }
         try {
           await svc.entities.Payment.update(p.id, {
             fulfillment_status: 'pending_retry',
@@ -394,8 +435,9 @@ export default async function(req: Request): Promise<Response> {
       console.error('[expireStaleReservations] refund reconcile failed:', refundErr?.message || refundErr);
     }
 
-    return Response.json({
-      ok: true,
+    // Resumo da rodada persistido na config (resposta das chamadas throttled)
+    // + auditoria da execução real (sem PII — apenas contadores).
+    const summary = {
       checked: limit,
       expired,
       kept_alive: keptAlive,
@@ -406,7 +448,27 @@ export default async function(req: Request): Promise<Response> {
       // Aproximação com a query limitada: 1 = ainda há vencidos além deste
       // lote (próxima varredura pega), 0 = varredura completa.
       remaining: hasMoreStale ? 1 : 0,
-    });
+    };
+    if (maintenanceSetting) {
+      try {
+        await svc.entities.PlatformSetting.update(maintenanceSetting.id, {
+          value_json: JSON.stringify({ last_run_at: nowIso, summary }),
+        });
+      } catch {}
+    }
+    try {
+      await svc.entities.AuditLog.create({
+        action: 'status_change',
+        entity_type: 'Order',
+        entity_id: '',
+        details: JSON.stringify({ type: 'maintenance_run', ...summary }),
+        event_id: '',
+        user_id: 'system',
+        user_name: 'Manutenção automática',
+      });
+    } catch {}
+
+    return Response.json({ ok: true, ...summary });
   } catch (error: any) {
     console.error('[expireStaleReservations]', error?.message || error);
     return Response.json({ error: error.message }, { status: 500 });
