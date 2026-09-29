@@ -1,20 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { partnerPublicView as publicView } from "../../shared/partnerPublicView.ts";
 
 // Retorna apenas campos públicos de Partner (sem PII: sem contact_email,
 // contact_phone, legal_document_number). Usado para exibição de patrocinadores
 // e ficha pública do parceiro (qualquer usuário autenticado).
-function publicView(p) {
-  return {
-    id: p.id,
-    trade_name: p.trade_name,
-    legal_name: p.legal_name,
-    logo_url: p.logo_url,
-    website: p.website,
-    about: p.about,
-    is_active: p.is_active,
-  };
-}
 
 export default async function(req: Request): Promise<Response> {
   try {

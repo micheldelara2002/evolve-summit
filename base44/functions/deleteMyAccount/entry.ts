@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // Account Deletion — self-service exclusão de conta do próprio usuário.
 //
@@ -110,10 +111,7 @@ export default async function(req) {
     });
 
     const pageParticipants = async (query) => {
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.Participant.filter(query, '-id', BATCH, skip);
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.Participant, query, { pageSize: BATCH })) {
         const updates = [];
         for (const p of batch) {
           if (participantIds.has(p.id)) continue;
@@ -124,8 +122,6 @@ export default async function(req) {
         if (!dryRun && updates.length > 0) {
           await svc.entities.Participant.bulkUpdate(updates);
         }
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     };
 
@@ -147,10 +143,7 @@ export default async function(req) {
     });
 
     if (personId) {
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.Lead.filter({ person_id: personId }, '-id', BATCH, skip);
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.Lead, { person_id: personId }, { pageSize: BATCH })) {
         const updates = [];
         for (const l of batch) {
           if (leadIds.has(l.id)) continue;
@@ -159,19 +152,12 @@ export default async function(req) {
           counts.leads++;
         }
         if (!dryRun && updates.length > 0) await svc.entities.Lead.bulkUpdate(updates);
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     }
     const partIdArr = Array.from(participantIds);
     for (let i = 0; i < partIdArr.length; i += BATCH) {
       const chunk = partIdArr.slice(i, i + BATCH);
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.Lead.filter(
-          { participant_id: { $in: chunk } }, '-id', BATCH, skip
-        );
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.Lead, { participant_id: { $in: chunk } }, { pageSize: BATCH })) {
         const updates = [];
         for (const l of batch) {
           if (leadIds.has(l.id)) continue;
@@ -180,8 +166,6 @@ export default async function(req) {
           counts.leads++;
         }
         if (!dryRun && updates.length > 0) await svc.entities.Lead.bulkUpdate(updates);
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     }
 
@@ -189,20 +173,13 @@ export default async function(req) {
     // 4. CHATMESSAGE (por sender_person_id) — preserva texto, anonimiza nome
     // =========================================================================
     if (personId) {
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.ChatMessage.filter(
-          { sender_person_id: personId }, '-id', BATCH, skip
-        );
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.ChatMessage, { sender_person_id: personId }, { pageSize: BATCH })) {
         if (!dryRun) {
           await svc.entities.ChatMessage.bulkUpdate(
             batch.map((m) => ({ id: m.id, sender_name: DELETED_NAME }))
           );
         }
         counts.chatMessages += batch.length;
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     }
 
@@ -212,18 +189,13 @@ export default async function(req) {
     if (personId) {
       for (const side of ['person_a_id', 'person_b_id']) {
         const nameField = side === 'person_a_id' ? 'person_a_name' : 'person_b_name';
-        let skip = 0;
-        while (true) {
-          const batch = await svc.entities.ChatThread.filter({ [side]: personId }, '-id', BATCH, skip);
-          if (batch.length === 0) break;
+        for await (const batch of scanBatches(svc.entities.ChatThread, { [side]: personId }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.ChatThread.bulkUpdate(
               batch.map((t) => ({ id: t.id, [nameField]: DELETED_NAME }))
             );
           }
           counts.chatThreads += batch.length;
-          skip += BATCH;
-          if (batch.length < BATCH) break;
         }
       }
     }
@@ -234,18 +206,13 @@ export default async function(req) {
     if (personId) {
       for (const side of ['person_a_id', 'person_b_id']) {
         const nameField = side === 'person_a_id' ? 'person_a_name' : 'person_b_name';
-        let skip = 0;
-        while (true) {
-          const batch = await svc.entities.Connection.filter({ [side]: personId }, '-id', BATCH, skip);
-          if (batch.length === 0) break;
+        for await (const batch of scanBatches(svc.entities.Connection, { [side]: personId }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.Connection.bulkUpdate(
               batch.map((c) => ({ id: c.id, [nameField]: DELETED_NAME }))
             );
           }
           counts.connections += batch.length;
-          skip += BATCH;
-          if (batch.length < BATCH) break;
         }
       }
     }
@@ -256,20 +223,13 @@ export default async function(req) {
     if (personId) {
       for (const side of ['requester_person_id', 'receiver_person_id']) {
         const nameField = side === 'requester_person_id' ? 'requester_name' : 'receiver_name';
-        let skip = 0;
-        while (true) {
-          const batch = await svc.entities.ConnectionRequest.filter(
-            { [side]: personId }, '-id', BATCH, skip
-          );
-          if (batch.length === 0) break;
+        for await (const batch of scanBatches(svc.entities.ConnectionRequest, { [side]: personId }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.ConnectionRequest.bulkUpdate(
               batch.map((c) => ({ id: c.id, [nameField]: DELETED_NAME }))
             );
           }
           counts.connectionRequests += batch.length;
-          skip += BATCH;
-          if (batch.length < BATCH) break;
         }
       }
     }
@@ -288,10 +248,7 @@ export default async function(req) {
       { user_id: user.id },
     ]) {
       if (!queryKey) continue;
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.EventMembership.filter(queryKey, '-id', BATCH, skip);
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.EventMembership, queryKey, { pageSize: BATCH })) {
         const updates = [];
         for (const m of batch) {
           if (membershipIds.has(m.id)) continue;
@@ -300,8 +257,6 @@ export default async function(req) {
           counts.memberships++;
         }
         if (!dryRun && updates.length > 0) await svc.entities.EventMembership.bulkUpdate(updates);
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     }
 
@@ -309,12 +264,7 @@ export default async function(req) {
     // 9. NOTIFICATIONRECIPIENT (por recipient_user_id) — preserva métricas
     // =========================================================================
     {
-      let skip = 0;
-      while (true) {
-        const batch = await svc.entities.NotificationRecipient.filter(
-          { recipient_user_id: user.id }, '-id', BATCH, skip
-        );
-        if (batch.length === 0) break;
+      for await (const batch of scanBatches(svc.entities.NotificationRecipient, { recipient_user_id: user.id }, { pageSize: BATCH })) {
         if (!dryRun) {
           await svc.entities.NotificationRecipient.bulkUpdate(
             batch.map((r) => ({
@@ -325,8 +275,6 @@ export default async function(req) {
           );
         }
         counts.recipients += batch.length;
-        skip += BATCH;
-        if (batch.length < BATCH) break;
       }
     }
 

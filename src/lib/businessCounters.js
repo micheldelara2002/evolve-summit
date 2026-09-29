@@ -31,19 +31,8 @@ export async function moveParticipantRoleCounter(eventId, createdDateISO, oldRol
   } catch {}
 }
 
-export async function incLeadsCounter(eventId, createdDateISO, partnerId) {
-  if (!eventId || !createdDateISO) return;
-  try {
-    await base44.functions.invoke("maintainBusinessCounter", { action: "incLeads", eventId, partnerId, createdDateISO });
-  } catch {}
-}
-
-export async function incPersonsCounter(createdDateISO) {
-  if (!createdDateISO) return;
-  try {
-    await base44.functions.invoke("maintainBusinessCounter", { action: "incPersons", createdDateISO });
-  } catch {}
-}
+// P3 (2026-09-29) — incLeadsCounter/incPersonsCounter removidos (exports mortos;
+// os counters são mantidos server-side por getOrCreatePerson/saveBoothLead).
 
 export async function incPartnersCounter(createdDateISO) {
   if (!createdDateISO) return;

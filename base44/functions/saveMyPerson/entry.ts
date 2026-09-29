@@ -6,6 +6,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';
+import { sanitizeAllowlisted } from '../../shared/sanitize.ts';
 
 const ALLOWED_FIELDS = [
   'full_name', 'contact_email', 'phone', 'company', 'job_title',
@@ -13,16 +14,9 @@ const ALLOWED_FIELDS = [
 ];
 const MAX_LEN = 2000;
 
-function sanitizeData(data) {
-  const out = {};
-  if (!data || typeof data !== 'object') return out;
-  for (const key of ALLOWED_FIELDS) {
-    if (key in data && data[key] !== undefined && data[key] !== null) {
-      out[key] = String(data[key]).trim().slice(0, MAX_LEN);
-    }
-  }
-  return out;
-}
+// P2 (2026-09-29) — allowlist unificada em shared/sanitize.ts (era cópia local
+// divergente da de managePerson).
+const sanitizeData = (data) => sanitizeAllowlisted(data, ALLOWED_FIELDS, MAX_LEN);
 
 function isValidEmail(value) {
   return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);

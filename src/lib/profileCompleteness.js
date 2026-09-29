@@ -2,7 +2,8 @@
  * Cálculo de completude do perfil com base nos campos de Person.
  */
 
-export const COMPLETENESS_FIELDS = [
+// P3 (2026-09-29) — uso interno apenas (export morto).
+const COMPLETENESS_FIELDS = [
   "contact_email",
   "phone",
   "company",

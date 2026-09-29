@@ -1,18 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-
-function sanitizeText(text) {
-  if (!text || typeof text !== 'string') return '';
-  return text
-    .replace(/<[^>]*>/g, '')
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+\s*=/gi, '')
-    .trim();
-}
-
-function sortPersonIds(a, b) {
-  return a < b ? [a, b] : [b, a];
-}
+import { sanitizeText } from "../../shared/sanitize.ts";
+import { sortPersonIds } from "../../shared/personPair.ts";
 
 // P1 — Active participant in event: not soft-deleted, not cancelled.
 // Used to validate that both ends of a connection are eligible participants

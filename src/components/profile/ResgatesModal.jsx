@@ -39,7 +39,7 @@ export default function ResgatesModal({ open, onClose, personId, userEmail }) {
 
   // P0: Cursor-based pagination for StoreRedemption ledger — deterministic (created_date, id) cursor
   const { items: redemptions, loading: loadingRes, hasMore, loadMore } = useCursorPagination({
-    fetchPage: (query, sort, limit) => base44.entities.StoreRedemption.filter(query, sort, limit),
+    fetchPage: (query, sort, limit, skip) => base44.entities.StoreRedemption.filter(query, sort, limit, skip),
     baseQuery: { participant_id: { $in: participantIds }, is_deleted: false },
     depsKey: `${open}:${participantIds.join(",")}`,
     enabled: open && participantIds.length > 0,

@@ -6,11 +6,6 @@ import { base44 } from "@/api/base44Client";
 import { sanitizeText } from "@/utils/sanitize";
 import { fetchPersonsByIds } from "@/lib/personApi";
 
-/** Ordena dois IDs para garantir unicidade do par. */
-export function sortPersonIds(a, b) {
-  return a < b ? [a, b] : [b, a];
-}
-
 /** Busca user_id pelo email da Person (para entregar notificação no sininho). */
 async function findUserIdByEmail(email) {
   if (!email) return null;

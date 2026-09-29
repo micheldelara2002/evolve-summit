@@ -3,6 +3,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { normalizeParticipantEmail } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento)
 import { decUniqueParticipant, decParticipantsByRole } from "../../shared/businessMetrics.ts";
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // Reconciliação única de duplicatas legadas de Participant (política: bloqueio
 // com reativação — 1 e-mail ativo = 1 inscrição por evento).
@@ -38,16 +39,15 @@ export default async function(req: Request): Promise<Response> {
     const svc = base44.asServiceRole;
     const adminUser = guard.user;
 
-    // Agrupa inscrições ativas por e-mail (paginação skip+limit, O(batch)).
+    // Agrupa inscrições ativas por e-mail (scanBatches, sort 'created_date' —
+    // mesma ordenação de antes; survivor é escolhido por sort determinístico).
     const byEmail = new Map<string, any[]>();
     let scanned = 0;
-    let skip = 0;
-    while (true) {
-      const batch = await svc.entities.Participant.filter(
-        { event_id: eventId, is_deleted: false, registration_status: { $ne: 'cancelled' } },
-        'created_date', BATCH_SIZE, skip,
-      );
-      if (batch.length === 0) break;
+    for await (const batch of scanBatches(
+      svc.entities.Participant,
+      { event_id: eventId, is_deleted: false, registration_status: { $ne: 'cancelled' } },
+      { pageSize: BATCH_SIZE, sort: 'created_date' }
+    )) {
       scanned += batch.length;
       for (const p of batch) {
         const key = normalizeParticipantEmail(p.email);
@@ -55,8 +55,6 @@ export default async function(req: Request): Promise<Response> {
         if (!byEmail.has(key)) byEmail.set(key, []);
         byEmail.get(key).push(p);
       }
-      skip += BATCH_SIZE;
-      if (batch.length < BATCH_SIZE) break;
     }
 
     let groupsWithDuplicates = 0;

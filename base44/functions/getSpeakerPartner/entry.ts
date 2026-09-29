@@ -1,20 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { partnerPublicView as publicView } from "../../shared/partnerPublicView.ts";
 
 // Retorna a ficha pública do parceiro patrocinador do palestrante de uma sessão,
 // se o palestrante for um representante ativo de um parceiro ativo do evento.
 // Toda a lógica de cruzamento (Participant → PartnerRepresentative → EventPartner → Partner)
 // roda server-side; nenhum dado de PartnerRepresentative vaza ao cliente.
-function publicView(p) {
-  return {
-    id: p.id,
-    trade_name: p.trade_name,
-    legal_name: p.legal_name,
-    logo_url: p.logo_url,
-    website: p.website,
-    about: p.about,
-  };
-}
+// P2 — view unificada com getPublicPartners (partnerPublicView, shape superset).
 
 export default async function(req: Request): Promise<Response> {
   try {

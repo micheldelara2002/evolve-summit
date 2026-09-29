@@ -8,6 +8,7 @@ import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { validIds, isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';
+import { sanitizeAllowlisted } from '../../shared/sanitize.ts';
 
 const ALLOWED_FIELDS = [
   'full_name', 'contact_email', 'phone', 'company', 'job_title',
@@ -16,20 +17,9 @@ const ALLOWED_FIELDS = [
 const MAX_LEN = 2000;
 const MAX_PERSONS = 500;
 
-function sanitizeData(data) {
-  const out = {};
-  if (!data || typeof data !== 'object') return out;
-  for (const key of ALLOWED_FIELDS) {
-    if (key in data && data[key] !== undefined && data[key] !== null) {
-      if (key === 'is_active') {
-        out[key] = data[key] === true;
-      } else {
-        out[key] = String(data[key]).trim().slice(0, MAX_LEN);
-      }
-    }
-  }
-  return out;
-}
+// P2 (2026-09-29) — allowlist unificada em shared/sanitize.ts (era cópia local
+// divergente da de saveMyPerson; is_active é booleano estrito aqui).
+const sanitizeData = (data) => sanitizeAllowlisted(data, ALLOWED_FIELDS, MAX_LEN, ['is_active']);
 
 function matchesQuery(person, query) {
   if (!query) return true;

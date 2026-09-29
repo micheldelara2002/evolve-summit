@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchEventParticipants } from "@/lib/participantApi";
 import { getAllowedSegments } from "@/lib/notificationService";
-import { getMyMemberships } from "@/lib/roleEngine";
+import { getMyMemberships } from "@/lib/access";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";

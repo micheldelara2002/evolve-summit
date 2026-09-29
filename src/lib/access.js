@@ -6,13 +6,9 @@ export function isAdmin(user) {
 }
 
 // ── Event access ────────────────────────────────────────────────
-// Hoje o gerenciamento de evento é exclusivo do admin. O branch
-// "manager"/managed_event_ids era legado e nunca era atribuído (o
-// enum de User nem continha "manager"), então foi removido.
-export function canManageEvent(user, eventId) {
-  return isAdmin(user);
-}
-
+// P3 (2026-09-29) — canManageEvent removido: regra morta e contraditória
+// (a true o app todo aceita manager/team via EventMembership; ver
+// useEventAccess/EventManageRoute).
 export function filterEventsByAccess(events, user, managedEventIds = new Set()) {
   if (isAdmin(user)) return events;
   // Não-admin: apenas eventos com EventMembership ativa de gestão (manager/team).
@@ -31,12 +27,8 @@ export function isPartnerManager(user) {
   );
 }
 
-export function isRepresentative(user) {
-  return (user?.partner_reps || []).some(
-    (r) => r.is_active && r.role_in_partner === "representative"
-  );
-}
-
+// P3 (2026-09-29) — isRepresentative removido (export morto; a checagem de
+// escopo de parceiro usa canManagePartner/isPartnerManager).
 export function canAccessPartnerAdmin(user) {
   return isAdmin(user) || isPartnerManager(user);
 }
@@ -81,4 +73,19 @@ export function canManagePartner(user, partnerId, reps = []) {
       r.role_in_partner === "partner_manager" &&
       r.is_active
   );
+}
+
+/**
+ * Busca todos os vínculos ativos (EventMembership) do usuário em todos os
+ * eventos. P2/P3 (2026-09-29) — consolidado do extinto lib/roleEngine.js
+ * (único export vivo do arquivo); separa PERMISSÃO (EventMembership) de
+ * PRESENÇA (Participant).
+ */
+export async function getMyMemberships(userId) {
+  if (!userId) return [];
+  return await base44.entities.EventMembership.filter({
+    user_id: userId,
+    is_active: true,
+    is_deleted: false,
+  });
 }

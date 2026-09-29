@@ -38,7 +38,7 @@ export default function PointsModal({ open, onClose, personId, userEmail }) {
 
   // P0: Cursor-based pagination for PointTransaction ledger — deterministic (created_date, id) cursor
   const { items: transactions, loading: loadingTx, hasMore, loadMore } = useCursorPagination({
-    fetchPage: (query, sort, limit) => base44.entities.PointTransaction.filter(query, sort, limit),
+    fetchPage: (query, sort, limit, skip) => base44.entities.PointTransaction.filter(query, sort, limit, skip),
     baseQuery: { participant_id: { $in: participantIds } },
     depsKey: `${open}:${participantIds.join(",")}`,
     enabled: open && participantIds.length > 0,

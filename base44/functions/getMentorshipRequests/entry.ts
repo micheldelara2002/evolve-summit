@@ -1,17 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveUserPersonId } from "../../shared/eventAuth.ts";
-
-async function participantBelongsToUser(base44, participantId, user, userPersonId) {
-  if (!participantId) return false;
-  if (user.role === 'admin') return true;
-  const ps = await base44.asServiceRole.entities.Participant.filter({ id: participantId, is_deleted: false });
-  const p = ps?.[0];
-  if (!p) return false;
-  if (userPersonId && p.person_id === userPersonId) return true;
-  if (p.email && p.email.toLowerCase() === user.email.toLowerCase()) return true;
-  return false;
-}
+import { participantBelongsToUser } from "../../shared/participantOwnership.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {

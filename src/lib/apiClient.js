@@ -11,8 +11,9 @@ const EMAIL_TIMEOUT = 15_000;
 
 /**
  * Adiciona timeout a uma promise. Rejeita com Error("Timeout") se exceder.
+ * (uso interno deste módulo — P3: removido do export público morto)
  */
-export function withTimeout(promise, ms) {
+function withTimeout(promise, ms) {
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error("Tempo limite excedido. Tente novamente.")), ms);

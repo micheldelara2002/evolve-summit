@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // P0.2 reconciliation — Rebuild Participant counters (points_total, redeemed_total)
 // from the authoritative ledgers (PointTransaction, StoreRedemption).
@@ -51,15 +52,10 @@ const BATCH_SIZE = 500;
 // =============================================================================
 async function sumParticipantLedger(svc, entity, participantId, filterExtra, valueField) {
   let sum = 0;
-  let skip = 0;
-  while (true) {
-    const batch = await svc.entities[entity].filter(
-      { participant_id: participantId, ...filterExtra }, '-id', BATCH_SIZE, skip
-    );
-    if (batch.length === 0) break;
+  for await (const batch of scanBatches(
+    svc.entities[entity], { participant_id: participantId, ...filterExtra }, { pageSize: BATCH_SIZE }
+  )) {
     for (const r of batch) sum += (r[valueField] || 0);
-    skip += BATCH_SIZE;
-    if (batch.length < BATCH_SIZE) break;
   }
   return sum;
 }
@@ -70,19 +66,15 @@ async function sumParticipantLedger(svc, entity, participantId, filterExtra, val
 // =============================================================================
 async function sumBatchLedger(svc, entity, eventId, batchIds, filterExtra, valueField) {
   const map = new Map();
-  let skip = 0;
-  while (true) {
-    const batch = await svc.entities[entity].filter(
-      { event_id: eventId, participant_id: { $in: batchIds }, ...filterExtra },
-      '-id', BATCH_SIZE, skip
-    );
-    if (batch.length === 0) break;
+  for await (const batch of scanBatches(
+    svc.entities[entity],
+    { event_id: eventId, participant_id: { $in: batchIds }, ...filterExtra },
+    { pageSize: BATCH_SIZE }
+  )) {
     for (const r of batch) {
       if (!r.participant_id) continue;
       map.set(r.participant_id, (map.get(r.participant_id) || 0) + (r[valueField] || 0));
     }
-    skip += BATCH_SIZE;
-    if (batch.length < BATCH_SIZE) break;
   }
   return map;
 }
@@ -157,14 +149,10 @@ export default async function(req: Request): Promise<Response> {
     let totalDrifted = 0;
     let totalApplied = 0;
     const allDetails = [];
-    let skipPart = 0;
 
-    while (true) {
-      const partBatch = await svc.entities.Participant.filter(
-        { event_id: eventId, is_deleted: false }, '-id', BATCH_SIZE, skipPart
-      );
-      if (partBatch.length === 0) break;
-      skipPart += BATCH_SIZE;
+    for await (const partBatch of scanBatches(
+      svc.entities.Participant, { event_id: eventId, is_deleted: false }, { pageSize: BATCH_SIZE }
+    )) {
       totalReconciled += partBatch.length;
 
       const batchIds = partBatch.map((p) => p.id);
@@ -207,8 +195,6 @@ export default async function(req: Request): Promise<Response> {
         await svc.entities.Participant.bulkUpdate(toUpdate);
         totalApplied += toUpdate.length;
       }
-
-      if (partBatch.length < BATCH_SIZE) break;
     }
 
     return Response.json({

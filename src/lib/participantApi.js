@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { scanPagedEndpoint } from "@/lib/fetchAll";
 
 /**
  * participantApi — porta única de escrita de Participant (e acessos de apoio do
@@ -91,17 +92,13 @@ export async function fetchEventParticipants(eventId, opts = {}) {
  * no limite do backend (1.000) e a gestão não vê o resto da lista.
  */
 export async function fetchAllEventParticipants(eventId) {
-  const BATCH = 2000; // MAX_LIMIT do backend
-  const all = [];
-  let skip = 0;
-  while (true) {
-    const out = await invokeRead({ op: "event", event_id: eventId, limit: BATCH, skip });
-    const parts = out.participants || [];
-    all.push(...parts);
-    if (!out.has_more || parts.length === 0) break;
-    skip += BATCH;
-  }
-  return all;
+  // MAX_LIMIT do backend = 2000; scanPagedEndpoint encadeia has_more até esgotar.
+  return scanPagedEndpoint((skip) =>
+    invokeRead({ op: "event", event_id: eventId, limit: 2000, skip }).then((out) => ({
+      page: out.participants || [],
+      hasMore: !!out.has_more,
+    }))
+  );
 }
 
 export async function fetchMyEventsParticipantsPage({ limit, skip } = {}) {
@@ -110,16 +107,12 @@ export async function fetchMyEventsParticipantsPage({ limit, skip } = {}) {
 }
 
 export async function fetchAllMyEventsParticipants() {
-  const BATCH = 2000;
-  const all = [];
-  let skip = 0;
-  while (true) {
-    const { participants, hasMore } = await fetchMyEventsParticipantsPage({ limit: BATCH, skip });
-    all.push(...participants);
-    if (!hasMore || participants.length === 0) break;
-    skip += BATCH;
-  }
-  return all;
+  return scanPagedEndpoint((skip) =>
+    fetchMyEventsParticipantsPage({ limit: 2000, skip }).then(({ participants, hasMore }) => ({
+      page: participants,
+      hasMore,
+    }))
+  );
 }
 
 export async function fetchPartnerSpeakerParticipants(partnerId) {

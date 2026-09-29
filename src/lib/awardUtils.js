@@ -28,7 +28,3 @@ export function criteriaTotal(scores, criteria) {
   }
   return Math.round(total * 100) / 100;
 }
-
-export function criteriaMaxTotal(criteria) {
-  return criteria.reduce((sum, c) => sum + (c.max_score || 0) * (c.weight || 1), 0);
-}

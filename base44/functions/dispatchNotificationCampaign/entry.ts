@@ -66,6 +66,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { scanBatches } from "../../shared/completeScan.ts";
 
 const BATCH_SIZE = 500;
 
@@ -152,30 +153,22 @@ async function* resolveAudienceBatches(
     if (scopeEventId) {
       // --- Evento: todos os participantes do evento com conta de app ---
       // Um único recipient por pessoa (dedup por user_id dentro/cross-batch).
-      let skip = 0;
-      while (true) {
-        const parts = await svc.entities.Participant.filter(
-          { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } }, "id", BATCH_SIZE, skip
-        );
-        if (parts.length === 0) break;
+      for await (const parts of scanBatches(
+        svc.entities.Participant,
+        { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } },
+        { pageSize: BATCH_SIZE }
+      )) {
         const recipients = await participantsToRecipients(svc, parts);
         if (recipients.length > 0) yield { recipients };
-        skip += BATCH_SIZE;
-        if (parts.length < BATCH_SIZE) break;
       }
     } else {
       // --- Global (sem evento): todos os Users do app (paginado) ---
-      let skip = 0;
-      while (true) {
-        const users = await svc.entities.User.filter({ account_status: { $ne: "deleted" } }, "id", BATCH_SIZE, skip);
-        if (users.length === 0) break;
+      for await (const users of scanBatches(svc.entities.User, { account_status: { $ne: "deleted" } }, { pageSize: BATCH_SIZE })) {
         yield {
           recipients: users.map((u: any) => ({
             user_id: u.id, name: u.full_name || "", email: u.email || "", role: u.role || "",
           })),
         };
-        skip += BATCH_SIZE;
-        if (users.length < BATCH_SIZE) break;
       }
     }
   } else if (audienceType === "segment") {
@@ -188,10 +181,7 @@ async function* resolveAudienceBatches(
 
     const userRoles = Object.keys(userRoleMap);
     if (userRoles.length > 0) {
-      let skip = 0;
-      while (true) {
-        const users = await svc.entities.User.filter({ account_status: { $ne: "deleted" } }, "id", BATCH_SIZE, skip);
-        if (users.length === 0) break;
+      for await (const users of scanBatches(svc.entities.User, { account_status: { $ne: "deleted" } }, { pageSize: BATCH_SIZE })) {
         const batch: Recipient[] = users
           .filter((u: any) => userRoles.includes(u.role))
           .map((u: any) => ({
@@ -199,8 +189,6 @@ async function* resolveAudienceBatches(
             role: userRoleMap[u.role] || u.role || "",
           }));
         if (batch.length > 0) yield { recipients: batch };
-        skip += BATCH_SIZE;
-        if (users.length < BATCH_SIZE) break;
       }
     }
 
@@ -218,19 +206,17 @@ async function* resolveAudienceBatches(
       for (const seg of audienceSegments) {
         const role = membershipSegMap[seg];
         if (!role) continue;
-        let skip = 0;
-        while (true) {
-          const memberships = await svc.entities.EventMembership.filter(
-            {
-              event_id: scopeEventId,
-              role,
-              is_active: true,
-              is_deleted: false,
-              user_id: { $ne: "" },
-            },
-            "id", BATCH_SIZE, skip
-          );
-          if (memberships.length === 0) break;
+        for await (const memberships of scanBatches(
+          svc.entities.EventMembership,
+          {
+            event_id: scopeEventId,
+            role,
+            is_active: true,
+            is_deleted: false,
+            user_id: { $ne: "" },
+          },
+          { pageSize: BATCH_SIZE }
+        )) {
           yield {
             recipients: memberships.map((m: any) => ({
               user_id: m.user_id,
@@ -239,35 +225,28 @@ async function* resolveAudienceBatches(
               role: m.role,
             })),
           };
-          skip += BATCH_SIZE;
-          if (memberships.length < BATCH_SIZE) break;
         }
       }
 
       // --- Segmento 'attendee' do evento: todos os participantes com conta ---
       if (audienceSegments.includes("attendee")) {
-        let skip = 0;
-        while (true) {
-          const parts = await svc.entities.Participant.filter(
-            { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } }, "id", BATCH_SIZE, skip
-          );
-          if (parts.length === 0) break;
+        for await (const parts of scanBatches(
+          svc.entities.Participant,
+          { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } },
+          { pageSize: BATCH_SIZE }
+        )) {
           const recipients = await participantsToRecipients(svc, parts);
           if (recipients.length > 0) yield { recipients };
-          skip += BATCH_SIZE;
-          if (parts.length < BATCH_SIZE) break;
         }
       }
     }
   } else if (audienceType === "my_leads" && senderUser && senderPartnerId && scopeEventId) {
     // Leads do parceiro → participantes elegíveis → User por e-mail
-    let skip = 0;
-    while (true) {
-      const leads = await svc.entities.Lead.filter(
-        { event_id: scopeEventId, partner_id: senderPartnerId },
-        "id", BATCH_SIZE, skip
-      );
-      if (leads.length === 0) break;
+    for await (const leads of scanBatches(
+      svc.entities.Lead,
+      { event_id: scopeEventId, partner_id: senderPartnerId },
+      { pageSize: BATCH_SIZE }
+    )) {
       const leadPartIds = new Set<string>();
       for (const l of leads) if (l.participant_id) leadPartIds.add(l.participant_id);
       if (leadPartIds.size > 0) {
@@ -278,29 +257,22 @@ async function* resolveAudienceBatches(
         const recipients = await participantsToRecipients(svc, eligibleParts);
         if (recipients.length > 0) yield { recipients };
       }
-      skip += BATCH_SIZE;
-      if (leads.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "partner_all_event" && scopeEventId) {
-    let skip = 0;
-    while (true) {
-      const parts = await svc.entities.Participant.filter(
-        { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } }, "id", BATCH_SIZE, skip
-      );
-      if (parts.length === 0) break;
+    for await (const parts of scanBatches(
+      svc.entities.Participant,
+      { event_id: scopeEventId, is_deleted: false, is_eligible: { $ne: false } },
+      { pageSize: BATCH_SIZE }
+    )) {
       const recipients = await participantsToRecipients(svc, parts);
       if (recipients.length > 0) yield { recipients };
-      skip += BATCH_SIZE;
-      if (parts.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "partner_leads" && scopeEventId && senderPartnerId) {
-    let skip = 0;
-    while (true) {
-      const leads = await svc.entities.Lead.filter(
-        { event_id: scopeEventId, partner_id: senderPartnerId },
-        "id", BATCH_SIZE, skip
-      );
-      if (leads.length === 0) break;
+    for await (const leads of scanBatches(
+      svc.entities.Lead,
+      { event_id: scopeEventId, partner_id: senderPartnerId },
+      { pageSize: BATCH_SIZE }
+    )) {
       const leadPartIds = new Set<string>();
       for (const l of leads) if (l.participant_id) leadPartIds.add(l.participant_id);
       if (leadPartIds.size > 0) {
@@ -311,8 +283,6 @@ async function* resolveAudienceBatches(
         const recipients = await participantsToRecipients(svc, eligibleParts);
         if (recipients.length > 0) yield { recipients };
       }
-      skip += BATCH_SIZE;
-      if (leads.length < BATCH_SIZE) break;
     }
   } else if (audienceType === "my_attendees" && senderUser && scopeEventId) {
     // Paginated resolution: Sender → Person → Speaker Participant → Sessions →
@@ -324,43 +294,32 @@ async function* resolveAudienceBatches(
     if (speakerPerson) {
       // Step 2: Person → Speaker's Participant records (paginated, collect IDs)
       const speakerPartIds: string[] = [];
-      let skipP = 0;
-      while (true) {
-        const speakerParts = await svc.entities.Participant.filter(
-          { event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false },
-          "id", BATCH_SIZE, skipP
-        );
-        if (speakerParts.length === 0) break;
+      for await (const speakerParts of scanBatches(
+        svc.entities.Participant,
+        { event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false },
+        { pageSize: BATCH_SIZE }
+      )) {
         for (const p of speakerParts) speakerPartIds.push(p.id);
-        skipP += BATCH_SIZE;
-        if (speakerParts.length < BATCH_SIZE) break;
       }
 
       if (speakerPartIds.length > 0) {
         // Step 3: Speaker's Participant IDs → Sessions (paginated by speaker_id $in)
         const speakerSessionIds: string[] = [];
-        let skipS = 0;
-        while (true) {
-          const sessions = await svc.entities.Session.filter(
-            { event_id: scopeEventId, speaker_id: { $in: speakerPartIds }, is_deleted: false },
-            "id", BATCH_SIZE, skipS
-          );
-          if (sessions.length === 0) break;
+        for await (const sessions of scanBatches(
+          svc.entities.Session,
+          { event_id: scopeEventId, speaker_id: { $in: speakerPartIds }, is_deleted: false },
+          { pageSize: BATCH_SIZE }
+        )) {
           for (const s of sessions) speakerSessionIds.push(s.id);
-          skipS += BATCH_SIZE;
-          if (sessions.length < BATCH_SIZE) break;
         }
 
         if (speakerSessionIds.length > 0) {
           // Step 4+5: Sessions → Attendance (paginado) → Participants → User
-          let skipA = 0;
-          while (true) {
-            const attendance = await svc.entities.SessionAttendance.filter(
-              { event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds } },
-              "id", BATCH_SIZE, skipA
-            );
-            if (attendance.length === 0) break;
-
+          for await (const attendance of scanBatches(
+            svc.entities.SessionAttendance,
+            { event_id: scopeEventId, is_present: true, session_id: { $in: speakerSessionIds } },
+            { pageSize: BATCH_SIZE }
+          )) {
             const batchPartIds = new Set<string>();
             for (const a of attendance) {
               if (a.participant_id) batchPartIds.add(a.participant_id);
@@ -374,9 +333,6 @@ async function* resolveAudienceBatches(
               const recipients = await participantsToRecipients(svc, parts);
               if (recipients.length > 0) yield { recipients };
             }
-
-            skipA += BATCH_SIZE;
-            if (attendance.length < BATCH_SIZE) break;
           }
         }
       }
@@ -455,21 +411,14 @@ async function countRecipientsByStatus(
   stats: any
 ): Promise<{ total: number; sent: number; failed: number; pending: number }> {
   let total = 0, sent = 0, failed = 0, pending = 0;
-  let skip = 0;
-  while (true) {
-    const batch = await svc.entities.NotificationRecipient.filter(
-      { campaign_id: campaignId }, "id", BATCH_SIZE, skip
-    );
+  for await (const batch of scanBatches(svc.entities.NotificationRecipient, { campaign_id: campaignId }, { pageSize: BATCH_SIZE })) {
     stats.queries++;
-    if (batch.length === 0) break;
     for (const r of batch) {
       total++;
       if (r.delivery_status === "sent") sent++;
       else if (r.delivery_status === "failed") failed++;
       else pending++; // pending or processing
     }
-    if (batch.length < BATCH_SIZE) break;
-    skip += BATCH_SIZE;
   }
   return { total, sent, failed, pending };
 }

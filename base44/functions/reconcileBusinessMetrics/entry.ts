@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
+import { dayKeyOf as dayKey } from "../../shared/businessPeriod.ts";
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // P0.3 — Reconstrói MetricBucket de um evento a partir das entidades
 // autoritativas (Participant is_deleted:false, Lead). Admin-only, bounded por
@@ -48,10 +50,6 @@ import { requireActiveUser } from '../../shared/accountSecurity.ts';
 // (N/500 fetches), latência por página ~constante; para milhões de registros o custo é
 // proporcional ao volume mas o reconcílio roda assíncrono/admin, fora do hot-path.
 
-function dayKey(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
 const BATCH = 500;
 
 export default async function(req: Request): Promise<Response> {
@@ -67,16 +65,13 @@ export default async function(req: Request): Promise<Response> {
     if (!eventId) return Response.json({ error: 'eventId obrigatório' }, { status: 400 });
     const svc = base44.asServiceRole;
 
-    // --- Pass 1: participants is_deleted:false, cursor em 'id' desc, contagem direta ---
+    // --- Pass 1: participants is_deleted:false, skip em 'id' (scanBatches), contagem direta ---
     // Memória: Map<day, number> + Map<day|role, number> = O(dias × papéis). Sem Set de IDs.
     let totalUnique = 0;
     const uniqByDay = new Map<string, number>();
     const roleByDay = new Map<string, number>(); // key: day|role
     let backfilledParticipants = 0;
-    let pskip = 0;
-    while (true) {
-      const batch = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false }, 'id', BATCH, pskip);
-      if (batch.length === 0) break;
+    for await (const batch of scanBatches(svc.entities.Participant, { event_id: eventId, is_deleted: false }, { pageSize: BATCH })) {
       // Backfill incremental por batch — O(BATCH) memória (não acumula todos os legados).
       const batchBackfill: any[] = [];
       for (const p of batch) {
@@ -92,18 +87,13 @@ export default async function(req: Request): Promise<Response> {
       if (!dryRun && batchBackfill.length > 0) {
         try { await svc.entities.Participant.bulkUpdate(batchBackfill); backfilledParticipants += batchBackfill.length; } catch {}
       }
-      pskip += BATCH;
-      if (batch.length < BATCH) break;
     }
 
-    // --- Pass 2: leads, cursor em 'id' desc (bucket por day + partner_id) ---
+    // --- Pass 2: leads, skip em 'id' (scanBatches; bucket por day + partner_id) ---
     let totalLeads = 0;
     const leadsByDayPartner = new Map<string, number>(); // key: day|partnerId
     let backfilledLeads = 0;
-    let lskip = 0;
-    while (true) {
-      const batch = await svc.entities.Lead.filter({ event_id: eventId }, 'id', BATCH, lskip);
-      if (batch.length === 0) break;
+    for await (const batch of scanBatches(svc.entities.Lead, { event_id: eventId }, { pageSize: BATCH })) {
       const batchBackfill: any[] = [];
       for (const l of batch) {
         totalLeads++;
@@ -116,8 +106,6 @@ export default async function(req: Request): Promise<Response> {
       if (!dryRun && batchBackfill.length > 0) {
         try { await svc.entities.Lead.bulkUpdate(batchBackfill); backfilledLeads += batchBackfill.length; } catch {}
       }
-      lskip += BATCH;
-      if (batch.length < BATCH) break;
     }
 
     // --- Estado atual (DAT-003 — EventStats foi APOSENTADO; a fonte única é

@@ -1,11 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { canManagePartnerData } from "../../shared/eventAuth.ts";
-
-function sanitizeText(text) {
-  if (!text || typeof text !== 'string') return '';
-  return text.replace(/<[^>]*>/g, '').replace(/javascript:/gi, '').replace(/on\w+\s*=/gi, '').trim();
-}
+import { sanitizeText } from "../../shared/sanitize.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {

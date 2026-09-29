@@ -70,12 +70,6 @@ export async function fetchSpeakerFeedback(sessionIds) {
   };
 }
 
-/** Persons list for the partner representatives dialog. */
-export async function listPartnerPersons(partnerId) {
-  const data = await invoke("getPartnerPersons", { partnerId });
-  return data?.persons || [];
-}
-
 /** Partner's leads for an event (partner-gated read). */
 export async function fetchPartnerLeads(partnerId, eventId) {
   const data = await invoke("getMyLeads", { partnerId, eventId });

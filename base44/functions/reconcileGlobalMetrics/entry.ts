@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
+import { dayKeyOf as dayKey } from "../../shared/businessPeriod.ts";
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // P0.3 — Reconstrói os buckets globais diários de users/persons/partners a partir das
 // entidades autoritativas (User, Person, Partner is_deleted:false). Admin-only, bounded
@@ -24,21 +26,15 @@ import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 //
 // dryRun=true: reporta o que seria gravado sem aplicar.
 
-function dayKey(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
 const BATCH = 500;
 const GLOBAL = GLOBAL_EVENT_ID;
 
 async function rebuildMetric(svc: any, metricType: string, entityName: string, filter: any, dryRun: boolean) {
   const dayCounts = new Map<string, number>();
-  let skip = 0;
   let total = 0;
   let backfilled = 0;
-  while (true) {
-    const batch = await svc.entities[entityName].filter(filter, 'id', BATCH, skip);
-    if (batch.length === 0) break;
+  // P2 (2026-09-29) — scanBatches: streaming por lote (helper único shared).
+  for await (const batch of scanBatches(svc.entities[entityName], filter, { pageSize: BATCH })) {
     // Backfill incremental por batch — O(BATCH) memória (não acumula todos os legados).
     const batchBackfill: any[] = [];
     for (const r of batch) {
@@ -51,8 +47,6 @@ async function rebuildMetric(svc: any, metricType: string, entityName: string, f
     if (!dryRun && batchBackfill.length > 0) {
       try { await svc.entities[entityName].bulkUpdate(batchBackfill); backfilled += batchBackfill.length; } catch {}
     }
-    skip += BATCH;
-    if (batch.length < BATCH) break;
   }
   if (dryRun) return { metricType, total, days: dayCounts.size };
 

@@ -27,7 +27,8 @@ function csvEscape(value) {
 
 // Recebe o formato devolvido por getEventOrders (array de pedidos com itens).
 // Inclui apenas pedidos pagos (paid / partially_refunded) — é o que vira receita/NF.
-export function buildSalesCsv(orders) {
+// P3 (2026-09-29) — uso interno apenas (export morto; consumido por downloadSalesCsv).
+function buildSalesCsv(orders) {
   const rows = [CSV_HEADERS.join(";")];
   for (const o of orders || []) {
     if (o.status !== "paid" && o.status !== "partially_refunded") continue;

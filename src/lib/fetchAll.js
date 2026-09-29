@@ -3,8 +3,14 @@
  *
  * P2 (auditoria 2026-09-28) — o filtro sem limite devolve no máximo o default
  * da plataforma, truncando silenciosamente listas grandes (ex.: histórico de
- * certificados). Este helper encadeia páginas até esgotar o conjunto.
+ * certificados). Estes helpers encadeiam páginas até esgotar o conjunto.
  *
+ * IMPORTANTE (2026-09-29): a plataforma NÃO suporta range query no campo
+ * reservado `id` (`{ id: { $lt } }` retorna 0) — paginação é SEMPRE skip-based.
+ */
+
+/**
+ * Varredura de uma entidade via SDK filter direto.
  * @param {Function} filterFn - (query, sort, limit, skip) => Array (SDK filter)
  * @param {Object} baseQuery - filtro base aplicado a todas as páginas
  * @param {string} [sort="-created_date"] - ordenação estável
@@ -17,6 +23,26 @@ export async function scanAllRecords(filterFn, baseQuery = {}, sort = "-created_
     const page = await filterFn(baseQuery, sort, batchSize, skip);
     all.push(...(page || []));
     if (!page || page.length < batchSize) break;
+    skip += batchSize;
+  }
+  return all;
+}
+
+/**
+ * Varredura encadeada de um ENDPOINT BACKEND paginado (limit/skip + has_more).
+ * Consolida os loops copiados de fetchAllEventParticipants /
+ * fetchAllMyEventsParticipants no participantApi.
+ *
+ * @param {Function} fetchPageWithSkip - async (skip) => { page: Array, hasMore: boolean }
+ * @param {number} [batchSize=2000] - tamanho da página (MAX_LIMIT do backend)
+ */
+export async function scanPagedEndpoint(fetchPageWithSkip, batchSize = 2000) {
+  const all = [];
+  let skip = 0;
+  while (true) {
+    const { page, hasMore } = await fetchPageWithSkip(skip);
+    all.push(...(page || []));
+    if (!hasMore || !page || page.length === 0) break;
     skip += batchSize;
   }
   return all;

@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { GLOBAL_EVENT_ID } from "../../shared/businessMetrics.ts";
 import { getPeriodRange, getPreviousRange, inRange, pctChange, dayKeyOf } from "../../shared/businessPeriod.ts";
+import { scanBatches } from "../../shared/completeScan.ts";
 
 // P0.3 — Backend-driven aggregation for the Business Dashboard (read-side materializado).
 //
@@ -86,17 +87,12 @@ async function fetchBuckets(svc, { eventId, metricType, fromDay, toDay, partnerI
 const BOUNDARY_BATCH = 500;
 async function scanBoundary(svc, entityName, filterBase, day, start, end, onMatch) {
   const base: any = { ...filterBase, created_day: day };
-  let skip = 0;
-  while (true) {
-    const batch = await svc.entities[entityName].filter(base, "id", BOUNDARY_BATCH, skip);
-    if (!batch || batch.length === 0) break;
+  for await (const batch of scanBatches(svc.entities[entityName], base, { pageSize: BOUNDARY_BATCH, sort: "id" })) {
     for (const r of batch) {
       if (!r.created_date) continue;
       const d = new Date(r.created_date);
       if (d >= start && d <= end) onMatch(r);
     }
-    skip += BOUNDARY_BATCH;
-    if (batch.length < BOUNDARY_BATCH) break;
   }
 }
 
@@ -189,16 +185,11 @@ async function sumBucketsByEvent(svc: any): Promise<Map<string, any>> {
   const metricTypes = ["unique_participants", "leads"];
   const sums = await Promise.all(metricTypes.map(async (metricType) => {
     const map = new Map<string, number>();
-    let skip = 0;
-    while (true) {
-      const batch = await svc.entities.MetricBucket.filter({ metric_type: metricType }, "id", 500, skip);
-      if (batch.length === 0) break;
+    for await (const batch of scanBatches(svc.entities.MetricBucket, { metric_type: metricType }, { pageSize: 500 })) {
       for (const b of batch) {
         if (b.event_id === GLOBAL_EVENT_ID) continue;
         map.set(b.event_id, (map.get(b.event_id) || 0) + (b.value || 0));
       }
-      if (batch.length < 500) break;
-      skip += 500;
     }
     return map;
   }));
