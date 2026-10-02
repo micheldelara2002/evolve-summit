@@ -97,6 +97,19 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
+    // DIAG TEMPORÁRIO — captura headers de cada rota (token vermelhado) para
+    // identificar um discriminador inalienável entre dispatcher e gateway.
+    try {
+      const hdrs: Record<string, string> = {};
+      req.headers.forEach((v: string, k: string) => {
+        hdrs[k] = k === 'x-maintenance-token' ? (v ? '[presente]' : '[ausente]') : v;
+      });
+      await svc.entities.PlatformSetting.create({
+        key: isSchedulerInvocation ? 'req_diag_sched' : 'req_diag_pub',
+        value_json: JSON.stringify({ at: nowIso, url: req.url, method: req.method, headers: hdrs }),
+      });
+    } catch {}
+
     // ===== Limitador de frequência (anti-abuso do endpoint público) =====
     // PlatformSetting 'maintenance' guarda { last_run_at, summary }. CAS sobre
     // o value_json: corridas concorrentes do scheduler resultam em exatamente
