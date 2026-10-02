@@ -99,15 +99,24 @@ export default async function(req: Request): Promise<Response> {
 
     // DIAG TEMPORÁRIO — captura headers de cada rota (token vermelhado) para
     // identificar um discriminador inalienável entre dispatcher e gateway.
+    // Mantém apenas o registro mais recente por chave (sem acúmulo).
     try {
+      const svcDiag = base44.asServiceRole;
       const hdrs: Record<string, string> = {};
       req.headers.forEach((v: string, k: string) => {
         hdrs[k] = k === 'x-maintenance-token' ? (v ? '[presente]' : '[ausente]') : v;
       });
-      await svc.entities.PlatformSetting.create({
-        key: isSchedulerInvocation ? 'req_diag_sched' : 'req_diag_pub',
-        value_json: JSON.stringify({ at: nowIso, url: req.url, method: req.method, headers: hdrs }),
+      const diagKey = isSchedulerInvocation ? 'req_diag_sched' : 'req_diag_pub';
+      const createdDiag = await svcDiag.entities.PlatformSetting.create({
+        key: diagKey,
+        value_json: JSON.stringify({ at: new Date().toISOString(), url: req.url, method: req.method, headers: hdrs }),
       });
+      const oldDiags = await svcDiag.entities.PlatformSetting.filter({ key: diagKey });
+      for (let di = 0; di < oldDiags.length; di++) {
+        if (oldDiags[di].id !== createdDiag.id) {
+          try { await svcDiag.entities.PlatformSetting.delete(oldDiags[di].id); } catch {}
+        }
+      }
     } catch {}
 
     // ===== Limitador de frequência (anti-abuso do endpoint público) =====
