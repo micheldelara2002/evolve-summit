@@ -36,14 +36,16 @@ import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 // webhook charge.refunded não chega); 'failed'/'canceled' marca a falha e
 // devolve a reserva do teto de estorno.
 //
-// MODELO M2M (2026-09-29) — endpoint PÚBLICO seguro-por-construção, no mesmo
-// padrão do stripeWebhook: chamadas de máquina (workflow agendado) não têm
-// contexto de usuário; a função roda INTEIRA em service role. Segurança por
-// construção: operações idempotentes/convergentes (CAS por toda parte),
-// resposta sem PII (apenas contadores), limites por execução e limitador de
-// frequência (PlatformSetting 'maintenance', CAS sobre value_json) que garante
-// uma única execução real em corridas e rejeita chamadas com menos de 4 min da
-// última rodada — devolvendo o resumo da última execução (HTTP 200).
+// MODELO M2M (2026-09-29; gate AUD-004 2026-10-02) — endpoint PÚBLICO com
+// gate: chamadas externas exigem o token 'x-maintenance-token' (secret
+// MAINTENANCE_M2M_TOKEN); a invocação do workflow agendado é reconhecida pelo
+// dispatcher interno (host + x-workflow-run). A função roda INTEIRA em service
+// role. Segurança: gate fail-closed + operações idempotentes/convergentes (CAS
+// por toda parte), resposta sem PII (apenas contadores), limites por execução
+// e limitador de frequência (PlatformSetting 'maintenance', CAS sobre
+// value_json) que garante uma única execução real em corridas e rejeita
+// chamadas com menos de 4 min da última rodada — devolvendo o resumo da
+// última execução (HTTP 200).
 //
 // Cupons: o uso nunca é contabilizado na criação do pedido (só no fulfillment),
 // então pedidos expirados não consomem cupom — nada a devolver aqui.
@@ -72,25 +74,28 @@ export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
 
-    // TEMP-AUD4 — diagnóstico do canal do scheduler: persiste os headers da
-    // requisição (com segredos redigidos) em PlatformSetting 'req_meta_diag'
-    // para descobrir um marcador distinguível da invocação agendada antes de
-    // ativar o gate M2M. Antes do throttle — captura mesmo runs throttled.
-    try {
-      const svcDiag = base44.asServiceRole;
-      const hdrsDiag: Record<string, string> = {};
-      req.headers.forEach((v: string, k: string) => {
-        const kl = k.toLowerCase();
-        hdrsDiag[kl] = /cookie|auth|key|token|secret/.test(kl) ? '[redacted]' : v;
-      });
-      const meta = JSON.stringify({ url: req.url, method: req.method, headers: hdrsDiag, at: new Date().toISOString() });
-      const existing = (await svcDiag.entities.PlatformSetting.filter({ key: 'req_meta_diag' }))[0];
-      if (existing) {
-        await svcDiag.entities.PlatformSetting.update(existing.id, { value_json: meta });
-      } else {
-        await svcDiag.entities.PlatformSetting.create({ key: 'req_meta_diag', value_json: meta });
+    // ===== AUD-004 — Gate M2M (fail-closed) =====
+    // O endpoint é público; chamadas externas exigem o token compartilhado no
+    // header 'x-maintenance-token' (secret MAINTENANCE_M2M_TOKEN). A invocação
+    // AGENDADA da plataforma não pode enviar segredos — chega pelo dispatcher
+    // interno (host base44-dispatcher-production.../run/<runId> + header
+    // 'x-workflow-run: true') e é reconhecida por esse marcador. Um caller
+    // público que forje 'x-workflow-run' continua bloqueado: o host visível
+    // na função é o gateway do app, nunca o dispatcher. Verificado ao vivo
+    // (req-meta capturado da run agendada de 05:55, 2026-10-02).
+    const reqUrl = new URL(req.url);
+    const isSchedulerInvocation =
+      reqUrl.host === 'base44-dispatcher-production.base44.workers.dev' &&
+      reqUrl.pathname.startsWith('/run/') &&
+      req.headers.get('x-workflow-run') === 'true';
+    if (!isSchedulerInvocation) {
+      const expectedToken = Deno.env.get('MAINTENANCE_M2M_TOKEN') || '';
+      const providedToken = req.headers.get('x-maintenance-token') || '';
+      if (!expectedToken || providedToken !== expectedToken) {
+        console.error('[expireStaleReservations] M2M gate: chamada rejeitada (token ausente/inválido, não é invocação agendada).');
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
       }
-    } catch {}
+    }
 
     // ===== Limitador de frequência (anti-abuso do endpoint público) =====
     // PlatformSetting 'maintenance' guarda { last_run_at, summary }. CAS sobre
@@ -107,7 +112,7 @@ export default async function(req: Request): Promise<Response> {
     try { lastRun = JSON.parse(maintenanceSetting?.value_json || 'null'); } catch { lastRun = null; }
     const lastRunAtMs = lastRun?.last_run_at ? new Date(lastRun.last_run_at).getTime() : 0;
     if (maintenanceSetting && lastRunAtMs && Date.now() - lastRunAtMs < MAINTENANCE_THROTTLE_MS) {
-      return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}) });
+      return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}), _diag: { host: reqUrl.host, isScheduler: isSchedulerInvocation, had_token: !!req.headers.get('x-maintenance-token') } });
     }
     // Cursor do reconciler de resgates sobrevive ao claim (varredura contínua).
     const claimedJson = JSON.stringify({ last_run_at: nowIso, summary: lastRun?.summary || null, redemption_skip: Number(lastRun?.redemption_skip) || 0 });
