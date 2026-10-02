@@ -62,6 +62,8 @@ export default async function(req) {
       connectionRequests: 0,
       memberships: 0,
       recipients: 0,
+      personDocuments: 0,
+      auditLogs: 0,
     };
 
     // =========================================================================
@@ -275,6 +277,84 @@ export default async function(req) {
           );
         }
         counts.recipients += batch.length;
+      }
+    }
+
+    // =========================================================================
+    // 9b. PERSONDOCUMENT (por person_id) — AUD-001 (2026-10-02): documentos de
+    // identificação (CPF/RG/passaporte) eram a PII MAIS sensível e sobreviviam
+    // à exclusão de conta. O número é substituído por marcador
+    // não-identificável; tipo/país ficam para histórico; o documento deixa de
+    // ser primário e fica inativo. Idempotente (reexecução reescreve o
+    // marcador).
+    // =========================================================================
+    if (personId) {
+      for await (const batch of scanBatches(svc.entities.PersonDocument, { person_id: personId }, { pageSize: BATCH })) {
+        if (!dryRun && batch.length > 0) {
+          await svc.entities.PersonDocument.bulkUpdate(
+            batch.map((d) => ({
+              id: d.id,
+              document_number: "DOCUMENTO_EXCLUIDO",
+              is_primary: false,
+              status: "inactive",
+            }))
+          );
+        }
+        counts.personDocuments += batch.length;
+      }
+    }
+
+    // =========================================================================
+    // 9c. AUDITLOG — AUD-002 (2026-10-02): os detalhes de auditoria guardavam
+    // nome/e-mail do comprador e dos titulares INDEFINIDAMENTE (ex.: logs de
+    // 'compra_iniciada'). Anonimização:
+    //   - logs do próprio usuário (user_id): substitui o e-mail E o nome dele
+    //     nos detalhes, e o user_name do registro;
+    //   - logs de terceiros (ex.: usuário listado como titular de pedido de
+    //     outra pessoa): substitui APENAS o e-mail (único, preciso).
+    // A substituição textual (case-insensitive, padrão escapado) preserva a
+    // estrutura JSON e a trilha financeira (valores, IDs, timestamps).
+    // Varredura paginada O(batch), mesma mecânica dos demais passos.
+    // =========================================================================
+    {
+      const email = (user.email || "").toLowerCase();
+      const name = (user.full_name || "").trim();
+      const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const emailRe = email ? new RegExp(esc(email), "gi") : null;
+      const ownNameRe = name.length >= 4 ? new RegExp(esc(name), "gi") : null;
+      const anonDetails = (details, ownLog) => {
+        let out = String(details || "");
+        if (emailRe) out = out.replace(emailRe, "conta_excluida");
+        if (ownLog && ownNameRe) out = out.replace(ownNameRe, DELETED_NAME);
+        return out;
+      };
+      const fixLog = (log) => {
+        const ownLog = log.user_id === user.id;
+        const updates = { id: log.id };
+        let changed = false;
+        if (ownLog && log.user_name && log.user_name !== DELETED_NAME) {
+          updates.user_name = DELETED_NAME;
+          changed = true;
+        }
+        if (log.details && (emailRe || (ownLog && ownNameRe))) {
+          const next = anonDetails(log.details, ownLog);
+          if (next !== log.details) {
+            updates.details = next;
+            changed = true;
+          }
+        }
+        return changed ? updates : null;
+      };
+      for await (const batch of scanBatches(svc.entities.AuditLog, {}, { pageSize: BATCH })) {
+        const updates = [];
+        for (const log of batch) {
+          const u = fixLog(log);
+          if (u) {
+            updates.push(u);
+            counts.auditLogs++;
+          }
+        }
+        if (!dryRun && updates.length > 0) await svc.entities.AuditLog.bulkUpdate(updates);
       }
     }
 

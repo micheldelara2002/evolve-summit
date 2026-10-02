@@ -51,6 +51,18 @@ export default async function(req) {
     const partner = (await svc.entities.Partner.filter({ id: partnerId }))[0] || null;
     if (!partner) return Response.json({ error: 'Parceiro não encontrado.' }, { status: 404 });
 
+    // AUD-003 (2026-10-02) — o parceiro precisa ter vínculo ATIVO com o
+    // evento. Sem isso, qualquer participante poderia fabricar "visitas" para
+    // empresas que nem participam do evento (contaminando métricas de negócio
+    // usadas pelos patrocinadores).
+    const eventPartner = (await svc.entities.EventPartner.filter({
+      event_id: eventId,
+      partner_id: partnerId,
+      is_active: true,
+      is_deleted: false,
+    }))[0] || null;
+    if (!eventPartner) return Response.json({ error: 'Parceiro não participa deste evento.' }, { status: 404 });
+
     // Snapshot da Person (se vinculada)
     let person = null;
     const targetPersonId = personId || participant.person_id;
@@ -59,21 +71,50 @@ export default async function(req) {
     }
 
     const now = new Date().toISOString();
-    const lead = await svc.entities.Lead.create({
-      event_id: eventId,
-      partner_id: partnerId,
-      participant_id: participantId,
-      person_id: person?.id || null,
-      participant_name: participant.full_name || '',
-      participant_email: participant.email || '',
-      source: 'booth_scan',
-      visited_at: now,
-      created_day: now.slice(0, 10),
-      person_phone: person?.phone || '',
-      person_linkedin: person?.linkedin || '',
-      person_company: person?.company || '',
-      person_job_title: person?.job_title || '',
-    });
+
+    // AUD-003 — deduplicação ATÔMICA: CAS $ne+$push sobre lead_partner_ids do
+    // Participant garante EXATAMENTE um Lead por (participante, parceiro,
+    // evento) mesmo em scans duplicados concorrentes (primitiva da família
+    // DAT-001/checkout_lock, validada em produção). Antes: chamadas repetidas
+    // criavam leads duplicados e inflavam os contadores do parceiro.
+    const claim = await svc.entities.Participant.updateMany(
+      { id: participantId, lead_partner_ids: { $ne: partnerId } },
+      { $push: { lead_partner_ids: partnerId } }
+    );
+    if (!claim || !claim.updated) {
+      return Response.json(
+        { ok: false, duplicate: true, message: 'Visita já registrada para este parceiro.' },
+        { status: 409 }
+      );
+    }
+
+    let lead: any = null;
+    try {
+      lead = await svc.entities.Lead.create({
+        event_id: eventId,
+        partner_id: partnerId,
+        participant_id: participantId,
+        person_id: person?.id || null,
+        participant_name: participant.full_name || '',
+        participant_email: participant.email || '',
+        source: 'booth_scan',
+        visited_at: now,
+        created_day: now.slice(0, 10),
+        person_phone: person?.phone || '',
+        person_linkedin: person?.linkedin || '',
+        person_company: person?.company || '',
+        person_job_title: person?.job_title || '',
+      });
+    } catch (createErr: any) {
+      // Devolve o claim: sem Lead criado, o participante pode tentar de novo.
+      try {
+        await svc.entities.Participant.updateMany(
+          { id: participantId, lead_partner_ids: partnerId },
+          { $pull: { lead_partner_ids: partnerId } }
+        );
+      } catch {}
+      throw createErr;
+    }
 
     // Contadores de leads (bucket diário) — best-effort
     try {

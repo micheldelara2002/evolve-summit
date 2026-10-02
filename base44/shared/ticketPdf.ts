@@ -10,6 +10,7 @@
 // (commercePolicy.ts é TS puro, sem deps npm — seguro importar daqui.)
 
 import { jsPDF } from 'npm:jspdf@4.2.1';
+import qrcode from 'npm:qrcode-generator@1.4.4';
 import { DEFAULT_GLOBAL_REFUND_POLICY } from './commercePolicy.ts';
 import { sendTransactionalEmail } from './transactionalEmail.ts';
 
@@ -66,6 +67,22 @@ const SPONSOR_BOX_W = 96;
 const SPONSOR_BOX_H = 34;
 const SPONSOR_GAP = 16;
 
+// AUD-006 (2026-10-02) — QR gerado LOCALMENTE (biblioteca pura, sem rede): o
+// código de check-in do ingresso não é mais transmitido a um serviço de
+// terceiros (api.qrserver.com) e o ingresso nunca sai sem QR por
+// indisponibilidade externa. Retorna a matriz de módulos para desenho no PDF.
+function generateQrModules(text: string): { size: number; isDark: (row: number, col: number) => boolean } | null {
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(String(text || ''));
+    qr.make();
+    return { size: qr.getModuleCount(), isDark: (row, col) => qr.isDark(row, col) };
+  } catch (err: any) {
+    console.error('[ticketPdf] QR generation failed:', err?.message || err);
+    return null;
+  }
+}
+
 // Baixa uma imagem (PNG/JPEG) para embutir no PDF. Retorna null se indisponível.
 async function fetchImage(url?: string): Promise<{ data: Uint8Array; format: string } | null> {
   if (!url) return null;
@@ -95,10 +112,11 @@ function formatEventDate(d?: string): string {
 export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint8Array> {
   const hasReceipt = !!(opts.paidAt || opts.paymentMethod || opts.receiverName || opts.receiverDoc);
 
-  // Pré-busca de imagens (paralela): QR, logo do evento e logos dos patrocinadores.
+  // AUD-006 — matriz do QR gerada localmente (sem rede).
+  const qrModules = generateQrModules(opts.hashCode);
+  // Pré-busca de imagens (paralela): logo do evento e logos dos patrocinadores.
   const sponsors = (opts.sponsors || []).slice(0, 12);
-  const [qrImg, logoImg, ...sponsorImgs] = await Promise.all([
-    fetchImage(`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(opts.hashCode)}`),
+  const [logoImg, ...sponsorImgs] = await Promise.all([
     fetchImage(opts.eventLogoUrl),
     ...sponsors.map((s) => fetchImage(s.logoUrl)),
   ]);
@@ -130,7 +148,7 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
   detailsH += 46; // valor pago
 
   // Bloco QR + código + link
-  const qrH = (qrImg ? 120 : 0) + 20 + 16 + 24;
+  const qrH = (qrModules ? 120 : 0) + 20 + 16 + 24;
 
   // Bloco devolução/cancelamento
   const refundH = refundLines.length ? 14 + refundLines.length * 12 + 18 : 0;
@@ -222,13 +240,20 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
 
   // ===== QR code + código + link do app =====
   let qrY = y;
-  if (qrImg) {
-    try {
-      doc.addImage(qrImg.data, qrImg.format, (W - 120) / 2, qrY, 120, 120);
-    } catch (err: any) {
-      console.error('[ticketPdf] QR draw failed:', err?.message || err);
+  if (qrModules) {
+    const qrSize = 120;
+    const cell = qrSize / qrModules.size;
+    const x0 = (W - qrSize) / 2;
+    doc.setFillColor(15, 23, 42);
+    for (let row = 0; row < qrModules.size; row++) {
+      for (let col = 0; col < qrModules.size; col++) {
+        if (qrModules.isDark(row, col)) {
+          // +0.3pt evita hairlines brancas entre módulos (padrão para QR legível).
+          doc.rect(x0 + col * cell, qrY + row * cell, cell + 0.3, cell + 0.3, 'F');
+        }
+      }
     }
-    qrY += 120;
+    qrY += qrSize;
   }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -396,19 +421,17 @@ export async function buildTicketPdfExtras(svc: any, event: any): Promise<{ even
   return extras;
 }
 
-const APP_URL = 'https://app.evolveinst.com';
+// AUD-009 (2026-10-02) — fonte ÚNICA do domínio do app (importado por
+// getTicketPdf; antes o valor estava fixo em dois arquivos).
+export const APP_URL = 'https://app.evolveinst.com';
 
-// Entrega os ingressos: gera PDF (com QR), envia por email ao titular com o PDF
-// anexado (base64). Idempotente — pula ingressos que já têm pdf_url.
-export async function deliverTickets(svc: any, event: any, order: any, tickets: any[], orderItems: any[]): Promise<void> {
-  // Extras do evento (logo, patrocinadores, política de devolução) — comuns a todos os ingressos.
-  const extras = await buildTicketPdfExtras(svc, event).catch(() => ({ eventLogoUrl: '', sponsors: [], refundPolicyLines: [] }));
-
-  // Dados do recibo: pagamento (data/método) + recebedor (conta conectada
-  // do organizador vinculada ao evento).
-  let receipt: any = {};
+// AUD-009 — montagem do recibo ÚNICA: o download sob demanda (getTicketPdf) e
+// o fulfillment (deliverTickets) usavam a mesma lógica duplicada em dois
+// lugares — extraída para cá.
+export async function buildTicketReceipt(svc: any, order: any, event: any): Promise<any> {
+  let receipt: any = { paidAt: '', paymentMethod: '', receiverName: '', receiverDoc: '' };
   try {
-    const payment = (await svc.entities.Payment.filter({ order_id: order.id }))[0] || null;
+    const payment = order?.id ? ((await svc.entities.Payment.filter({ order_id: order.id }))[0] || null) : null;
     const payoutAccount = event?.payout_account_id
       ? ((await svc.entities.PayoutAccount.filter({ id: event.payout_account_id }))[0] || null)
       : null;
@@ -419,8 +442,19 @@ export async function deliverTickets(svc: any, event: any, order: any, tickets: 
       receiverDoc: payoutAccount?.legal_document_number || '',
     };
   } catch (err: any) {
-    console.error('[deliverTickets] receipt data failed:', err?.message || err);
+    console.error('[ticketPdf] receipt data failed:', err?.message || err);
   }
+  return receipt;
+}
+
+// Entrega os ingressos: gera PDF (com QR), envia por email ao titular com o PDF
+// anexado (base64). Idempotente — pula ingressos que já têm pdf_url.
+export async function deliverTickets(svc: any, event: any, order: any, tickets: any[], orderItems: any[]): Promise<void> {
+  // Extras do evento (logo, patrocinadores, política de devolução) — comuns a todos os ingressos.
+  const extras = await buildTicketPdfExtras(svc, event).catch(() => ({ eventLogoUrl: '', sponsors: [], refundPolicyLines: [] }));
+
+  // AUD-009 — recibo montado pelo helper compartilhado (fonte única).
+  const receipt = await buildTicketReceipt(svc, order, event);
   const itemByOrderItem = new Map<string, any>();
   for (const it of orderItems) itemByOrderItem.set(it.id, it);
   for (const ticket of tickets) {

@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { generateTicketPdfBytes, buildTicketPdfExtras } from "../../shared/ticketPdf.ts";
+import { generateTicketPdfBytes, buildTicketPdfExtras, buildTicketReceipt, APP_URL } from "../../shared/ticketPdf.ts";
 
 // Download do PDF do ingresso (com QR + recibo financeiro) pelo titular ou
 // comprador. Se o PDF ainda não foi gerado no fulfillment, gera sob demanda,
@@ -8,8 +8,6 @@ import { generateTicketPdfBytes, buildTicketPdfExtras } from "../../shared/ticke
 // usado no fulfillment, sem duplicar lógica).
 //
 // Payload: { ticketId }
-
-const APP_URL = 'https://app.evolveinst.com';
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -46,24 +44,8 @@ export default async function(req: Request): Promise<Response> {
       ? ((await svc.entities.OrderItem.filter({ id: ticket.order_item_id }))[0] || null)
       : null;
 
-    // Recibo — mesmos dados do fulfillment: pagamento + conta recebedora do evento.
-    let receipt: any = {};
-    try {
-      const payment = ticket.order_id
-        ? ((await svc.entities.Payment.filter({ order_id: ticket.order_id }))[0] || null)
-        : null;
-      const payoutAccount = event.payout_account_id
-        ? ((await svc.entities.PayoutAccount.filter({ id: event.payout_account_id }))[0] || null)
-        : null;
-      receipt = {
-        paidAt: payment?.succeeded_at || order?.created_date || '',
-        paymentMethod: payment?.payment_method || '',
-        receiverName: payoutAccount?.legal_name || '',
-        receiverDoc: payoutAccount?.legal_document_number || '',
-      };
-    } catch (err: any) {
-      console.error('[getTicketPdf] receipt data failed:', err?.message || err);
-    }
+    // AUD-009 — recibo montado pelo helper compartilhado (fonte única).
+    const receipt = await buildTicketReceipt(svc, order, event);
 
     const extras = await buildTicketPdfExtras(svc, event);
     const pdfBytes = await generateTicketPdfBytes({

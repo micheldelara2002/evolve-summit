@@ -72,6 +72,26 @@ export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
 
+    // TEMP-AUD4 — diagnóstico do canal do scheduler: persiste os headers da
+    // requisição (com segredos redigidos) em PlatformSetting 'req_meta_diag'
+    // para descobrir um marcador distinguível da invocação agendada antes de
+    // ativar o gate M2M. Antes do throttle — captura mesmo runs throttled.
+    try {
+      const svcDiag = base44.asServiceRole;
+      const hdrsDiag: Record<string, string> = {};
+      req.headers.forEach((v: string, k: string) => {
+        const kl = k.toLowerCase();
+        hdrsDiag[kl] = /cookie|auth|key|token|secret/.test(kl) ? '[redacted]' : v;
+      });
+      const meta = JSON.stringify({ url: req.url, method: req.method, headers: hdrsDiag, at: new Date().toISOString() });
+      const existing = (await svcDiag.entities.PlatformSetting.filter({ key: 'req_meta_diag' }))[0];
+      if (existing) {
+        await svcDiag.entities.PlatformSetting.update(existing.id, { value_json: meta });
+      } else {
+        await svcDiag.entities.PlatformSetting.create({ key: 'req_meta_diag', value_json: meta });
+      }
+    } catch {}
+
     // ===== Limitador de frequência (anti-abuso do endpoint público) =====
     // PlatformSetting 'maintenance' guarda { last_run_at, summary }. CAS sobre
     // o value_json: corridas concorrentes do scheduler resultam em exatamente

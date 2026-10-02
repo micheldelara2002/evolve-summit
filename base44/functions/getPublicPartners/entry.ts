@@ -18,10 +18,13 @@ export default async function(req: Request): Promise<Response> {
       : (partnerId ? [partnerId] : null);
     if (!ids) return Response.json({ error: 'Informe partnerIds ou partnerId.' }, { status: 400 });
 
-    const all = await base44.asServiceRole.entities.Partner.filter({ is_active: true, is_deleted: false });
-    const wanted = new Set(ids);
-    const partners = all.filter((p) => wanted.has(p.id)).map(publicView);
-    return Response.json({ partners });
+    // AUD-008 (2026-10-02) — query já filtrada no banco ($in): não carrega
+    // mais a coleção INTEIRA de parceiros ativos para filtrar em memória
+    // (custo crescia linearmente com o cadastro a cada chamada).
+    const matched = await base44.asServiceRole.entities.Partner.filter(
+      { id: { $in: ids }, is_active: true, is_deleted: false }
+    );
+    return Response.json({ partners: matched.map(publicView) });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

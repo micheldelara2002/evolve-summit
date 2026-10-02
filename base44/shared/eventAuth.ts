@@ -212,18 +212,24 @@ export async function canManagePartnerData(base44, user, partnerId) {
 }
 
 /**
- * Resolve os partner_ids em que o usuário tem vínculo ativo de representante
- * (qualquer papel: partner_manager ou representative), por user_id ou
- * person_id. Usado para escopar sorteios/histórico de parceiro.
+ * AUD-010 (2026-10-02) — Resolve os partner_ids em que o usuário tem vínculo
+ * ativo de representante, por user_id ou person_id. Unificação: as duas
+ * variantes anteriores (qualquer papel vs. apenas partner_manager) duplicavam
+ * toda a lógica de consulta em paralelo, diferindo só no filtro de papel —
+ * agora um único caminho recebe o filtro opcional.
+ * Usado para escopar sorteios/histórico de parceiro (sem filtro) e a lista de
+ * empresas gerenciadas (com 'partner_manager').
  */
-export async function resolveUserPartnerIds(base44, user) {
+export async function resolveUserPartnerIds(base44, user, roleInPartner = undefined) {
   if (!user) return [];
   const personId = await resolveUserPersonId(base44, user);
+  const scope = roleInPartner ? { role_in_partner: roleInPartner } : {};
   const queries = [
     base44.asServiceRole.entities.PartnerRepresentative.filter({
       user_id: user.id,
       is_active: true,
       is_deleted: false,
+      ...scope,
     }),
   ];
   if (personId) {
@@ -232,6 +238,7 @@ export async function resolveUserPartnerIds(base44, user) {
         person_id: personId,
         is_active: true,
         is_deleted: false,
+        ...scope,
       })
     );
   }
@@ -246,28 +253,5 @@ export async function resolveUserPartnerIds(base44, user) {
  * Usado por getManagedPartners para escopar a lista de empresas.
  */
 export async function resolveUserPartnerManagerIds(base44, user) {
-  if (!user) return [];
-  const personId = await resolveUserPersonId(base44, user);
-  const queries = [
-    base44.asServiceRole.entities.PartnerRepresentative.filter({
-      user_id: user.id,
-      is_active: true,
-      is_deleted: false,
-      role_in_partner: 'partner_manager',
-    }),
-  ];
-  if (personId) {
-    queries.push(
-      base44.asServiceRole.entities.PartnerRepresentative.filter({
-        person_id: personId,
-        is_active: true,
-        is_deleted: false,
-        role_in_partner: 'partner_manager',
-      })
-    );
-  }
-  const [byUser, byPerson] = await Promise.all(queries);
-  const ids = new Set();
-  for (const r of [...(byUser || []), ...(byPerson || [])]) if (r.partner_id) ids.add(r.partner_id);
-  return [...ids];
+  return resolveUserPartnerIds(base44, user, 'partner_manager');
 }

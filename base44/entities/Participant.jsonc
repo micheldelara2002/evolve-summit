@@ -117,6 +117,13 @@
       "default": true,
       "description": "Elegibilidade para NOVAS audi\u00eancias/notifica\u00e7\u00f5es. true (default) = eleg\u00edvel. false = conta do usu\u00e1rio foi exclu\u00edda \u2014 o Participant permanece para hist\u00f3rico (pontos, ranking, m\u00e9tricas) mas N\u00c3O \u00e9 selecionado em novas campanhas. Resolvers de audi\u00eancia filtram com { is_eligible: { $ne: false } } para incluir registros legados sem o campo (undefined != false)."
     },
+    "lead_partner_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "AUD-003 (2026-10-02) \u2014 Parceiros que J\u00c1 registraram visita/lead deste participante no evento. Port\u00e3o at\u00f4mico do dedup de leads em saveBoothLead: CAS { lead_partner_ids: { $ne: partnerId } } + $push garante EXATAMENTE um Lead por (participante, parceiro, evento) em corrida (primitiva da fam\u00edlia DAT-001/checkout_lock). O $pull na falha de cria\u00e7\u00e3o devolve o claim."
+    },
     "is_deleted": {
       "type": "boolean",
       "default": false
