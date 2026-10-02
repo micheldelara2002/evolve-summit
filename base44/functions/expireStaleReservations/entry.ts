@@ -78,16 +78,27 @@ export default async function(req: Request): Promise<Response> {
     // O endpoint é público; chamadas externas exigem o token compartilhado no
     // header 'x-maintenance-token' (secret MAINTENANCE_M2M_TOKEN). A invocação
     // AGENDADA da plataforma não pode enviar segredos — chega pelo dispatcher
-    // interno (host base44-dispatcher-production.../run/<runId> + header
-    // 'x-workflow-run: true') e é reconhecida por esse marcador. Um caller
-    // público que forje 'x-workflow-run' continua bloqueado: o host visível
-    // na função é o gateway do app, nunca o dispatcher. Verificado ao vivo
-    // (req-meta capturado da run agendada de 05:55, 2026-10-02).
+    // interno e é reconhecida por marcadores NÃO forjáveis, verificados
+    // empiricamente em 2026-10-02 com capturas de headers das duas rotas:
+    //
+    //   Rota pública (gateway): x-forwarded-host SEMPRE presente (o gateway
+    //     o adiciona quando ausente; o valor do cliente sobrevive, mas a
+    //     ausência NÃO é produzível por um caller externo); 'base44-state' e
+    //     headers internos do dispatcher são REMOVIDOS pelo gateway.
+    //   Rota agendada (dispatcher): 'base44-state' presente (injetado pela
+    //     plataforma) e x-forwarded-host ausente — o inverso exato.
+    //
+    // Um caller público que forje 'x-workflow-run' (forjável — sobrevive) ou
+    // 'x-forwarded-host' (forjável no valor) CONTINUA bloqueado: o gate exige
+    // base44-state presente E x-forwarded-host ausente, condição impossível
+    // de produzir pela rota pública.
     const reqUrl = new URL(req.url);
     const isSchedulerInvocation =
       reqUrl.host === 'base44-dispatcher-production.base44.workers.dev' &&
       reqUrl.pathname.startsWith('/run/') &&
-      req.headers.get('x-workflow-run') === 'true';
+      req.headers.get('x-workflow-run') === 'true' &&
+      !!req.headers.get('base44-state') &&
+      !req.headers.get('x-forwarded-host');
     if (!isSchedulerInvocation) {
       const expectedToken = Deno.env.get('MAINTENANCE_M2M_TOKEN') || '';
       const providedToken = req.headers.get('x-maintenance-token') || '';
@@ -96,28 +107,6 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }
-
-    // DIAG TEMPORÁRIO — captura headers de cada rota (token vermelhado) para
-    // identificar um discriminador inalienável entre dispatcher e gateway.
-    // Mantém apenas o registro mais recente por chave (sem acúmulo).
-    try {
-      const svcDiag = base44.asServiceRole;
-      const hdrs: Record<string, string> = {};
-      req.headers.forEach((v: string, k: string) => {
-        hdrs[k] = k === 'x-maintenance-token' ? (v ? '[presente]' : '[ausente]') : v;
-      });
-      const diagKey = isSchedulerInvocation ? 'req_diag_sched' : 'req_diag_pub';
-      const createdDiag = await svcDiag.entities.PlatformSetting.create({
-        key: diagKey,
-        value_json: JSON.stringify({ at: new Date().toISOString(), url: req.url, method: req.method, headers: hdrs }),
-      });
-      const oldDiags = await svcDiag.entities.PlatformSetting.filter({ key: diagKey });
-      for (let di = 0; di < oldDiags.length; di++) {
-        if (oldDiags[di].id !== createdDiag.id) {
-          try { await svcDiag.entities.PlatformSetting.delete(oldDiags[di].id); } catch {}
-        }
-      }
-    } catch {}
 
     // ===== Limitador de frequência (anti-abuso do endpoint público) =====
     // PlatformSetting 'maintenance' guarda { last_run_at, summary }. CAS sobre
