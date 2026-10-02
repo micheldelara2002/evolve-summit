@@ -112,7 +112,7 @@ export default async function(req: Request): Promise<Response> {
     try { lastRun = JSON.parse(maintenanceSetting?.value_json || 'null'); } catch { lastRun = null; }
     const lastRunAtMs = lastRun?.last_run_at ? new Date(lastRun.last_run_at).getTime() : 0;
     if (maintenanceSetting && lastRunAtMs && Date.now() - lastRunAtMs < MAINTENANCE_THROTTLE_MS) {
-      return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}), _diag: { host: reqUrl.host, isScheduler: isSchedulerInvocation, had_token: !!req.headers.get('x-maintenance-token') } });
+      return Response.json({ ok: true, throttled: true, last_run_at: lastRun.last_run_at, ...(lastRun.summary || {}) });
     }
     // Cursor do reconciler de resgates sobrevive ao claim (varredura contínua).
     const claimedJson = JSON.stringify({ last_run_at: nowIso, summary: lastRun?.summary || null, redemption_skip: Number(lastRun?.redemption_skip) || 0 });
