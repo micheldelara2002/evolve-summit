@@ -69,6 +69,65 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
+    // P0 (2026-10-09) — Evidência server-side por ação: além do vínculo
+    // participante/evento e da posse, o crédito só acontece quando o registro
+    // que COMPROVA a ação existe no banco — a tela que dispara a pontuação não
+    // é fonte de verdade:
+    //   presenca_sessao   → SessionAttendance (event, session, participant, is_present)
+    //   avaliacao_sessao  → SessionReview do participante para a sessão
+    //   pergunta_valida   → SessionQuestion do participante com >= 25 caracteres
+    //   visita_estande    → Lead (booth_scan) do participante no parceiro refId
+    //   completude_perfil → Person do participante com ao menos 1 campo útil
+    //                       preenchido (mesma regra da tela — profileCompleteness)
+    // conexao_aceita já valida a Connection acima; resgate_realizado não credita
+    // pontos. Admin mantém bypass (crédito manual de correção).
+    if (user.role !== 'admin') {
+      const svcEntities = base44.asServiceRole.entities;
+      let evidence: any[] = [];
+      if (acao === 'presenca_sessao') {
+        evidence = await svcEntities.SessionAttendance.filter({
+          event_id: eventId, session_id: refId, participant_id: participantId, is_present: true,
+        });
+      } else if (acao === 'avaliacao_sessao') {
+        evidence = await svcEntities.SessionReview.filter({
+          event_id: eventId, session_id: refId, participant_id: participantId,
+        });
+      } else if (acao === 'pergunta_valida') {
+        const questions = await svcEntities.SessionQuestion.filter({
+          event_id: eventId, session_id: refId, participant_id: participantId, is_deleted: false,
+        });
+        for (let q = 0; q < questions.length; q++) {
+          if (String(questions[q].question || '').trim().length >= 25) { evidence = [questions[q]]; break; }
+        }
+      } else if (acao === 'visita_estande') {
+        evidence = await svcEntities.Lead.filter({
+          event_id: eventId, partner_id: refId, participant_id: participantId, is_deleted: false,
+        });
+      } else if (acao === 'completude_perfil') {
+        const COMPLETENESS_FIELDS = ['contact_email', 'phone', 'company', 'job_title', 'bio', 'linkedin', 'instagram', 'website', 'youtube'];
+        let filled = 0;
+        if (targetPart.person_id) {
+          const person = (await svcEntities.Person.filter({ id: targetPart.person_id }))[0];
+          if (person) {
+            if (person.full_name && String(person.full_name).trim()) filled++;
+            for (let f = 0; f < COMPLETENESS_FIELDS.length; f++) {
+              const v = person[COMPLETENESS_FIELDS[f]];
+              if (v !== null && v !== undefined && String(v).trim() !== '') filled++;
+            }
+          }
+        }
+        if (filled > 0) evidence = ['ok'];
+      }
+      const needsEvidence = acao === 'presenca_sessao' || acao === 'avaliacao_sessao' ||
+        acao === 'pergunta_valida' || acao === 'visita_estande' || acao === 'completude_perfil';
+      if (needsEvidence && evidence.length === 0) {
+        return Response.json({
+          credited: false, pontos: 0, reason: 'no_evidence',
+          error: 'Evidência da ação não encontrada — pontos não creditados.',
+        }, { status: 403 });
+      }
+    }
+
     // Resgate: cria PointTransaction com 0 pontos, sem creditar
     if (acao === "resgate_realizado") {
       const chave = `${eventId}:${participantId}:${acao}:${refId}`;
