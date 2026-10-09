@@ -9,6 +9,40 @@ import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { resolveUserPersonId, verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { validIds } from '../../shared/idGuard.ts';
 import { incLeads } from '../../shared/businessMetrics.ts';
+import { deterministicCompare } from '../../shared/deterministicSurvivor.ts';
+
+// Item 2 (2026-10-09) — Backfill lazy do gate de capacidade para sessões
+// legadas sem o campo presence_count. CAS sobre o valor atual ({presence_count:
+// null} casa com campo AUSENTE no MongoDB): corrida de backfills resolve em
+// exatamente um vencedor. Seguro extra: presence_count=0 com presenças já
+// existentes é tratado como drift (default retroativo) e reconduzido.
+async function ensurePresenceCount(svc: any, sessionId: string) {
+  const load = async () => (await svc.entities.Session.filter({ id: sessionId }))[0];
+  let session = await load();
+  if (!session) return null;
+  const pc = session.presence_count;
+  if (pc === undefined || pc === null) {
+    const all = await svc.entities.SessionAttendance.filter({ session_id: sessionId, is_present: true });
+    const claimed = await svc.entities.Session.updateMany(
+      { id: sessionId, presence_count: null },
+      { $set: { presence_count: (all || []).length } }
+    );
+    if (claimed && claimed.updated) session.presence_count = (all || []).length;
+    else session = await load();
+  } else if (pc === 0) {
+    const sample = await svc.entities.SessionAttendance.filter({ session_id: sessionId, is_present: true }, 'id', 1);
+    if ((sample || []).length > 0) {
+      const all = await svc.entities.SessionAttendance.filter({ session_id: sessionId, is_present: true });
+      const claimed = await svc.entities.Session.updateMany(
+        { id: sessionId, presence_count: 0 },
+        { $set: { presence_count: (all || []).length } }
+      );
+      if (claimed && claimed.updated) session.presence_count = (all || []).length;
+      else session = await load();
+    }
+  }
+  return session;
+}
 
 export default async function(req) {
   try {
@@ -71,7 +105,21 @@ export default async function(req) {
 
     if (action === 'unregister') {
       if (present) {
-        await svc.entities.SessionAttendance.update(present.id, { is_present: false });
+        // Item 2 — flip CONDICIONAL (present→false): em corrida, só quem
+        // executou a transição decrementa o gate de capacidade (sem dupla
+        // contagem em unregister concorrente).
+        const flip = await svc.entities.SessionAttendance.updateMany(
+          { id: present.id, is_present: true },
+          { $set: { is_present: false } }
+        );
+        if (flip && flip.updated && session.capacity && session.capacity > 0) {
+          try {
+            await svc.entities.Session.updateMany(
+              { id: sessionId, presence_count: { $gt: 0 } },
+              { $inc: { presence_count: -1 } }
+            );
+          } catch { /* gate é best-effort no unregister */ }
+        }
       }
       return Response.json({ isPresent: false });
     }
@@ -80,26 +128,79 @@ export default async function(req) {
     if (present) {
       return Response.json({ isPresent: true, attendance: present });
     }
-    // Capacidade da sessão (null/0 = sem limite, ex: eventos online)
+
+    // ===== Item 2 (2026-10-09) — Gate atômico de capacidade =====
+    // A vaga é CLAIMADA na Session (updateMany condicional {$lt: capacity} +
+    // $inc) ANTES do create — em corrida, exatamente um vencedor por vaga
+    // (anti-oversell). Sessões legadas recebem backfill lazy do contador.
+    // null/0 = sem limite (ex: eventos online).
+    let claimedSlot = false;
     if (session.capacity && session.capacity > 0) {
-      const allPresent = await svc.entities.SessionAttendance.filter({
-        session_id: sessionId,
-        is_present: true,
-      });
-      if (allPresent.length >= session.capacity) {
-        return Response.json({ error: 'A sessão está lotada. Não é possível registrar presença.' }, { status: 409 });
+      const fresh = await ensurePresenceCount(svc, sessionId);
+      const capacity = fresh?.capacity || 0;
+      if (capacity > 0) {
+        const claim = await svc.entities.Session.updateMany(
+          { id: sessionId, presence_count: { $lt: capacity } },
+          { $inc: { presence_count: 1 } }
+        );
+        if (!claim || !claim.updated) {
+          return Response.json({ error: 'A sessão está lotada. Não é possível registrar presença.' }, { status: 409 });
+        }
+        claimedSlot = true;
       }
     }
 
     const now = new Date().toISOString();
-    const attendance = await svc.entities.SessionAttendance.create({
-      event_id: session.event_id,
+    let attendance: any;
+    try {
+      attendance = await svc.entities.SessionAttendance.create({
+        event_id: session.event_id,
+        session_id: sessionId,
+        participant_id: participantId,
+        person_id: participant.person_id || callerPersonId || null,
+        is_present: true,
+        registered_at: now,
+      });
+    } catch (createErr: any) {
+      // Compensação: create falhou → devolve a vaga claimada.
+      if (claimedSlot) {
+        try {
+          await svc.entities.Session.updateMany(
+            { id: sessionId, presence_count: { $gt: 0 } },
+            { $inc: { presence_count: -1 } }
+          );
+        } catch { /* best-effort */ }
+      }
+      throw createErr;
+    }
+
+    // Dedup pós-create (concorrência): sobrevivente determinístico entre as
+    // presenças do par (sessão, participante); o perdedor é removido e a vaga
+    // claimada devolvida — retorno idempotente com o registro sobrevivente.
+    const mine = await svc.entities.SessionAttendance.filter({
       session_id: sessionId,
       participant_id: participantId,
-      person_id: participant.person_id || callerPersonId || null,
-      is_present: true,
-      registered_at: now,
     });
+    const presentDocs = (mine || []).filter((a: any) => a.is_present !== false);
+    if (presentDocs.length > 1) {
+      const sorted = [...presentDocs].sort(deterministicCompare);
+      const extras = sorted.slice(1);
+      const iAmExtra = extras.some((e: any) => e.id === attendance.id);
+      for (const e of extras) {
+        try { await svc.entities.SessionAttendance.delete(e.id); } catch { /* idempotente */ }
+      }
+      if (iAmExtra) {
+        if (claimedSlot) {
+          try {
+            await svc.entities.Session.updateMany(
+              { id: sessionId, presence_count: { $gt: 0 } },
+              { $inc: { presence_count: -1 } }
+            );
+          } catch { /* best-effort */ }
+        }
+        return Response.json({ isPresent: true, attendance: sorted[0] });
+      }
+    }
 
     // Lead de sessão (o palestrante vê quem assistiu) + contadores — best-effort
     if (session.speaker_name) {

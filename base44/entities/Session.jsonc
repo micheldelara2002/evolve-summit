@@ -41,6 +41,11 @@
     "capacity": {
       "type": "number"
     },
+    "presence_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Item 2 (2026-10-09) \u2014 Gate at\u00f4mico de capacidade das presen\u00e7as. Claim de vaga via updateMany condicional ({id, presence_count: {$lt: capacity}}, {$inc: +1}) \u2014 exatamente um vencedor por vaga em corrida (mesma primitiva CAS do checkout_lock/voted_person_ids). Decrementado condicionalmente no unregister (transi\u00e7\u00e3o present\u2192false) e na compensa\u00e7\u00e3o de dedup/falha de create. Sess\u00f5es legadas sem o campo recebem backfill lazy na primeira inscri\u00e7\u00e3o (contagem de SessionAttendance is_present=true, CAS sobre null \u2014 que casa com campo ausente). null/0 em capacity = sem limite (gate n\u00e3o usado)."
+    },
     "session_type": {
       "type": "string",
       "enum": [

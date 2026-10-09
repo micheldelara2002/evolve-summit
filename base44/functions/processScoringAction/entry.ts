@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
+import { validIds } from "../../shared/idGuard.ts";
 
 function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }) {
   switch (limiteTipo) {
@@ -40,33 +41,56 @@ export default async function(req: Request): Promise<Response> {
     }
     const isOwner = targetPart.email?.toLowerCase() === user.email?.toLowerCase();
     const isAdminUser = user.role === 'admin';
-    if (!isOwner && !isAdminUser) {
-      if (acao !== 'conexao_aceita') {
-        return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
-      }
+    if (!isOwner && !isAdminUser && acao !== 'conexao_aceita') {
+      return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
+    }
 
-      // conexao_aceita: caller must be a participant in the same event AND there
-      // must be an actual accepted Connection between caller and target. Merely
-      // being in the same event is not enough to manufacture points.
-      const callerParts = await base44.asServiceRole.entities.Participant.filter({
+    // Item 3 (2026-10-09) — conexao_aceita: a Connection (criada APENAS no
+    // aceite do pedido, em manageConnection/acceptConnectionInternal — a
+    // existência do registro É a prova de aceite) é exigida para TODOS os
+    // callers não-admin, inclusive o próprio dono. O par é resolvido no
+    // SERVIDOR: o outro lado vem do refId (Participant do evento) e precisa
+    // estar de fato conectado ao alvo. A chave de idempotência usa o refId
+    // VALIDADO (serverRefId) — um refId arbitrário do cliente nunca gera
+    // chave nova, mantendo 1 crédito por (participante, par, evento) mesmo
+    // sob manipulação. Admin mantém bypass (crédito manual).
+    let serverRefId = refId;
+    if (user.role !== 'admin' && acao === 'conexao_aceita') {
+      const svcE = base44.asServiceRole.entities;
+      const deny = { error: 'Conexão aceita não encontrada para esta pontuação.' };
+      const callerParts = await svcE.Participant.filter({
         event_id: targetPart.event_id, email: user.email, is_deleted: false,
       });
       const callerPart = callerParts[0];
-      if (!callerPart || !callerPart.person_id || !targetPart.person_id) {
-        return Response.json({ error: 'Sem permissão para creditar pontos para este participante.' }, { status: 403 });
+      if (!validIds([refId]).length) {
+        return Response.json(deny, { status: 403 });
       }
-      const [personA, personB] = callerPart.person_id < targetPart.person_id
-        ? [callerPart.person_id, targetPart.person_id]
-        : [targetPart.person_id, callerPart.person_id];
-      const connections = await base44.asServiceRole.entities.Connection.filter({
+      const refParts = await svcE.Participant.filter({ id: refId, event_id: eventId, is_deleted: false });
+      const refPart = refParts[0];
+      if (
+        !callerPart || !callerPart.person_id || !refPart || !refPart.person_id ||
+        !targetPart.person_id || refPart.person_id === targetPart.person_id
+      ) {
+        return Response.json(deny, { status: 403 });
+      }
+      // O caller precisa ser uma das pontas do par (dono OU a ponta conectada
+      // que disparou o crédito — fluxo do acceptConnectionInternal).
+      if (callerPart.person_id !== targetPart.person_id && callerPart.person_id !== refPart.person_id) {
+        return Response.json(deny, { status: 403 });
+      }
+      const [personA, personB] = targetPart.person_id < refPart.person_id
+        ? [targetPart.person_id, refPart.person_id]
+        : [refPart.person_id, targetPart.person_id];
+      const connections = await svcE.Connection.filter({
         event_id: targetPart.event_id,
         person_a_id: personA,
         person_b_id: personB,
         is_deleted: false,
       });
       if (connections.length === 0) {
-        return Response.json({ error: 'Conexão aceita não encontrada para esta pontuação.' }, { status: 403 });
+        return Response.json(deny, { status: 403 });
       }
+      serverRefId = refPart.id;
     }
 
     // P0 (2026-10-09) — Evidência server-side por ação: além do vínculo
@@ -177,7 +201,7 @@ export default async function(req: Request): Promise<Response> {
     const rule = rules[0];
 
     // 2. Montar chave de idempotência
-    const chave = buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo: rule.limite_tipo });
+    const chave = buildIdempotencyKey({ eventId, participantId, acao, refId: serverRefId, limiteTipo: rule.limite_tipo });
 
     // 3. Verificar duplicata (fresh, server-side — race window minimizada)
     const existing = await base44.asServiceRole.entities.PointTransaction.filter({ chave_idempotencia: chave });
@@ -194,8 +218,8 @@ export default async function(req: Request): Promise<Response> {
       scoring_rule_id: rule.id,
       pontos: rule.pontos,
       chave_idempotencia: chave,
-      ref_id: refId || undefined,
-      descricao: `${acao} — ${refId || ""}`.trim(),
+      ref_id: serverRefId || undefined,
+      descricao: `${acao} — ${serverRefId || refId || ""}`.trim(),
     });
 
     // 5. Post-create idempotency check: se dois requests concorrentes criaram
