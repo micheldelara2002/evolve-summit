@@ -178,10 +178,10 @@ export default async function(req: Request): Promise<Response> {
       if (freeIssuable.length === 0) {
         return Response.json({ error: "Não há ingressos elegíveis para estorno." }, { status: 400 });
       }
-      if (!(await lockTicketsForRefund(svc, freeIssuable.map((t: any) => t.id)))) {
-        return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
-      }
-
+      // CONC-001 (2026-10-17): a RefundRequest é criada ANTES da trava para
+      // que os ingressos travados carimbem o DONO da trava (refund_request_id)
+      // — as compensações nunca liberam travas de outra solicitação em
+      // corrida. Status 'pending' vira 'processed' só após o cancelamento.
       const refundRequest = await svc.entities.RefundRequest.create({
         order_id: order.id,
         payment_id: payment.id,
@@ -193,10 +193,14 @@ export default async function(req: Request): Promise<Response> {
         amount_requested: 0,
         amount_refunded: 0,
         policy_decision: evalFree.decision,
-        status: "processed",
-        processed_at: new Date().toISOString(),
+        status: "pending",
         order_item_ids: itemIds || [],
       });
+
+      if (!(await lockTicketsForRefund(svc, freeIssuable.map((t: any) => t.id), refundRequest.id))) {
+        try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: "Trava de estorno perdida em corrida (check-in concorrente)." }); } catch {}
+        return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
+      }
 
       // Trail — solicitação de estorno (pedido gratuito) com solicitante e IP.
       await writeAudit(svc, {
@@ -225,8 +229,15 @@ export default async function(req: Request): Promise<Response> {
       // Falha no meio → destrava os ingressos (nada fica travado sem estorno).
       try {
         await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
+        try {
+          await svc.entities.RefundRequest.update(refundRequest.id, {
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          });
+        } catch {}
       } catch (procErr: any) {
-        await unlockTicketsForRefund(svc, order.id, itemIds);
+        try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: procErr?.message || String(procErr) }); } catch {}
+        await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
         throw procErr;
       }
 
@@ -319,14 +330,12 @@ export default async function(req: Request): Promise<Response> {
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
       return Response.json({ error: "Não há ingressos elegíveis para estorno." }, { status: 400 });
     }
-    if (!(await lockTicketsForRefund(svc, paidIssuable.map((t: any) => t.id)))) {
-      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
-      return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
-    }
-
-    // RefundRequest ANTES do Stripe: o webhook charge.refunded procura a
-    // solicitação correspondente (cancel_item usa order_item_ids) — ela precisa
-    // existir quando o webhook chegar.
+    // RefundRequest ANTES da trava E do Stripe: o webhook charge.refunded
+    // procura a solicitação correspondente (cancel_item usa order_item_ids) —
+    // ela precisa existir quando o webhook chegar. CONC-001 (2026-10-17):
+    // criá-la antes da trava também dá à solicitação a PROPRIEDADE da trava —
+    // os ingressos são carimbados com refund_request_id e as compensações
+    // (rollback/destrava) nunca liberam travas de outra solicitação em corrida.
     // DAT-002 — chave por TENTATIVA: o Stripe casheia a chave por 24h — reusar
     // a chave de uma tentativa FALHA devolveria o refund antigo para sempre.
     // Tentativas com a mesma identidade numeram a chave; a identidade pendente
@@ -348,6 +357,12 @@ export default async function(req: Request): Promise<Response> {
       order_item_ids: itemIds || [],
       idempotency_key: idemKey,
     });
+
+    if (!(await lockTicketsForRefund(svc, paidIssuable.map((t: any) => t.id), refundRequest.id))) {
+      try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: "Trava de estorno perdida em corrida (check-in concorrente)." }); } catch {}
+      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
+    }
 
     // Trail — solicitação de estorno (pedido pago) com solicitante, valor e IP.
     await writeAudit(svc, {
@@ -405,8 +420,9 @@ export default async function(req: Request): Promise<Response> {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: err?.message || String(err) }); } catch {}
       // Devolve a reserva do teto — o estorno não aconteceu.
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
-      // Destrava os ingressos — o estorno não foi disparado.
-      await unlockTicketsForRefund(svc, order.id, itemIds);
+      // Destrava os ingressos — o estorno não foi disparado. Escopado por
+      // solicitação (CONC-001): nunca solta a trava de outra em andamento.
+      await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
       console.error('[requestRefund] Stripe refund failed:', err?.message || err);
       return Response.json({ error: `Falha no estorno: ${err?.message || err}` }, { status: 502 });
     }
@@ -414,7 +430,7 @@ export default async function(req: Request): Promise<Response> {
     if (refund.status === "failed") {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
-      await unlockTicketsForRefund(svc, order.id, itemIds);
+      await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
       return Response.json({ error: "Estorno falhou no Stripe.", refund_status: refund.status }, { status: 502 });
     }
 

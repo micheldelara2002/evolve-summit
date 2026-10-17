@@ -495,7 +495,8 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
     // silenciosamente (estorno direto no painel do Stripe) — o ingresso segue
     // válido e o chamador alerta (webhook marca a solicitação + auditoria).
     if (ticket.status === "used") { usedSkipped++; continue; }
-    await svc.entities.Ticket.update(ticket.id, { status: "refunded" });
+    // CONC-001: o estorno confirmado consome a trava — limpa o dono dela.
+    await svc.entities.Ticket.update(ticket.id, { status: "refunded", refund_request_id: null });
     if (ticket.participant_id) {
       const part = (await svc.entities.Participant.filter({ id: ticket.participant_id }))[0];
       if (part && part.registration_status !== "cancelled") {
@@ -572,20 +573,30 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
 // ingresso mudou de estado entre a leitura e a trava (ex.: check-in confirmado
 // agora) — nesse caso a trava parcial é revertida e o estorno NÃO dispara:
 // dinheiro devolvido com ingresso válido deixa de existir.
-export async function lockTicketsForRefund(svc: any, ticketIds: string[]): Promise<boolean> {
+//
+// CONC-001 (2026-10-17) — Propriedade da trava: cada ingresso travado é
+// carimbado com o refund_request_id do dono (o $set na MESMA escrita atômica
+// do claim — sem segunda ida ao banco). O rollback da trava parcial é ESCOPADO
+// por esse dono: sem ele, a compensação de uma segunda solicitação concorrente
+// (que falhou no CAS sobre ingressos já refund_pending da primeira) REVERTIA as
+// travas alheias e reabria a janela de check-in durante o estorno alheio.
+export async function lockTicketsForRefund(svc: any, ticketIds: string[], refundRequestId?: string): Promise<boolean> {
   if (!ticketIds || ticketIds.length === 0) return true;
+  const stamp: any = { status: "refund_pending" };
+  if (refundRequestId) stamp.refund_request_id = refundRequestId;
   const claim = await svc.entities.Ticket.updateMany(
     { id: { $in: ticketIds }, status: "issued" },
-    { $set: { status: "refund_pending" } }
+    { $set: stamp }
   );
   const locked = claim && claim.updated ? claim.updated : 0;
   if (locked === ticketIds.length) return true;
-  // Reverte a trava parcial — nada fica travado sem estorno em andamento.
+  // Reverte APENAS os ingressos travados por ESTA solicitação — nada fica
+  // travado sem estorno em andamento e nenhuma trava alheia é tocada.
   try {
-    await svc.entities.Ticket.updateMany(
-      { id: { $in: ticketIds }, status: "refund_pending" },
-      { $set: { status: "issued" } }
-    );
+    const rollback: any = { id: { $in: ticketIds }, status: "refund_pending" };
+    if (refundRequestId) rollback.refund_request_id = refundRequestId;
+    else rollback.refund_request_id = { $exists: false };
+    await svc.entities.Ticket.updateMany(rollback, { $set: { status: "issued" } });
   } catch (err: any) {
     console.error("[lockTicketsForRefund] rollback failed:", err?.message || err);
   }
@@ -595,9 +606,21 @@ export async function lockTicketsForRefund(svc: any, ticketIds: string[]): Promi
 // Destrava refund_pending → issued quando o estorno falhou/foi recusado no
 // Stripe. Idempotente por CAS: só reativa exatamente o que ainda está travado
 // (estorno confirmado já moveu os ingressos para 'refunded' — não é tocado).
-export async function unlockTicketsForRefund(svc: any, orderId: string, orderItemIds?: string[]): Promise<void> {
+//
+// CONC-001 (2026-10-17) — escopo por dono: quando o refundRequestId é passado,
+// apenas ingressos travados POR ESTA solicitação (ou legados sem carimbo,
+// janela de deploy) são destravados — o falhar de uma solicitação nunca libera
+// a trava de outra em andamento no mesmo pedido.
+export async function unlockTicketsForRefund(svc: any, orderId: string, orderItemIds?: string[], refundRequestId?: string): Promise<void> {
   const query: any = { order_id: orderId, status: "refund_pending" };
   if (orderItemIds && orderItemIds.length > 0) query.order_item_id = { $in: orderItemIds };
+  if (refundRequestId) {
+    query.$or = [
+      { refund_request_id: refundRequestId },
+      { refund_request_id: { $exists: false } },
+      { refund_request_id: null },
+    ];
+  }
   try {
     await svc.entities.Ticket.updateMany(query, { $set: { status: "issued" } });
   } catch (err: any) {

@@ -387,7 +387,7 @@ export default async function(req: Request): Promise<Response> {
               );
             }
             const ord = (await svc.entities.Order.filter({ id: req.order_id }))[0];
-            if (ord) await unlockTicketsForRefund(svc, ord.id, Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined);
+            if (ord) await unlockTicketsForRefund(svc, ord.id, Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined, req.id);
             refundsFailed++;
           };
           try {
@@ -475,9 +475,11 @@ export default async function(req: Request): Promise<Response> {
               );
             }
             // Destrava os ingressos travados para este estorno (refund_pending → issued).
+            // CONC-001 — escopado pela solicitação: não solta travas alheias.
             await unlockTicketsForRefund(
               svc, order.id,
-              Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined
+              Array.isArray(req.order_item_ids) ? req.order_item_ids : undefined,
+              req.id
             );
           } catch (failErr: any) {
             console.error('[expireStaleReservations] refund fail mark failed:', req.id, failErr?.message || failErr);
