@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Send, CalendarClock } from "lucide-react";
 import AudienceSelector from "./AudienceSelector";
 import { dispatchCampaign } from "@/lib/notificationService";
-import { isAdmin, isPartnerManager } from "@/lib/access";
 import { sanitizeText } from "@/utils/sanitize";
 import { toast } from "sonner";
 
@@ -48,27 +47,49 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
   };
   const [scheduledAt, setScheduledAt] = useState(() => toLocalInput(campaign?.scheduled_at));
 
+  // P0 (2026-10-17) — Escritas de campanha passam pela função backend
+  // manageNotificationCampaign: escopo, audiência e autorização são validados
+  // no SERVIDOR e o emissor é derivado do usuário autenticado (o SDK direto
+  // da campanha ficou restrito a admin).
+  const saveCampaign = async ({ scheduled_at } = {}) => {
+    const content = {
+      title: sanitizeText(form.title),
+      message: sanitizeText(form.message),
+      type: form.type,
+      priority: form.priority,
+      cta_label: form.cta_label ? sanitizeText(form.cta_label) : "",
+      cta_target: form.cta_target ? sanitizeText(form.cta_target) : "",
+      audience_type: audience.type === "segment" ? "segment" : audience.type,
+    };
+    if (audience.type === "segment") content.audience_segments = audience.segments;
+    if (!campaign?.id) {
+      content.scope_type = scopeType;
+      content.scope_event_id = scopeEventId || undefined;
+    }
+    if (scheduled_at) content.scheduled_at = scheduled_at;
+    const r = await base44.functions.invoke("manageNotificationCampaign", {
+      op: campaign?.id ? "update" : "create",
+      campaign_id: campaign?.id || undefined,
+      campaign: content,
+      senderPartnerId: partnerId || null,
+    });
+    if (!r.data?.ok) throw new Error(r.data?.error || "Falha ao salvar a campanha.");
+    return r.data.campaign;
+  };
+
   const saveDraftMutation = useMutation({
-    mutationFn: (data) => {
-      if (campaign?.id) return base44.entities.NotificationCampaign.update(campaign.id, data);
-      return base44.entities.NotificationCampaign.create(data);
-    },
+    mutationFn: () => saveCampaign(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
       toast.success("Rascunho salvo.");
       onClose?.();
     },
+    onError: (e) => toast.error("Erro ao salvar rascunho: " + (e.message || "")),
   });
 
   const sendMutation = useMutation({
-    mutationFn: async (campaignData) => {
-      let savedCampaign;
-      if (campaign?.id) {
-        await base44.entities.NotificationCampaign.update(campaign.id, campaignData);
-        savedCampaign = { ...campaign, ...campaignData };
-      } else {
-        savedCampaign = await base44.entities.NotificationCampaign.create(campaignData);
-      }
+    mutationFn: async () => {
+      const savedCampaign = await saveCampaign();
       await dispatchCampaign(savedCampaign, currentUser, partnerId);
     },
     onSuccess: () => {
@@ -79,27 +100,11 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     onError: (e) => toast.error("Erro ao enviar: " + e.message),
   });
 
-  // P2 — Agendar: permissão validada NO MOMENTO DO AGENDAMENTO (server-side,
-  // mesma autorização do disparo — countCampaignAudience). A campanha fica
-  // 'scheduled' e a varredura de manutenção dispara sozinha no scheduled_at.
+  // P2 — Agendar: permissão e audiência validadas no BACKEND
+  // (manageNotificationCampaign); a campanha fica 'scheduled' e a varredura
+  // de manutenção dispara sozinha no scheduled_at.
   const scheduleMutation = useMutation({
-    mutationFn: async () => {
-      await base44.functions.invoke("countCampaignAudience", {
-        scopeEventId: scopeEventId || null,
-        audienceType: audience.type === "segment" ? "segment" : audience.type,
-        audienceSegments: audience.type === "segment" ? audience.segments : [],
-        senderPartnerId: partnerId || null,
-      });
-      const data = buildPayload("scheduled");
-      data.scheduled_at = new Date(scheduledAt).toISOString();
-      // Audiências de parceiro: o partner_id precisa ser persistido — o disparo
-      // agendado roda em service role, sem o contexto do navegador.
-      if (partnerId && ["my_leads", "partner_leads"].includes(audience.type)) {
-        data.audience_payload = JSON.stringify({ partner_id: partnerId });
-      }
-      if (campaign?.id) return base44.entities.NotificationCampaign.update(campaign.id, data);
-      return base44.entities.NotificationCampaign.create(data);
-    },
+    mutationFn: () => saveCampaign({ scheduled_at: new Date(scheduledAt).toISOString() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification_campaigns"] });
       toast.success("Campanha agendada! O envio dispara automaticamente na data — você não precisa ficar online.");
@@ -120,25 +125,7 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
     scheduleMutation.mutate();
   };
 
-  const buildPayload = (status) => ({
-    title: sanitizeText(form.title),
-    message: sanitizeText(form.message),
-    type: form.type,
-    priority: form.priority,
-    cta_label: form.cta_label ? sanitizeText(form.cta_label) : "",
-    cta_target: form.cta_target ? sanitizeText(form.cta_target) : "",
-    scope_type: scopeType,
-    scope_event_id: scopeEventId || undefined,
-    sender_user_id: currentUser?.id,
-    sender_role: isAdmin(currentUser)
-      ? "admin"
-      : isPartnerManager(currentUser)
-        ? "representante"
-        : undefined,
-    status,
-    audience_type: audience.type === "segment" ? "segment" : audience.type,
-    audience_payload: audience.type === "segment" ? JSON.stringify(audience.segments) : null,
-  });
+
 
   const isValid = form.title.trim() && form.message.trim();
   const isPending = saveDraftMutation.isPending || sendMutation.isPending || scheduleMutation.isPending;
@@ -263,13 +250,13 @@ export default function CampaignForm({ campaign, scopeType = "global", scopeEven
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
         <Button
           variant="outline"
-          onClick={() => saveDraftMutation.mutate(buildPayload("draft"))}
+          onClick={() => saveDraftMutation.mutate()}
           disabled={!isValid || isPending || isReadOnly}
         >
           Salvar Rascunho
         </Button>
         <Button
-          onClick={() => sendMutation.mutate(buildPayload("draft"))}
+          onClick={() => sendMutation.mutate()}
           disabled={!isValid || isPending || isReadOnly}
         >
           <Send className="w-4 h-4 mr-2" />

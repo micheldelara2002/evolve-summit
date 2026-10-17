@@ -83,8 +83,10 @@ export default function NotificationsCenter({ scopeType = "global", scopeEventId
     enabled: isAdmin && isGlobalView,
   });
 
+  // P0 (2026-10-17) — soft delete via backend (escrita direta via SDK da
+  // campanha é admin-only; o criador exclui pela função).
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.NotificationCampaign.update(id, { is_deleted: true }),
+    mutationFn: (id) => base44.functions.invoke("manageNotificationCampaign", { op: "delete", campaign_id: id }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 

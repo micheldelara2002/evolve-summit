@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { generateTicketPdfBytes, buildTicketPdfExtras, buildTicketReceipt, APP_URL } from "../../shared/ticketPdf.ts";
 
@@ -9,12 +9,33 @@ import { generateTicketPdfBytes, buildTicketPdfExtras, buildTicketReceipt, APP_U
 //
 // Payload: { ticketId }
 
+// Rate limit por usuário (janela deslizante em memória do isolate —
+// best-effort): a geração de PDF é custosa (QR + jsPDF + imagens). Teto de
+// 10 gerações/minuto/usuário; excedentes recebem 429 sem consumir CPU.
+const PDF_RATE_WINDOW_MS = 60_000;
+const PDF_RATE_MAX = 10;
+const pdfRateHits = new Map<string, number[]>();
+function pdfRateLimited(key: string): boolean {
+  const now = Date.now();
+  const hits = (pdfRateHits.get(key) || []).filter((t) => now - t < PDF_RATE_WINDOW_MS);
+  if (hits.length >= PDF_RATE_MAX) {
+    pdfRateHits.set(key, hits);
+    return true;
+  }
+  hits.push(now);
+  pdfRateHits.set(key, hits);
+  return false;
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
     const guard = await requireActiveUser(base44);
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
+    if (pdfRateLimited('pdf:' + user.id)) {
+      return Response.json({ error: 'Muitas solicitações. Tente novamente em instantes.' }, { status: 429 });
+    }
     const svc = base44.asServiceRole;
 
     const body = await req.json().catch(() => ({}));

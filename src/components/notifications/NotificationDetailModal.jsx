@@ -22,16 +22,18 @@ export default function NotificationDetailModal({ recipient, campaign, onClose }
 
   const markReadMutation = useMutation({
     mutationFn: async (recipientId) => {
-      await base44.entities.NotificationRecipient.update(recipientId, {
-        read_at: new Date().toISOString(),
-      });
-      // Update campaign read_count
-      if (campaign) {
-        const existing = await base44.entities.NotificationCampaign.filter({ id: campaign.id });
-        if (existing[0]) {
-          const newRead = (existing[0].read_count || 0) + 1;
-          await base44.entities.NotificationCampaign.update(campaign.id, { read_count: newRead });
-        }
+      if (campaign?.id) {
+        // P0 (2026-10-17) — leitura + read_count via backend: flip condicional
+        // de read_at com incremento idempotente (escrita direta via SDK da
+        // campanha é admin-only).
+        await base44.functions.invoke("manageNotificationCampaign", {
+          op: "mark_read",
+          campaign_id: campaign.id,
+        });
+      } else {
+        await base44.entities.NotificationRecipient.update(recipientId, {
+          read_at: new Date().toISOString(),
+        });
       }
     },
     onSuccess: () => {

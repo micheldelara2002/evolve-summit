@@ -13,6 +13,7 @@ import { jsPDF } from 'npm:jspdf@4.2.1';
 import qrcode from 'npm:qrcode-generator@1.4.4';
 import { DEFAULT_GLOBAL_REFUND_POLICY } from './commercePolicy.ts';
 import { sendTransactionalEmail } from './transactionalEmail.ts';
+import { fetchSafeImage, MAX_IMAGE_DIM } from './safeImageFetch.ts';
 
 export type TicketSponsor = {
   name: string;
@@ -83,21 +84,23 @@ function generateQrModules(text: string): { size: number; isDark: (row: number, 
   }
 }
 
-// Baixa uma imagem (PNG/JPEG) para embutir no PDF. Retorna null se indisponível.
-async function fetchImage(url?: string): Promise<{ data: Uint8Array; format: string } | null> {
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buf = new Uint8Array(await res.arrayBuffer());
-    if (buf.length < 4) return null;
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (ct.includes('png') || (buf[0] === 0x89 && buf[1] === 0x50)) return { data: buf, format: 'PNG' };
-    if (ct.includes('jpeg') || ct.includes('jpg') || buf[0] === 0xff) return { data: buf, format: 'JPEG' };
-    return null;
-  } catch {
-    return null;
+// P0 (2026-10-17) — Busca de imagem SEGURA e centralizada (safeImageFetch):
+// https-only, hosts internos/metadata bloqueados, sem redirects, timeout,
+// teto de bytes em streaming e validação de assinatura. Falha de imagem
+// (opcional) NUNCA impede a emissão do PDF.
+const IMAGE_FETCH_POOL = 4;
+
+async function fetchImagePool(urls: (string | undefined | null)[]): Promise<({ data: Uint8Array; format: string } | null)[]> {
+  const results: ({ data: Uint8Array; format: string } | null)[] = new Array(urls.length).fill(null);
+  for (let i = 0; i < urls.length; i += IMAGE_FETCH_POOL) {
+    const slice = urls.slice(i, i + IMAGE_FETCH_POOL);
+    const settled = await Promise.all(slice.map((u) => fetchSafeImage(u as string)));
+    for (let j = 0; j < slice.length; j++) {
+      const r: any = settled[j];
+      results[i + j] = r && r.ok ? { data: r.data, format: r.format } : null;
+    }
   }
+  return results;
 }
 
 function formatEventDate(d?: string): string {
@@ -114,13 +117,12 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
 
   // AUD-006 — matriz do QR gerada localmente (sem rede).
   const qrModules = generateQrModules(opts.hashCode);
-  // Pré-busca de imagens (paralela): logo do evento e logos dos patrocinadores.
+  // Pré-busca de imagens (pool de 4 em paralelo, busca segura): logo do evento
+  // e logos dos patrocinadores.
   const sponsors = (opts.sponsors || []).slice(0, 12);
-  const [logoImg, ...sponsorImgs] = await Promise.all([
-    fetchImage(opts.eventLogoUrl),
-    ...sponsors.map((s) => fetchImage(s.logoUrl)),
-  ]);
-  const sponsorImgByIdx: (typeof qrImg)[] = sponsorImgs;
+  const imgs = await fetchImagePool([opts.eventLogoUrl, ...sponsors.map((s) => s.logoUrl)]);
+  const logoImg = imgs[0];
+  const sponsorImgByIdx: ({ data: Uint8Array; format: string } | null)[] = imgs.slice(1);
 
   // Agrupa patrocinadores por nível (ordem diamante → apoiador).
   const groups = TIER_ORDER
@@ -132,11 +134,13 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
 
   // Medição de texto (larguras de página fixas) para calcular a altura da página.
   const measure = new jsPDF({ unit: 'pt', format: [W, 2000] });
+  // Caps de texto: entradas enormes não podem crescer a página sem controle.
   const locLines: string[] = opts.eventLocation
-    ? measure.splitTextToSize(String(opts.eventLocation).slice(0, 160), CONTENT_W)
+    ? measure.splitTextToSize(String(opts.eventLocation).slice(0, 160), CONTENT_W).slice(0, 12)
     : [];
   const refundLines: string[] = (opts.refundPolicyLines || [])
-    .flatMap((l) => measure.splitTextToSize(l, CONTENT_W));
+    .flatMap((l) => measure.splitTextToSize(l, CONTENT_W))
+    .slice(0, 30);
 
   const dateText = formatEventDate(opts.eventDate);
   const headerH = logoImg ? 110 : 90;
@@ -166,7 +170,7 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
     (opts.paidAt ? 1 : 0) + (opts.paymentMethod ? 1 : 0) + (opts.receiverName ? 1 : 0) + (opts.receiverDoc ? 1 : 0);
   const receiptH = hasReceipt ? 24 + 14 + receiptRows * 13 + 10 : 0;
 
-  const pageH = Math.ceil(headerH + 30 + detailsH + 10 + qrH + refundH + sponsorsH + receiptH + 30);
+  const pageH = Math.min(Math.ceil(headerH + 30 + detailsH + 10 + qrH + refundH + sponsorsH + receiptH + 30), 3200);
   const doc = new jsPDF({ unit: 'pt', format: [W, pageH] });
 
   // ===== Header (banda escura + logo do evento) =====
@@ -182,6 +186,7 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
   if (logoImg) {
     try {
       const props = doc.getImageProperties(logoImg.data);
+      if (props.width > MAX_IMAGE_DIM || props.height > MAX_IMAGE_DIM) throw new Error('image_too_large');
       const maxW = 56, maxH = 56;
       const scale = Math.min(maxW / props.width, maxH / props.height);
       const w = props.width * scale, h = props.height * scale;
@@ -301,6 +306,7 @@ export async function generateTicketPdfBytes(opts: TicketPdfInput): Promise<Uint
       if (s.img) {
         try {
           const props = doc.getImageProperties(s.img.data);
+          if (props.width > MAX_IMAGE_DIM || props.height > MAX_IMAGE_DIM) throw new Error('image_too_large');
           const scale = Math.min(SPONSOR_BOX_W / props.width, SPONSOR_BOX_H / props.height);
           const w = props.width * scale, h = props.height * scale;
           doc.addImage(s.img.data, s.img.format, x + (SPONSOR_BOX_W - w) / 2, by + (SPONSOR_BOX_H - h) / 2, w, h);

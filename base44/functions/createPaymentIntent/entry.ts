@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { resolveCallerPerson } from "../../shared/sessionAuth.ts";

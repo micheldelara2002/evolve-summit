@@ -5,7 +5,7 @@
 // PersonDocument, Import) — passam por aqui com service role.
 // Contadores (maintainBusinessCounter) e auditoria (logAuditEvent) seguem no
 // frontend, best-effort como hoje; a função apenas grava o registro.
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";

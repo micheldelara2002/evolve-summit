@@ -1,9 +1,10 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund } from "../../shared/stripeClient.ts";
 import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
+import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -601,8 +602,33 @@ export default async function(req: Request): Promise<Response> {
           // Audiências de parceiro: partner_id persistido no agendamento
           // (audience_payload JSON {partner_id}).
           let senderPartnerId: string | null = null;
-          if (c.audience_type === 'my_leads' || c.audience_type === 'partner_leads') {
-            try { senderPartnerId = JSON.parse(c.audience_payload || '{}').partner_id || null; } catch { senderPartnerId = null; }
+          if (c.audience_type === 'my_leads' || c.audience_type === 'partner_leads' || c.audience_type === 'partner_all_event') {
+            senderPartnerId = resolveCampaignPartnerId(c, null);
+          }
+          // P0 (2026-10-17) — Revalidação no disparo: a permissão deixa de ser
+          // "confiada no agendamento". Emissor inexistente, conta excluída ou
+          // autorização perdida (membership/rep/parceiro-evento) → campanha
+          // 'failed' SEM envio, tentativa consumida e log operacional seguro
+          // (ids + motivo técnico, sem PII).
+          const senderVerdict = await verifyCampaignSenderAuthorization(base44, senderUser, c, senderPartnerId);
+          if (!senderVerdict.authorized) {
+            try {
+              await svc.entities.NotificationCampaign.updateMany(
+                { id: c.id, status: { $in: ['scheduled', 'partially_sent', 'failed'] } },
+                { $set: { status: 'failed' } }
+              );
+              await svc.entities.NotificationCampaign.updateMany({ id: c.id }, { $inc: { auto_dispatch_attempts: 1 } });
+              await svc.entities.AuditLog.create({
+                action: 'status_change',
+                entity_type: 'NotificationCampaign',
+                entity_id: c.id,
+                event_id: c.scope_event_id || '',
+                user_id: c.sender_user_id || 'system',
+                details: JSON.stringify({ type: 'scheduled_dispatch_blocked', reason: senderVerdict.reason }),
+              });
+            } catch { /* best-effort */ }
+            campaignsFailed++;
+            continue;
           }
           try {
             const r = await dispatchCampaignCore(svc, {

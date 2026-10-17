@@ -13,7 +13,7 @@
 // Orçamento de tempo por invocação: se exceder, retorna a contagem parcial com
 // complete=false (o frontend exibe "N+").
 // =============================================================================
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { resolveAudienceBatches } from '../../shared/campaignAudience.ts';

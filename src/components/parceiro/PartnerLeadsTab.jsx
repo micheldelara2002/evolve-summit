@@ -1,9 +1,11 @@
 /**
  * Aba de Leads do parceiro no evento.
  * Lista leads (quem escaneou QR), exporta XLS e envia por e-mail.
+ * P0 (2026-10-17) — Paginação por cursor: uma página de 100 por vez com
+ * "Carregar mais"; exportação/e-mail percorrem TODAS as páginas explicitamente
+ * (loop de cursor) no clique do usuário — nunca uma resposta gigante única.
  */
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,55 +29,118 @@ const QUALITY_COLORS = {
   cold: "bg-blue-100 text-blue-700",
 };
 
+const PAGE_SIZE = 100;
+const EXPORT_PAGE_SIZE = 200;
+
+async function fetchLeadsPage(partnerId, eventId, cursor) {
+  const r = await base44.functions.invoke("getMyLeads", {
+    partnerId, eventId, limit: EXPORT_PAGE_SIZE, cursor: cursor || undefined,
+  });
+  return r.data || { leads: [], next_cursor: null, has_more: false, total: 0 };
+}
+
 export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, myPerson }) {
   const [sending, setSending] = useState(false);
+  const [leads, setLeads] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["partner_leads", eventId, partnerId],
-    queryFn: async () => {
-      const r = await base44.functions.invoke('getMyLeads', { partnerId, eventId });
-      return r.data?.leads || [];
-    },
-    enabled: !!eventId && !!partnerId,
-  });
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    base44.functions
+      .invoke("getMyLeads", { partnerId, eventId, limit: PAGE_SIZE })
+      .then((r) => {
+        if (!active) return;
+        const d = r.data || {};
+        setLeads(d.leads || []);
+        setCursor(d.next_cursor || null);
+        setHasMore(!!d.has_more);
+        setTotal(d.total || 0);
+      })
+      .catch(() => active && toast.error("Erro ao carregar leads."))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [eventId, partnerId]);
+
+  const loadMore = async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const d = await fetchLeadsPage(partnerId, eventId, cursor);
+      setLeads((prev) => [...prev, ...(d.leads || [])]);
+      setCursor(d.next_cursor || null);
+      setHasMore(!!d.has_more);
+    } catch {
+      toast.error("Erro ao carregar mais leads.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Percorre todas as páginas restantes (cursor explícito) para export/e-mail.
+  const fetchAllLeads = async () => {
+    let all = [...leads];
+    let cur = cursor;
+    let more = hasMore;
+    while (more) {
+      const d = await fetchLeadsPage(partnerId, eventId, cur);
+      all = all.concat(d.leads || []);
+      cur = d.next_cursor || null;
+      more = !!d.has_more && !!cur;
+    }
+    return all;
+  };
 
   const contactEmail = myPerson?.contact_email || user?.email;
 
-  const exportXLS = () => {
-    if (!leads.length) { toast.warning("Nenhum lead para exportar."); return; }
-    const headers = ["Nome", "E-mail", "Origem", "Qualidade", "Notas", "Data"];
-    const rows = leads.map((l) => [
-      l.participant_name || "",
-      l.participant_email || "",
-      SOURCE_LABELS[l.source] || l.source || "",
-      l.quality || "",
-      l.notes || "",
-      l.created_date ? format(new Date(l.created_date), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "",
-    ]);
-    const html = `<table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${String(c).replace(/</g, "&lt;")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-    const blob = new Blob([`\uFEFF${html}`], { type: "application/vnd.ms-excel" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `leads-${eventId}.xls`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("XLS exportado.");
+  const exportXLS = async () => {
+    setSending(true);
+    try {
+      const all = await fetchAllLeads();
+      if (!all.length) { toast.warning("Nenhum lead para exportar."); return; }
+      const headers = ["Nome", "E-mail", "Origem", "Qualidade", "Notas", "Data"];
+      const rows = all.map((l) => [
+        l.participant_name || "",
+        l.participant_email || "",
+        SOURCE_LABELS[l.source] || l.source || "",
+        l.quality || "",
+        l.notes || "",
+        l.created_date ? format(new Date(l.created_date), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "",
+      ]);
+      const html = `<table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${String(c).replace(/</g, "&lt;")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      const blob = new Blob([`\uFEFF${html}`], { type: "application/vnd.ms-excel" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `leads-${eventId}.xls`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("XLS exportado.");
+    } catch {
+      toast.error("Erro ao exportar leads.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const sendByEmail = async () => {
-    if (!leads.length) { toast.warning("Nenhum lead para enviar."); return; }
     if (!myPerson?.contact_email) {
       toast.error("Você não tem e-mail de contato cadastrado. Atualize seu perfil em /profile.");
       return;
     }
     setSending(true);
     try {
-      const rows = leads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.participant_name || ""}</td><td>${l.participant_email || ""}</td><td>${SOURCE_LABELS[l.source] || l.source || ""}</td><td>${l.quality || ""}</td></tr>`).join("");
-      const body = `<h2>Leads do seu parceiro</h2><p>Total: <strong>${leads.length}</strong> lead(s).</p><table border="1" cellpadding="6" style="border-collapse:collapse"><thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>Origem</th><th>Qualidade</th></tr></thead><tbody>${rows}</tbody></table>`;
+      const all = await fetchAllLeads();
+      if (!all.length) { toast.warning("Nenhum lead para enviar."); return; }
+      const rows = all.map((l, i) => `<tr><td>${i + 1}</td><td>${l.participant_name || ""}</td><td>${l.participant_email || ""}</td><td>${SOURCE_LABELS[l.source] || l.source || ""}</td><td>${l.quality || ""}</td></tr>`).join("");
+      const body = `<h2>Leads do seu parceiro</h2><p>Total: <strong>${all.length}</strong> lead(s).</p><table border="1" cellpadding="6" style="border-collapse:collapse"><thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>Origem</th><th>Qualidade</th></tr></thead><tbody>${rows}</tbody></table>`;
       await sendEmail({
         to: myPerson.contact_email,
-        subject: `Leads do evento (${leads.length} leads)`,
+        subject: `Leads do evento (${all.length} leads)`,
         body,
       });
       toast.success(`Leads enviados para ${myPerson.contact_email}.`);
@@ -93,11 +158,11 @@ export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, 
           <h2 className="text-base font-display font-semibold flex items-center gap-2">
             <Users className="w-4 h-4 text-orange-600" /> Leads do Parceiro
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{leads.length} lead(s) neste evento</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{total} lead(s) neste evento</p>
         </div>
         {!isReadOnly && (
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={exportXLS} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={exportXLS} disabled={sending} className="gap-1.5">
               <Download className="w-3.5 h-3.5" /> Exportar XLS
             </Button>
             <Button variant="outline" size="sm" onClick={sendByEmail} disabled={sending} className="gap-1.5">
@@ -120,7 +185,7 @@ export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, 
         </div>
       )}
 
-      {isLoading ? (
+      {loading ? (
         <div className="flex justify-center py-12">
           <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
@@ -153,6 +218,13 @@ export default function PartnerLeadsTab({ eventId, partnerId, isReadOnly, user, 
               </CardContent>
             </Card>
           ))}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" size="sm" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Carregando..." : "Carregar mais"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

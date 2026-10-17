@@ -12,7 +12,7 @@
 //     eventos distintos — fluxo já coberto por getSpeakerSessionFeedback
 //     (posse validada server-side por Session.speaker_id → Participant).
 // =============================================================================
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { scanAll } from '../../shared/completeScan.ts';

@@ -15,9 +15,9 @@
 //
 // Garantias de concorrência/entrega: ver header de shared/campaignDispatch.ts.
 // =============================================================================
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { verifyCampaignSenderAuthorization } from "../../shared/campaignAuth.ts";
 import { dispatchCampaignCore, CAMPAIGN_TIME_BUDGET_MS } from "../../shared/campaignDispatch.ts";
 
 export default async function(req: Request): Promise<Response> {
@@ -35,53 +35,13 @@ export default async function(req: Request): Promise<Response> {
     const campaign = campaignRecords[0];
     if (!campaign) return Response.json({ error: 'Campanha não encontrada.' }, { status: 404 });
 
-    // === Authorization ===
-    if (campaign.scope_event_id) {
-      const broadcastAudiences = ['all', 'segment', 'manual'];
-      if (broadcastAudiences.includes(campaign.audience_type)) {
-        const canDispatch = await verifyEventMembership(base44, user, campaign.scope_event_id, EVENT_MANAGER_ROLES);
-        if (!canDispatch.authorized) {
-          return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
-        }
-      } else {
-        if (!campaign.sender_user_id) {
-          return Response.json({ error: 'Campanhas partner/speaker requerem sender_user_id.' }, { status: 403 });
-        }
-        if (campaign.sender_user_id !== user.id) {
-          return Response.json({ error: 'Sem permissão para enviar esta campanha.' }, { status: 403 });
-        }
-        const partnerAudiences = ['my_leads', 'partner_leads', 'partner_all_event'];
-        if (partnerAudiences.includes(campaign.audience_type) && senderPartnerId) {
-          let repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
-            partner_id: senderPartnerId, user_id: user.id, is_active: true, is_deleted: false,
-          });
-          if (repRecords.length === 0) {
-            const persons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email, is_active: true });
-            if (persons.length > 0) {
-              repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
-                partner_id: senderPartnerId, person_id: persons[0].id, is_active: true, is_deleted: false,
-              });
-            }
-          }
-          if (repRecords.length === 0) {
-            return Response.json({ error: 'senderPartnerId não pertence ao usuário autenticado.' }, { status: 403 });
-          }
-          const eventPartners = await base44.asServiceRole.entities.EventPartner.filter({
-            event_id: campaign.scope_event_id, partner_id: senderPartnerId, is_active: true, is_deleted: false,
-          });
-          if (eventPartners.length === 0) {
-            return Response.json({ error: 'Partner não está associado a este evento.' }, { status: 403 });
-          }
-        }
-        const hasAnyMembership = await verifyAnyEventMembership(base44, user, campaign.scope_event_id);
-        if (!hasAnyMembership.authorized) {
-          return Response.json({ error: 'Sem permissão para enviar campanhas neste evento.' }, { status: 403 });
-        }
-      }
-    } else {
-      if (user.role !== 'admin') {
-        return Response.json({ error: 'Apenas administradores podem enviar campanhas globais.' }, { status: 403 });
-      }
+    // === Authorization — verificador compartilhado (campaignAuth) ===
+    // P0 (2026-10-17): mesmo conjunto de regras do agendamento e do disparo
+    // AGENDADO — revalida emissor, estado da conta e membership ATUAIS no
+    // disparo (a permissão do agendamento não substitui a validação).
+    const verdict = await verifyCampaignSenderAuthorization(base44, user, campaign, senderPartnerId || null);
+    if (!verdict.authorized) {
+      return Response.json({ error: 'Sem permissão para enviar esta campanha.' }, { status: 403 });
     }
 
     const svc = base44.asServiceRole;

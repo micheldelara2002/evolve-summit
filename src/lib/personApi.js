@@ -70,10 +70,21 @@ export async function fetchSpeakerFeedback(sessionIds) {
   };
 }
 
-/** Partner's leads for an event (partner-gated read). */
+/** Partner's leads for an event (partner-gated read).
+ *  P0 (2026-10-17) — Paginação por cursor: o endpoint devolve no máximo 200
+ *  por chamada; casos que precisam do pool completo (ex.: sorteio) percorrem
+ *  as páginas com o cursor devolvido — nunca um limite gigante numa resposta. */
 export async function fetchPartnerLeads(partnerId, eventId) {
-  const data = await invoke("getMyLeads", { partnerId, eventId });
-  return data?.leads || [];
+  const all = [];
+  let cursor;
+  let hasMore = true;
+  while (hasMore) {
+    const data = await invoke("getMyLeads", { partnerId, eventId, limit: 200, cursor });
+    all.push(...(data?.leads || []));
+    cursor = data?.next_cursor || null;
+    hasMore = !!data?.has_more && !!cursor;
+  }
+  return all;
 }
 
 /** Participant's own session review: action "get" | "save". */

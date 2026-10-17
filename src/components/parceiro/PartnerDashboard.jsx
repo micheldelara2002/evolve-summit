@@ -18,12 +18,14 @@ export default function PartnerDashboard({ partnerId }) {
     enabled: !!partnerId,
   });
 
-  // Leads do partner (todos os eventos)
-  const { data: leads = [] } = useQuery({
+  // Leads do partner (todos os eventos) — P0 (2026-10-17): o dashboard só
+  // precisa do TOTAL; o endpoint paginado devolve a contagem exata server-side
+  // (limit 1 → sem carregar registros).
+  const { data: leadsTotal = 0 } = useQuery({
     queryKey: ["dash_leads", partnerId],
     queryFn: async () => {
-      const r = await base44.functions.invoke('getMyLeads', { partnerId });
-      return r.data?.leads || [];
+      const r = await base44.functions.invoke('getMyLeads', { partnerId, limit: 1 });
+      return r.data?.total || 0;
     },
     enabled: !!partnerId,
   });
@@ -70,7 +72,7 @@ export default function PartnerDashboard({ partnerId }) {
 
   const cards = [
     { label: "Eventos", value: eventPartners.length, icon: Calendar, color: "text-violet-600 bg-violet-50 border-violet-200" },
-    { label: "Leads", value: leads.length, icon: Users, color: "text-sky-600 bg-sky-50 border-sky-200" },
+    { label: "Leads", value: leadsTotal, icon: Users, color: "text-sky-600 bg-sky-50 border-sky-200" },
     { label: "Palestras", value: sessions.length, icon: Mic, color: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200" },
   ];
 
