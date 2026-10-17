@@ -76,13 +76,16 @@ function isIpLiteral(s: string): boolean {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || s.includes(':');
 }
 
-// Valida a RESOLUÇÃO do hostname (não só o texto). Retorna null se seguro ou
-// um motivo de bloqueio. Fail-closed em qualquer falha da verificação.
-// Nota de runtime (testado 2026-10-17): Deno.resolveDns inclui CNAMEs na
-// resposta de 'A' — só os registros que são IP literal são avaliados; os IPs
-// finais acompanham a cadeia. Consulta que falha (ENOTFOUND) → bloqueada.
-async function dnsCheck(hostname: string): Promise<string | null> {
-  if (!DNS_CHECK_ENABLED) return null;
+// Cache curto de resoluções BEM-SUCEDIDAS (TTL 5 min): resolveDns no runtime
+// mostrou flakiness transitória em chamadas em rajada (2026-10-17) — cachear
+// o resultado seguro reduz o volume de consultas e mitiga a oscilação.
+// Falhas NUNCA são cacheadas (fail-closed na próxima tentativa).
+const dnsCache = new Map<string, { expires: number; ips: string[] }>();
+const DNS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function resolveHostnameIps(hostname: string): Promise<{ ips: string[] | null; failed: boolean }> {
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expires > Date.now()) return { ips: cached.ips, failed: false };
   try {
     const [a, aaaa] = await Promise.all([
       Deno.resolveDns(hostname, 'A').catch(() => null),
@@ -96,14 +99,39 @@ async function dnsCheck(hostname: string): Promise<string | null> {
         if (isIpLiteral(String(r))) ips.push(String(r));
       }
     }
-    if (ips.length === 0) return 'dns_unresolved'; // ENOTFOUND ou só CNAME — fail-closed
+    if (ips.length === 0) return { ips: null, failed: queryFailed };
+    // Só cacheia se TODOS os IPs resolvidos forem públicos — um hostname
+    // privado não deve ter a resolução aproveitada pelo cache.
+    if (ips.some((ip) => isPrivateIpLiteral(ip))) return { ips, failed: false };
+    dnsCache.set(hostname, { expires: Date.now() + DNS_CACHE_TTL_MS, ips });
+    return { ips, failed: false };
+  } catch {
+    return { ips: null, failed: true };
+  }
+}
+
+// Valida a RESOLUÇÃO do hostname (não só o texto). Retorna null se seguro ou
+// um motivo de bloqueio. Fail-closed em qualquer falha da verificação.
+// Nota de runtime (testado 2026-10-17): Deno.resolveDns inclui CNAMEs na
+// resposta de 'A' — só os registros que são IP literal são avaliados; os IPs
+// finais acompanham a cadeia. Consulta que falha (ENOTFOUND) → bloqueada.
+async function dnsCheck(hostname: string): Promise<string | null> {
+  if (!DNS_CHECK_ENABLED) return null;
+  // 1ª tentativa + 1 retry (falha transitória do resolver observada em teste,
+  // 2026-10-17) — IP privado/reservado bloqueia IMEDIATAMENTE, sem retry.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { ips, failed } = await resolveHostnameIps(hostname);
+    if (ips === null) {
+      if (!failed) return 'dns_unresolved'; // ENOTFOUND ou só CNAME — fail-closed
+      if (attempt === 0) { await new Promise((r) => setTimeout(r, 300)); continue; }
+      return 'dns_check_failed'; // falha PERSISTENTE — fail-closed
+    }
     for (const ip of ips) {
       if (isPrivateIpLiteral(ip)) return 'dns_private_ip';
     }
     return null;
-  } catch {
-    return 'dns_check_failed';
   }
+  return 'dns_check_failed';
 }
 
 // Combina sinais de abort (timeout + orçamento externo). Fallback manual para

@@ -59,14 +59,30 @@ export async function verifyAnyEventMembership(base44, user, eventId) {
  * Resolve o person_id do usuário autenticado a partir do e-mail (Person.contact_email).
  * Usado para autorização cross-entidade (Participant por person_id, PartnerRepresentative por person_id).
  */
+// Resolução da Person do usuário autenticado — MESMA cadeia canônica do
+// getMyPerson (SEC/2026-10-17): 1) link explícito user.person_id; 2) Person
+// por contact_email. Antes só o e-mail era considerado: um representante
+// vinculado por user.person_id com contact_email divergente era NEGADO em
+// funções de autorização (getMyLeads, getPartnerRepresentatives, etc.) mesmo
+// sendo o dono legítimo — inconsistência de disponibilidade (direção segura).
 export async function resolveUserPersonId(base44, user) {
-  if (!user?.email) return null;
+  if (!user?.email && !user?.person_id) return null;
   try {
-    const persons = await base44.asServiceRole.entities.Person.filter({
-      contact_email: user.email,
-      is_active: true,
-    });
-    return persons?.[0]?.id || null;
+    if (user.person_id) {
+      const linked = await base44.asServiceRole.entities.Person.filter({
+        id: user.person_id,
+        is_active: true,
+      });
+      if (linked?.[0]?.id) return linked[0].id;
+    }
+    if (user.email) {
+      const persons = await base44.asServiceRole.entities.Person.filter({
+        contact_email: user.email,
+        is_active: true,
+      });
+      return persons?.[0]?.id || null;
+    }
+    return null;
   } catch {
     return null;
   }
