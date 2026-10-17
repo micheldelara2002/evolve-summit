@@ -15,7 +15,15 @@ import { generateTicketPdfBytes, buildTicketPdfExtras, buildTicketReceipt, APP_U
 const PDF_RATE_WINDOW_MS = 60_000;
 const PDF_RATE_MAX = 10;
 const pdfRateHits = new Map<string, number[]>();
+// Poda do mapa (2026-10-17): o isolate vive mais que um request — sem poda, as
+// chaves crescem sem limite (um abuso com N usuários infla a memória). Mantém
+// as janelas ativas mais recentes; chaves podadas apenas perdem o histórico da
+// janela (o limite volta a contar do zero — pior caso: +10 gerações/min).
+const PDF_RATE_MAX_KEYS = 500;
 function pdfRateLimited(key: string): boolean {
+  if (pdfRateHits.size > PDF_RATE_MAX_KEYS) {
+    for (const k of Array.from(pdfRateHits.keys()).slice(0, 100)) pdfRateHits.delete(k);
+  }
   const now = Date.now();
   const hits = (pdfRateHits.get(key) || []).filter((t) => now - t < PDF_RATE_WINDOW_MS);
   if (hits.length >= PDF_RATE_MAX) {

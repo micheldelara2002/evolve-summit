@@ -254,13 +254,35 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ ok: true, campaign: doc });
       }
 
-      const doc = await svc.entities.NotificationCampaign.update(campaign.id, {
-        ...content,
-        audience_type: newAudienceType,
-        audience_payload,
-        status,
-        scheduled_at,
-      });
+      // ===== Item 1 (2026-10-17) — invalidação de aprovação agendada =====
+      // Mudança de conteúdo em campanha AGENDADA não preserva a aprovação
+      // antiga: a autorização já foi revalidada acima (verdict) e será
+      // revalidada de novo no disparo; o contador de tentativas automáticas é
+      // RESETADO (nova janela de aprovação) e a edição fica em auditoria.
+      // Audiência/escopo/emissor continuam imutáveis (recusados acima).
+      const contentChanged =
+        content.title !== campaign.title ||
+        content.message !== campaign.message ||
+        content.type !== campaign.type ||
+        content.priority !== campaign.priority ||
+        (content.cta_label || '') !== (campaign.cta_label || '') ||
+        (content.cta_target || '') !== (campaign.cta_target || '');
+      const wasScheduled = !!(campaign.scheduled_at && campaign.status !== 'draft');
+      const updateData: any = { ...content, audience_type: newAudienceType, audience_payload, status, scheduled_at };
+      if (contentChanged && wasScheduled) updateData.auto_dispatch_attempts = 0;
+
+      const doc = await svc.entities.NotificationCampaign.update(campaign.id, updateData);
+      if (contentChanged && wasScheduled) {
+        try {
+          await svc.entities.AuditLog.create({
+            action: 'update',
+            entity_type: 'NotificationCampaign',
+            entity_id: campaign.id,
+            user_id: user.id,
+            details: JSON.stringify({ type: 'scheduled_campaign_edited', attempts_reset: true }),
+          });
+        } catch { /* best-effort */ }
+      }
       return Response.json({ ok: true, campaign: doc });
     }
 

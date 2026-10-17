@@ -6,8 +6,14 @@
 // Garantias:
 //   - Somente HTTPS; hostname bloqueado se localhost/.local/.internal,
 //     endpoint de metadata, ou IP literal privado/reservado (v4 e v6).
+//   - RESOLUÇÃO DNS validada (2026-10-17): o hostname é resolvido (A + AAAA)
+//     e QUALQUER endereço privado/reservado bloqueia a busca — cobre nomes
+//     que apontam para IPs internos (ex.: localtest.me → 127.0.0.1), não só
+//     literais. Fail-closed: falha da verificação DNS bloqueia a busca.
 //   - SEM redirects (redirect: 'error') — nenhuma revalidação textual de
-//     destino pode ser burlada por redirecionamento.
+//     destino pode ser burlada por redirecionamento. Residual: janela TOCTOU
+//     mínima entre a resolução e o fetch (round-robin); mitigada por
+//     redirect 'error' + HTTPS + assinatura de imagem.
 //   - Timeout explícito (AbortSignal.timeout) e leitura STREAMING do corpo com
 //     teto de bytes — nunca arrayBuffer() ilimitado.
 //   - MIME (image/png|jpeg) + assinatura mágica validados; SVG/HTML/other
@@ -16,15 +22,17 @@
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB por imagem
 export const IMAGE_FETCH_TIMEOUT_MS = 6000;
 export const MAX_IMAGE_DIM = 4096; // dimensão máxima aceita ao desenhar
+// Fail-closed: se a resolução DNS não estiver disponível no runtime, TODA
+// busca externa é bloqueada (o PDF perde o logo, mas nunca fica inseguro).
+const DNS_CHECK_ENABLED = true;
 
-function isBlockedHost(hostname: string): boolean {
-  const h = String(hostname || '').toLowerCase().replace(/\.$/, '');
-  if (!h) return true;
-  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
-  if (h === 'metadata.google.internal' || h === 'metadata.goog') return true;
-
-  // IPv4 literal — ranges privados/reservados
-  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+// IP literal privado/reservado (v4 e v6) — usado por hostname literal e pela
+// validação DNS (mesma régua para os endereços resolvidos).
+export function isPrivateIpLiteral(ip: string): boolean {
+  const s = String(ip || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!s) return true;
+  // IPv4
+  const v4 = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (v4) {
     const o = v4.slice(1).map(Number);
     if (o.some((n) => n > 255)) return true;
@@ -40,17 +48,60 @@ function isBlockedHost(hostname: string): boolean {
     ) return true;
     return false;
   }
-
-  // IPv6 literal — loopback, ULA (fc00::/7), link-local (fe80::/10), mapeado
-  if (h.includes(':')) {
-    const s = h.replace(/^\[|\]$/g, '').toLowerCase();
-    if (s.startsWith('::ffff:')) return isBlockedHost(s.slice(7));
+  // IPv6 — loopback, ULA (fc00::/7), link-local (fe80::/10), mapeado
+  if (s.includes(':')) {
+    if (s.startsWith('::ffff:')) return isPrivateIpLiteral(s.slice(7));
     if (s === '::' || s === '::1') return true;
     if (s.startsWith('fc') || s.startsWith('fd')) return true;
     if (/^fe[89ab]/.test(s)) return true;
     return false;
   }
+  return true; // não é IP — bloqueia por conservadorismo
+}
+
+function isBlockedHost(hostname: string): boolean {
+  const h = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === 'metadata.google.internal' || h === 'metadata.goog') return true;
+  if (h.match(/^(\d{1,3}\.){3}\d{1,3}$/) || h.includes(':')) {
+    return isPrivateIpLiteral(h); // literal IPv4/IPv6
+  }
   return false;
+}
+
+function isIpLiteral(s: string): boolean {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || s.includes(':');
+}
+
+// Valida a RESOLUÇÃO do hostname (não só o texto). Retorna null se seguro ou
+// um motivo de bloqueio. Fail-closed em qualquer falha da verificação.
+// Nota de runtime (testado 2026-10-17): Deno.resolveDns inclui CNAMEs na
+// resposta de 'A' — só os registros que são IP literal são avaliados; os IPs
+// finais acompanham a cadeia. Consulta que falha (ENOTFOUND) → bloqueada.
+async function dnsCheck(hostname: string): Promise<string | null> {
+  if (!DNS_CHECK_ENABLED) return null;
+  try {
+    const [a, aaaa] = await Promise.all([
+      Deno.resolveDns(hostname, 'A').catch(() => null),
+      Deno.resolveDns(hostname, 'AAAA').catch(() => null),
+    ]);
+    const ips: string[] = [];
+    let queryFailed = false;
+    for (const recs of [a, aaaa] as (string[] | null)[]) {
+      if (recs === null) { queryFailed = true; continue; }
+      for (const r of recs) {
+        if (isIpLiteral(String(r))) ips.push(String(r));
+      }
+    }
+    if (ips.length === 0) return 'dns_unresolved'; // ENOTFOUND ou só CNAME — fail-closed
+    for (const ip of ips) {
+      if (isPrivateIpLiteral(ip)) return 'dns_private_ip';
+    }
+    return null;
+  } catch {
+    return 'dns_check_failed';
+  }
 }
 
 export type SafeImageResult =
@@ -68,6 +119,12 @@ export async function fetchSafeImage(url?: string | null): Promise<SafeImageResu
   }
   if (parsed.protocol !== 'https:') return { ok: false, reason: 'scheme_not_https' };
   if (isBlockedHost(parsed.hostname)) return { ok: false, reason: 'blocked_host' };
+  // Hostname NÃO-literal: valida os endereços REAIS da resolução DNS.
+  const h = parsed.hostname.replace(/\.$/, '');
+  if (!h.match(/^(\d{1,3}\.){3}\d{1,3}$/) && !h.includes(':')) {
+    const dnsFail = await dnsCheck(h);
+    if (dnsFail) return { ok: false, reason: dnsFail };
+  }
 
   try {
     // redirect: 'error' — qualquer redirecionamento falha a busca (controle).

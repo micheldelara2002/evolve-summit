@@ -52,10 +52,19 @@ export default async function(req: Request): Promise<Response> {
     if (eventId) filter.event_id = eventId;
 
     // Uma página por chamada — nunca 10k registros numa resposta.
-    const page = await svc.entities.Lead.filter(
-      filter,
-      { sort: '-created_date', limit, cursor, fields: LEAD_FIELDS }
-    );
+    // Cursor inválido/malformado é erro do CLIENTE (400) — não 500.
+    let page: any;
+    try {
+      page = await svc.entities.Lead.filter(
+        filter,
+        { sort: '-created_date', limit, cursor, fields: LEAD_FIELDS }
+      );
+    } catch (pageErr: any) {
+      if (/cursor/i.test(String(pageErr?.message || ''))) {
+        return Response.json({ error: 'Cursor inválido.' }, { status: 400 });
+      }
+      throw pageErr;
+    }
 
     // Contagem exata server-side (badge do dashboard/tela sem carregar tudo).
     const total = await svc.entities.Lead.count(filter);

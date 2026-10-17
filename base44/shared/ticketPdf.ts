@@ -89,15 +89,28 @@ function generateQrModules(text: string): { size: number; isDark: (row: number, 
 // teto de bytes em streaming e validação de assinatura. Falha de imagem
 // (opcional) NUNCA impede a emissão do PDF.
 const IMAGE_FETCH_POOL = 4;
+// Orçamento TOTAL de imagens por PDF (2026-10-17): bytes acumulados e tempo de
+// pareamento — imagens além do orçamento não são buscadas (restam null e o
+// PDF cai para o nome em texto). O pool (4 em paralelo) limita a concorrência;
+// patrocinadores são truncados antes da chamada (slice(0, 12)).
+const IMAGE_TOTAL_BUDGET_BYTES = 6 * 1024 * 1024;
+const IMAGE_TOTAL_BUDGET_MS = 15_000;
 
 async function fetchImagePool(urls: (string | undefined | null)[]): Promise<({ data: Uint8Array; format: string } | null)[]> {
   const results: ({ data: Uint8Array; format: string } | null)[] = new Array(urls.length).fill(null);
+  const startMs = Date.now();
+  let totalBytes = 0;
   for (let i = 0; i < urls.length; i += IMAGE_FETCH_POOL) {
+    // Orçamento estourado → não busca o restante (sem timeouts acumulados).
+    if (Date.now() - startMs > IMAGE_TOTAL_BUDGET_MS || totalBytes > IMAGE_TOTAL_BUDGET_BYTES) break;
     const slice = urls.slice(i, i + IMAGE_FETCH_POOL);
     const settled = await Promise.all(slice.map((u) => fetchSafeImage(u as string)));
     for (let j = 0; j < slice.length; j++) {
       const r: any = settled[j];
-      results[i + j] = r && r.ok ? { data: r.data, format: r.format } : null;
+      if (r && r.ok) {
+        totalBytes += r.data.length;
+        results[i + j] = { data: r.data, format: r.format };
+      }
     }
   }
   return results;
@@ -378,8 +391,10 @@ export async function buildTicketPdfExtras(svc: any, event: any): Promise<{ even
 
   // Patrocinadores ativos, agrupados por nível no PDF
   try {
-    const eventPartners = await svc.entities.EventPartner.filter({ event_id: event.id, is_active: true, is_deleted: false });
-    const partnerIds = [...new Set(eventPartners.map((ep: any) => ep.partner_id).filter(Boolean))];
+    // Teto de consultas por geração: no máximo 20 vínculos/parceiros são
+    // consultados (o PDF desenha no máximo 12 patrocinadores).
+    const eventPartners = await svc.entities.EventPartner.filter({ event_id: event.id, is_active: true, is_deleted: false }, '-created_date', 20);
+    const partnerIds = [...new Set(eventPartners.map((ep: any) => ep.partner_id).filter(Boolean))].slice(0, 20);
     const partners = await Promise.all(
       partnerIds.map(async (pid: string) => {
         try { return (await svc.entities.Partner.filter({ id: pid }))[0] || null; } catch { return null; }
