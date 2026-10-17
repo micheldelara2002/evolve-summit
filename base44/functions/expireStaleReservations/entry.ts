@@ -5,6 +5,7 @@ import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, c
 import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
+import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -593,6 +594,11 @@ export default async function(req: Request): Promise<Response> {
         for (let i = 0; i < candidates.length; i++) {
           if (Date.now() - runStartMs >= CAMPAIGN_SWEEP_MAX_ELAPSED_MS) break;
           const c = candidates[i];
+          // Aprovação de conteúdo (2026-10-17): campanha editada após o
+          // agendamento (aprovação invalidada) fica PARADA até reprovação —
+          // pulada SEM consumir tentativas nem enviar nada (o disparo manual
+          // também recusa; a liberação é exclusivamente via approve_scheduled).
+          if (!isCampaignDispatchApproved(c)) continue;
           // Emissor: resolvido do sender_user_id (o disparo é service role).
           // Conta excluída → senderUser null: audiências de parceiro/palestrante
           // que dependem dele resolvem vazio; o envio prossegue (regra do

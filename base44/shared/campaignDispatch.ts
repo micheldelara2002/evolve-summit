@@ -13,6 +13,7 @@
 // 'partially_sent' durante a entrega) — o chamador encadeia novas rodadas.
 import { scanBatches } from "./completeScan.ts";
 import { resolveAudienceBatches, AUDIENCE_BATCH_SIZE as BATCH_SIZE } from "./campaignAudience.ts";
+import { campaignApprovalRefusal } from "./campaignContent.ts";
 
 export const CAMPAIGN_TIME_BUDGET_MS = 15_000;
 
@@ -111,6 +112,18 @@ export async function dispatchCampaignCore(
 ): Promise<any> {
   const campaign = opts.campaign;
   const timeBudgetMs = opts.timeBudgetMs || CAMPAIGN_TIME_BUDGET_MS;
+
+  // === APROVAÇÃO DE CONTEÚDO (2026-10-17) — ANTES do claim ===
+  // Campanha agendada cujo conteúdo foi editado sem (re)aprovação é RECUSADA
+  // aqui, em TODOS os caminhos de disparo (manual e varredura agendada):
+  // nada é enviado, nada é processado, nenhum estado é alterado. A liberação
+  // é EXCLUSIVAMENTE pela op 'approve_scheduled' (manageNotificationCampaign),
+  // que carimba o hash do conteúdo aprovado.
+  const approvalRefusal = campaignApprovalRefusal(campaign);
+  if (approvalRefusal) {
+    return { ok: false, claimed: false, approval_invalid: true, error: approvalRefusal };
+  }
+
   let claimed = false;
   let phase2Incomplete = false;
 

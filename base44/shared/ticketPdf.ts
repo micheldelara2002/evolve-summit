@@ -96,22 +96,43 @@ const IMAGE_FETCH_POOL = 4;
 const IMAGE_TOTAL_BUDGET_BYTES = 6 * 1024 * 1024;
 const IMAGE_TOTAL_BUDGET_MS = 15_000;
 
-async function fetchImagePool(urls: (string | undefined | null)[]): Promise<({ data: Uint8Array; format: string } | null)[]> {
+export async function fetchImagePool(urls: (string | undefined | null)[]): Promise<({ data: Uint8Array; format: string } | null)[]> {
   const results: ({ data: Uint8Array; format: string } | null)[] = new Array(urls.length).fill(null);
-  const startMs = Date.now();
   let totalBytes = 0;
-  for (let i = 0; i < urls.length; i += IMAGE_FETCH_POOL) {
-    // Orçamento estourado → não busca o restante (sem timeouts acumulados).
-    if (Date.now() - startMs > IMAGE_TOTAL_BUDGET_MS || totalBytes > IMAGE_TOTAL_BUDGET_BYTES) break;
-    const slice = urls.slice(i, i + IMAGE_FETCH_POOL);
-    const settled = await Promise.all(slice.map((u) => fetchSafeImage(u as string)));
-    for (let j = 0; j < slice.length; j++) {
-      const r: any = settled[j];
-      if (r && r.ok) {
-        totalBytes += r.data.length;
-        results[i + j] = { data: r.data, format: r.format };
+  // Orçamento GLOBAL com ABORT de downloads em andamento (2026-10-17): o
+  // controller compartilhado aborta TODAS as buscas ativas quando o teto de
+  // bytes é excedido durante o streaming (onBytes em tempo real) ou quando o
+  // orçamento de tempo acaba — imagens concluídas antes do abort são
+  // aproveitadas; as em andamento são interrompidas (reason aborted_by_caller)
+  // e as seguintes nem são buscadas. Exportado para teste executável.
+  const controller = new AbortController();
+  const budgetTimer = setTimeout(() => controller.abort(), IMAGE_TOTAL_BUDGET_MS);
+  try {
+    for (let i = 0; i < urls.length; i += IMAGE_FETCH_POOL) {
+      if (controller.signal.aborted || totalBytes >= IMAGE_TOTAL_BUDGET_BYTES) break;
+      const slice = urls.slice(i, i + IMAGE_FETCH_POOL);
+      const settled = await Promise.all(slice.map((u) =>
+        u
+          ? fetchSafeImage(u as string, {
+              signal: controller.signal,
+              onBytes: (n: number) => {
+                totalBytes += n;
+                if (totalBytes > IMAGE_TOTAL_BUDGET_BYTES) {
+                  try { controller.abort(); } catch { /* ignore */ }
+                }
+              },
+            })
+          : Promise.resolve(null)
+      ));
+      for (let j = 0; j < slice.length; j++) {
+        const r: any = settled[j];
+        if (r && r.ok) {
+          results[i + j] = { data: r.data, format: r.format };
+        }
       }
     }
+  } finally {
+    clearTimeout(budgetTimer);
   }
   return results;
 }

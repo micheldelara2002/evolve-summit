@@ -20,12 +20,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import {
+  resolveCampaignPartnerId,
   verifyCampaignSenderAuthorization,
   CAMPAIGN_PARTNER_AUDIENCES,
   VALID_AUDIENCE_TYPES,
   EVENT_ALLOWED_SEGMENTS,
   GLOBAL_ALLOWED_SEGMENTS,
 } from '../../shared/campaignAuth.ts';
+import { computeCampaignContentHash, decideScheduledContentUpdate } from '../../shared/campaignContent.ts';
 
 const TITLE_MAX = 80;
 const MESSAGE_MAX = 500;
@@ -96,6 +98,47 @@ export default async function(req: Request): Promise<Response> {
       }
       await svc.entities.NotificationCampaign.update(campaign_id, { is_deleted: true });
       return Response.json({ ok: true });
+    }
+
+    // ===== approve_scheduled: (re)aprovação EXPLÍCITA do conteúdo agendado =====
+    // Carimba o hash do conteúdo ATUAL como aprovado — destrava o disparo de
+    // campanha agendada cuja aprovação anterior foi invalidada por edição.
+    // Exige: criador/admin + autorização de emissor (mesmo verificador do
+    // disparo) + campanha com scheduled_at presente, fora de processing/sent.
+    if (op === 'approve_scheduled') {
+      const { campaign_id } = body;
+      const cs = await svc.entities.NotificationCampaign.filter({ id: campaign_id });
+      const campaign = cs[0];
+      if (!campaign || campaign.is_deleted) return Response.json({ error: 'Campanha não encontrada.' }, { status: 404 });
+      const owns = campaign.sender_user_id === user.id || campaign.created_by_id === user.id;
+      if (!owns && !isAdminUser) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      if (campaign.status === 'processing') return Response.json({ error: 'Envio em andamento — aguarde a conclusão.' }, { status: 409 });
+      if (campaign.status === 'sent') return Response.json({ error: 'Campanha já enviada.' }, { status: 409 });
+      if (!campaign.scheduled_at) {
+        return Response.json({ error: 'Apenas campanhas agendadas são aprovadas para disparo automático.' }, { status: 400 });
+      }
+      const partnerId = resolveCampaignPartnerId(campaign, body.senderPartnerId || null);
+      const verdict = await verifyCampaignSenderAuthorization(base44, user, campaign, partnerId);
+      if (!verdict.authorized) {
+        return Response.json({ error: 'Sem permissão para aprovar esta campanha.', reason: verdict.reason }, { status: 403 });
+      }
+      const contentHash = computeCampaignContentHash(campaign);
+      await svc.entities.NotificationCampaign.update(campaign_id, {
+        approved_content_hash: contentHash,
+        content_changed: false,
+        auto_dispatch_attempts: 0,
+        status: 'scheduled',
+      });
+      try {
+        await svc.entities.AuditLog.create({
+          action: 'update',
+          entity_type: 'NotificationCampaign',
+          entity_id: campaign_id,
+          user_id: user.id,
+          details: JSON.stringify({ type: 'scheduled_campaign_reapproved', content_hash: contentHash }),
+        });
+      } catch { /* best-effort */ }
+      return Response.json({ ok: true, approved: true });
     }
 
     // ===== create / update =====
@@ -240,6 +283,7 @@ export default async function(req: Request): Promise<Response> {
           : null);
 
       if (op === 'create') {
+        const contentHash = computeCampaignContentHash(content);
         const doc = await svc.entities.NotificationCampaign.create({
           ...content,
           scope_type: scopeType,
@@ -250,40 +294,66 @@ export default async function(req: Request): Promise<Response> {
           audience_payload,
           status,
           scheduled_at,
+          content_hash: contentHash,
+          // Aprovação de conteúdo: agendar É aprovar o conteúdo atual.
+          ...(status === 'scheduled' ? { approved_content_hash: contentHash, content_changed: false } : {}),
         });
         return Response.json({ ok: true, campaign: doc });
       }
 
-      // ===== Item 1 (2026-10-17) — invalidação de aprovação agendada =====
-      // Mudança de conteúdo em campanha AGENDADA não preserva a aprovação
-      // antiga: a autorização já foi revalidada acima (verdict) e será
-      // revalidada de novo no disparo; o contador de tentativas automáticas é
-      // RESETADO (nova janela de aprovação) e a edição fica em auditoria.
+      // ===== Item 1 (2026-10-17 r2) — APROVAÇÃO DE CONTEÚDO (hash) =====
+      // Mudança de conteúdo em campanha AGENDADA sem (re)agendamento INVALIDA
+      // a aprovação anterior: approved_content_hash removido + content_changed
+      // — o disparo (manual e agendado) RECUSA até a op 'approve_scheduled'
+      // carimbar nova aprovação. (Re)agendar É a nova aprovação (hash atual
+      // carimbado). O reset de tentativas e a auditoria continuam como
+      // complemento — nunca como mecanismo de invalidação.
       // Audiência/escopo/emissor continuam imutáveis (recusados acima).
-      const contentChanged =
-        content.title !== campaign.title ||
-        content.message !== campaign.message ||
-        content.type !== campaign.type ||
-        content.priority !== campaign.priority ||
-        (content.cta_label || '') !== (campaign.cta_label || '') ||
-        (content.cta_target || '') !== (campaign.cta_target || '');
-      const wasScheduled = !!(campaign.scheduled_at && campaign.status !== 'draft');
-      const updateData: any = { ...content, audience_type: newAudienceType, audience_payload, status, scheduled_at };
-      if (contentChanged && wasScheduled) updateData.auto_dispatch_attempts = 0;
+      const schedulingChanged = input.scheduled_at !== undefined && input.scheduled_at !== null;
+      const decision = decideScheduledContentUpdate(campaign, content, schedulingChanged);
+      const newContentHash = computeCampaignContentHash(content);
+      const updateData: any = {
+        ...content,
+        audience_type: newAudienceType,
+        audience_payload,
+        status,
+        scheduled_at,
+        content_hash: newContentHash,
+      };
+      if (schedulingChanged) {
+        updateData.approved_content_hash = newContentHash;
+        updateData.content_changed = false;
+        updateData.auto_dispatch_attempts = 0;
+      } else if (decision.invalidateApproval) {
+        updateData.approved_content_hash = null;
+        updateData.content_changed = true;
+        updateData.auto_dispatch_attempts = 0;
+      }
 
       const doc = await svc.entities.NotificationCampaign.update(campaign.id, updateData);
-      if (contentChanged && wasScheduled) {
+      if (decision.contentChanged && decision.wasScheduled) {
         try {
           await svc.entities.AuditLog.create({
             action: 'update',
             entity_type: 'NotificationCampaign',
             entity_id: campaign.id,
             user_id: user.id,
-            details: JSON.stringify({ type: 'scheduled_campaign_edited', attempts_reset: true }),
+            details: JSON.stringify({
+              type: 'scheduled_campaign_edited',
+              approval_invalidated: !!decision.invalidateApproval,
+              reapproved_via_reschedule: !!schedulingChanged,
+            }),
           });
         } catch { /* best-effort */ }
       }
-      return Response.json({ ok: true, campaign: doc });
+      return Response.json({
+        ok: true,
+        campaign: doc,
+        approval_invalidated: !!decision.invalidateApproval,
+        message: decision.invalidateApproval
+          ? 'Conteúdo alterado após o agendamento — aprovação anterior invalidada. Aprove (op approve_scheduled) antes do disparo.'
+          : undefined,
+      });
     }
 
     return Response.json({ error: 'Operação inválida.' }, { status: 400 });

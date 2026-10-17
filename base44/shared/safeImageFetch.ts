@@ -10,10 +10,12 @@
 //     e QUALQUER endereço privado/reservado bloqueia a busca — cobre nomes
 //     que apontam para IPs internos (ex.: localtest.me → 127.0.0.1), não só
 //     literais. Fail-closed: falha da verificação DNS bloqueia a busca.
-//   - SEM redirects (redirect: 'error') — nenhuma revalidação textual de
-//     destino pode ser burlada por redirecionamento. Residual: janela TOCTOU
-//     mínima entre a resolução e o fetch (round-robin); mitigada por
-//     redirect 'error' + HTTPS + assinatura de imagem.
+//   - SEM redirects: redirect 'manual' (o runtime não implementa 'error' —
+//     testado 2026-10-17) + recusa explícita de respostas 3xx/opacas —
+//     nenhuma revalidação textual de destino pode ser burlada por
+//     redirecionamento. Residual: janela TOCTOU mínima entre a resolução e o
+//     fetch; mitigada por HTTPS + recusa de redirect + assinatura de imagem
+//     + re-verificação DNS pós-fetch.
 //   - Timeout explícito (AbortSignal.timeout) e leitura STREAMING do corpo com
 //     teto de bytes — nunca arrayBuffer() ilimitado.
 //   - MIME (image/png|jpeg) + assinatura mágica validados; SVG/HTML/other
@@ -104,11 +106,31 @@ async function dnsCheck(hostname: string): Promise<string | null> {
   }
 }
 
+// Combina sinais de abort (timeout + orçamento externo). Fallback manual para
+// runtimes sem AbortSignal.any — aborta com o reason do primeiro sinal que dispara.
+function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
+  if (typeof (AbortSignal as any).any === 'function') return (AbortSignal as any).any(signals);
+  const controller = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      try { controller.abort(s.reason); } catch { try { controller.abort(); } catch { /* ignore */ } }
+      break;
+    }
+    s.addEventListener('abort', () => {
+      try { controller.abort(s.reason); } catch { try { controller.abort(); } catch { /* ignore */ } }
+    }, { once: true });
+  }
+  return controller.signal;
+}
+
 export type SafeImageResult =
   | { ok: true; data: Uint8Array; format: string }
   | { ok: false; reason: string };
 
-export async function fetchSafeImage(url?: string | null): Promise<SafeImageResult> {
+export async function fetchSafeImage(
+  url?: string | null,
+  opts?: { signal?: AbortSignal; onBytes?: (n: number) => void }
+): Promise<SafeImageResult> {
   if (!url || typeof url !== 'string' || !url.trim()) return { ok: false, reason: 'missing_url' };
 
   let parsed: URL;
@@ -128,10 +150,29 @@ export async function fetchSafeImage(url?: string | null): Promise<SafeImageResu
 
   try {
     // redirect: 'error' — qualquer redirecionamento falha a busca (controle).
+    // Sinal combinado: timeout próprio + sinal externo do chamador (orçamento
+    // global do pool de imagens — aborta downloads EM ANDAMENTO).
+    // AbortSignal.any NÃO existe neste runtime (testado 2026-10-17) —
+    // combinação manual com fallback.
+    const combined = combineAbortSignals(
+      opts?.signal
+        ? [AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS), opts.signal]
+        : [AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS)]
+    );
+    // ATENÇÃO (descoberto em teste, 2026-10-17): o fetch DESTE runtime NÃO
+    // implementa 'error' ("use manual and check the response status code") —
+    // com 'error', TODA busca lançava TypeError (fetch_failed) e nenhum logo
+    // era carregado. redirect: 'manual' + recusa explícita de 3xx: resposta
+    // de redirecionamento (ou opaca, status 0) é RECUSADA — nenhuma
+    // revalidação textual de destino pode ser burlada por redirecionamento.
     const res = await fetch(parsed.toString(), {
-      redirect: 'error',
-      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+      redirect: 'manual',
+      signal: combined,
     });
+    if (res.status === 0 || (res.status >= 300 && res.status < 400)) {
+      try { await res.body?.cancel(); } catch { /* ignore */ }
+      return { ok: false, reason: 'redirect_refused' };
+    }
     if (!res.ok) return { ok: false, reason: 'http_' + res.status };
     const ct = (res.headers.get('content-type') || '').toLowerCase();
     if (!ct.startsWith('image/png') && !ct.startsWith('image/jpeg')) {
@@ -147,6 +188,9 @@ export async function fetchSafeImage(url?: string | null): Promise<SafeImageResu
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
+      // Contabiliza bytes em tempo real (orçamento global do pool pode abortar
+      // ESTA leitura no meio do streaming).
+      try { opts?.onBytes?.(value.length); } catch { /* contagem é best-effort */ }
       if (total > MAX_IMAGE_BYTES) {
         try { await reader.cancel(); } catch { /* ignore */ }
         return { ok: false, reason: 'too_large' };
@@ -165,9 +209,19 @@ export async function fetchSafeImage(url?: string | null): Promise<SafeImageResu
     const isJpeg = data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
     if (!isPng && !isJpeg) return { ok: false, reason: 'invalid_signature' };
 
+    // Re-verificação DNS PÓS-fetch (defesa em profundidade contra DNS
+    // rebinding na janela TOCTOU resolução→conexão): se a resolução ATUAL do
+    // hostname revelar IP privado/reservado, o corpo é DESCARTADO — o PDF
+    // perde a imagem (falha opcional), nunca incorpora conteúdo do destino.
+    if (!h.match(/^(\d{1,3}\.){3}\d{1,3}$/) && !h.includes(':')) {
+      const dnsRecheck = await dnsCheck(h);
+      if (dnsRecheck) return { ok: false, reason: 'post_fetch_' + dnsRecheck };
+    }
+
     return { ok: true, data, format: isPng ? 'PNG' : 'JPEG' };
   } catch (e: any) {
     const name = String(e?.name || '');
+    if (opts?.signal?.aborted) return { ok: false, reason: 'aborted_by_caller' };
     if (name === 'AbortError' || name === 'TimeoutError') return { ok: false, reason: 'timeout' };
     return { ok: false, reason: 'fetch_failed' };
   }
