@@ -14,7 +14,7 @@ const STATUSES = ["draft", "active", "finished", "cancelled"];
 const MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2MB
 const VALID_TYPES = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"];
 
-export default function EventForm({ event, onSubmit, isSubmitting }) {
+export default function EventForm({ event, onSubmit, isSubmitting, allowManagerInvite = false }) {
   const [form, setForm] = useState({
     name: event?.name || "",
     description: event?.description || "",
@@ -24,6 +24,7 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
     status: event?.status || "draft",
     manager_id: event?.manager_id || "",
     manager_name: event?.manager_name || "",
+    manager_email: "",
     logo_url: event?.logo_url || "",
     color_primary: event?.color_primary || "#4F46E5",
     color_secondary: event?.color_secondary || "#0D9488",
@@ -69,7 +70,7 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
     if (data.max_participants) data.max_participants = Number(data.max_participants);
     else delete data.max_participants;
     // Sanitize free-text fields
-    ["name", "description", "location", "manager_name"].forEach((k) => {
+    ["name", "description", "location", "manager_name", "manager_email"].forEach((k) => {
       if (typeof data[k] === "string") data[k] = sanitizeText(data[k]);
     });
     onSubmit(data);
@@ -126,6 +127,21 @@ export default function EventForm({ event, onSubmit, isSubmitting }) {
           <Input type="number" value={form.max_participants} onChange={(e) => update("max_participants", e.target.value)} />
         </div>
       </div>
+
+      {allowManagerInvite && (
+        <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+          <Label>E-mail do gerente do evento</Label>
+          <Input
+            type="email"
+            value={form.manager_email}
+            onChange={(e) => update("manager_email", e.target.value)}
+            placeholder="gerente@empresa.com"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Se a pessoa já tem conta, o acesso de gerente é concedido na hora. Se não tem, o convite é enviado e o evento aparece para ela no primeiro acesso.
+          </p>
+        </div>
+      )}
 
       {/* Logo */}
       <div className="space-y-2">

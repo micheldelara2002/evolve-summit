@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { incPersons } from "../../shared/businessMetrics.ts";
 import { normalizeEmail, emailMatchVariants } from "../../shared/identity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
+import { linkPendingInvites } from "../../shared/eventInvites.ts";
 
 // CADASTRO ÚNICO E ATÔMICO (2026-11-04) — User e Person nascem juntos.
 //
@@ -66,7 +67,19 @@ export default async function(req) {
     // ---- 2. Vínculo já existente e válido → idempotente ---------------------
     if (account.person_id) {
       const linked = await svc.entities.Person.filter({ id: account.person_id });
-      if (linked?.[0]?.id) return Response.json({ status: 'exists', person_id: linked[0].id });
+      if (linked?.[0]?.id) {
+        // Convites de evento pendentes viram vínculo no acesso (idempotente).
+        let linkedInvites = 0;
+        try {
+          const claimed = await linkPendingInvites(svc, {
+            personId: linked[0].id,
+            userId: account.id,
+            email: account.email,
+          });
+          linkedInvites = claimed.linked;
+        } catch (e) { console.error('linkPendingInvites failed:', e?.message || e); }
+        return Response.json({ status: 'exists', person_id: linked[0].id, linked_invites: linkedInvites });
+      }
       // vínculo aponta para Person inexistente → re-resolve abaixo
     }
 
@@ -132,7 +145,24 @@ export default async function(req) {
       try { await incPersons(svc, person.created_date || new Date().toISOString()); } catch { /* reconcile corrige */ }
     }
 
-    return Response.json({ status: createdId === person.id ? 'created' : 'exists', person_id: person.id });
+    // CONVITES DE EVENTO (2026-11-04) — o admin criou o evento e informou este
+    // e-mail como gerente antes de a conta existir. Ao concluir o cadastro o
+    // vínculo nasce aqui: a pessoa já abre o evento pronto para gerir.
+    let linkedInvites = 0;
+    try {
+      const claimed = await linkPendingInvites(svc, {
+        personId: person.id,
+        userId: account.id,
+        email: account.email,
+      });
+      linkedInvites = claimed.linked;
+    } catch (e) { console.error('linkPendingInvites failed:', e?.message || e); }
+
+    return Response.json({
+      status: createdId === person.id ? 'created' : 'exists',
+      person_id: person.id,
+      linked_invites: linkedInvites,
+    });
   } catch (error) {
     console.error('getOrCreatePerson error:', error?.message || error);
     return Response.json({ error: NEUTRAL_ERROR }, { status: 500 });

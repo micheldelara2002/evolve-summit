@@ -28,6 +28,7 @@ import { ThemeProvider } from "@/lib/ThemeContext";
 const AdminHome = lazy(() => import("@/pages/AdminHome"));
 const BusinessDashboard = lazy(() => import("@/pages/BusinessDashboard"));
 const EventsList = lazy(() => import("@/pages/EventsList"));
+const EventRequests = lazy(() => import("@/pages/EventRequests"));
 const EventCreate = lazy(() => import("@/pages/EventCreate"));
 const EventEdit = lazy(() => import("@/pages/EventEdit"));
 const EventDetail = lazy(() => import("@/pages/EventDetail"));
@@ -134,6 +135,7 @@ const AuthenticatedApp = () => {
           <Route path="/checkout/:eventId" element={<CheckoutPage />} />
           <Route path="/my-tickets" element={<MyTickets />} />
           <Route path="/bilheteria" element={<Bilheteria />} />
+          <Route path="/event-requests" element={<EventRequests />} />
 
           {/* Admin-only routes */}
           <Route element={<AdminRoute />}>

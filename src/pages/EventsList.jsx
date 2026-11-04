@@ -78,7 +78,13 @@ export default function EventsList() {
               <Plus className="w-4 h-4" /> {t("events.create")}
             </Button>
           </Link>
-        ) : undefined}
+        ) : (
+          <Link to="/event-requests">
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <Plus className="w-4 h-4" /> Solicitar evento
+            </Button>
+          </Link>
+        )}
       />
 
       <div className="relative">

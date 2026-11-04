@@ -16,18 +16,49 @@ export default function EventCreate() {
 
   const createMut = useMutation({
     mutationFn: async (data) => {
-      const event = await base44.entities.Event.create({ ...data, is_deleted: false });
+      // O e-mail do gerente não é campo do Event: ele vira vínculo/convite.
+      const { manager_email, ...eventData } = data;
+      const event = await base44.entities.Event.create({ ...eventData, is_deleted: false });
       // Create default track and room
       await Promise.all([
         base44.entities.Track.create({ event_id: event.id, name: "Principal", color: "#4F46E5", is_deleted: false }),
         base44.entities.Room.create({ event_id: event.id, name: "Plenária", is_deleted: false }),
       ]);
-      return event;
+
+      let manager = null;
+      if (manager_email) {
+        try {
+          const res = await base44.functions.invoke("manageEventInvite", {
+            action: "invite",
+            eventId: event.id,
+            email: manager_email,
+            name: eventData.manager_name,
+            role: "manager",
+          });
+          manager = res.data;
+        } catch (err) {
+          manager = { error: err?.response?.data?.error || err.message };
+        }
+      }
+      return { event, manager };
     },
-    onSuccess: (event) => {
+    onSuccess: ({ event, manager }) => {
       logAudit({ event_id: event.id, action: "create", entity_type: "Event", entity_id: event.id, user });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       toast.success(t("events.saveSuccess"));
+
+      if (manager?.status === "linked") {
+        toast.success("Acesso de gerente concedido.");
+      } else if (manager?.status === "invited") {
+        if (manager.invited) {
+          toast.success("Convite enviado ao gerente. O evento já aparece para ele ao concluir o cadastro.");
+        } else {
+          toast.warning(manager.invite_error || "Não foi possível enviar o convite ao gerente. Reenvie em breve.");
+        }
+      } else if (manager?.error) {
+        toast.error(manager.error);
+      }
+
       navigate(`/events/${event.id}`);
     },
   });
@@ -41,7 +72,11 @@ export default function EventCreate() {
         <h1 className="text-xl font-display font-bold">{t("events.create")}</h1>
       </div>
       <div className="bg-card rounded-2xl border border-border p-5">
-        <EventForm onSubmit={(data) => createMut.mutate(data)} isSubmitting={createMut.isPending} />
+        <EventForm
+          onSubmit={(data) => createMut.mutate(data)}
+          isSubmitting={createMut.isPending}
+          allowManagerInvite
+        />
       </div>
     </div>
   );

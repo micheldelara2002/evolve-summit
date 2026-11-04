@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 import { fetchMyParticipants } from "@/lib/participantApi";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket, Inbox, CalendarPlus } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -50,6 +50,7 @@ const REVIEWER_CARD = {
 
 const OPERATIONS_CARDS = [
   { key: "business", icon: TrendingUp, tone: "primary", href: "/business", label: "Indicadores" },
+  { key: "eventRequests", icon: Inbox, tone: "secondary", href: "/event-requests", label: "Solicitações" },
   { key: "notifications", icon: Bell, tone: "destructive", href: "/notifications" },
   { key: "audit", icon: Shield, tone: "warning", href: "/audit" },
 ];
@@ -115,7 +116,10 @@ export default function AdminHome() {
   const managementCards = admin
     ? MANAGEMENT_CARDS
     : participantRoles?.isEventManager
-      ? [MANAGEMENT_CARDS[0]]
+      ? [
+          MANAGEMENT_CARDS[0],
+          { key: "eventRequest", icon: CalendarPlus, tone: "primary", href: "/event-requests", label: "Solicitar Evento" },
+        ]
       : [];
 
   const sections = [
