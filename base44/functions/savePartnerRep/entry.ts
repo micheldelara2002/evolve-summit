@@ -44,7 +44,7 @@ export default async function(req: Request): Promise<Response> {
 
     const sendInvite = async (email) => {
       if (!email) return { invited: false, error: 'Pessoa sem e-mail de contato — não é possível convidar para cadastro.' };
-      return await inviteAccount(svc, email);
+      return await inviteAccount(base44, email);
     };
 
     // DELETE — soft delete

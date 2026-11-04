@@ -121,7 +121,7 @@ export default async function(req) {
       let invite = null;
       if (!account) {
         try {
-          invite = await inviteToEvent(base44.asServiceRole, {
+          invite = await inviteToEvent(base44, {
             eventId,
             email: data.email,
             displayName: data.full_name,
@@ -230,7 +230,7 @@ export default async function(req) {
       for (const p of ready) {
         if (accountByEmail.has(p.email)) continue;
         try {
-          const res = await inviteToEvent(svc, {
+          const res = await inviteToEvent(base44, {
             eventId,
             email: p.email,
             displayName: p.full_name,

@@ -9,6 +9,7 @@
 // o papel concedido é parâmetro (target_role), não um caminho separado.
 
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
+import { inviteAccount } from "./accountInvites.ts";
 
 export type GrantResult =
   | { status: "linked"; userId: string; personId: string; membership: any }
@@ -218,14 +219,10 @@ export async function grantEventRole(
     });
   }
 
-  let invited = false;
-  let inviteError = "";
-  try {
-    await svc.users.inviteUser(emailNorm, "user");
-    invited = true;
-  } catch (error: any) {
-    inviteError = String(error?.message || "Não foi possível enviar o e-mail de convite.");
-  }
+  // Convite sai pelo client raiz (o de service role não tem o módulo `users`).
+  const accountInvite = await inviteAccount(client, emailNorm);
+  const invited = accountInvite.invited;
+  const inviteError = accountInvite.error;
   if (invite?.id) {
     await svc.entities.EventInvite.update(invite.id, {
       invite_sent_at: new Date().toISOString(),

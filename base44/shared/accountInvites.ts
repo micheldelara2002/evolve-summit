@@ -80,16 +80,28 @@ export async function ensurePersonByEmail(
   return created;
 }
 
-/** Convite de acesso ao app (sem escopo de evento). */
+/**
+ * Convite de acesso ao app (sem escopo de evento).
+ *
+ * O envio de convite vive no módulo `users` do client do app — o client de
+ * service role NÃO tem `users` (asServiceRole.users é undefined). Por isso o
+ * recebido aqui precisa ser o client raiz (o `base44` da função), nunca `svc`.
+ */
 export async function inviteAccount(
   client: any,
   email: string,
 ): Promise<{ invited: boolean; error: string }> {
-  const svc = svcOf(client);
   const emailNorm = normalizeEmail(email);
   if (!emailNorm) return { invited: false, error: "E-mail ausente." };
+  const usersApi = client?.users;
+  if (!usersApi || typeof usersApi.inviteUser !== "function") {
+    return {
+      invited: false,
+      error: "Envio de convite indisponível no servidor (client sem módulo users).",
+    };
+  }
   try {
-    await svc.users.inviteUser(emailNorm, "user");
+    await usersApi.inviteUser(emailNorm, "user");
     return { invited: true, error: "" };
   } catch (error: any) {
     return { invited: false, error: String(error?.message || "Não foi possível enviar o e-mail de convite.") };
@@ -129,7 +141,7 @@ export async function inviteToEvent(
     });
   }
 
-  const { invited, error } = await inviteAccount(svc, emailNorm);
+  const { invited, error } = await inviteAccount(client, emailNorm);
   await svc.entities.EventInvite.update(invite.id, {
     invite_sent_at: new Date().toISOString(),
     invite_error: invited ? "" : error,
