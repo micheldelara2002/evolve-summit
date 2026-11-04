@@ -105,7 +105,16 @@ async function ensureParticipantForRole(
   if (!roleInEvent) return null;
   const email = normalizeEmail(userEmail);
 
-  const existing = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
+  const ors: any[] = [];
+  if (personId) ors.push({ person_id: personId });
+  if (email) ors.push({ email });
+  if (ors.length === 0) return null;
+
+  const existing = await svc.entities.Participant.filter({
+    event_id: eventId,
+    is_deleted: false,
+    $or: ors,
+  });
   const found = (existing || []).find(
     (p: any) => (personId && p.person_id === personId) || (email && normalizeEmail(p.email) === email),
   );
@@ -254,14 +263,18 @@ export async function linkPendingInvites(
     const personRows = await svc.entities.Person.filter({ id: personId });
     const personName = personRows?.[0]?.full_name || "";
 
-    await ensureMembership(svc, {
-      eventId: invite.event_id,
-      userId,
-      personId,
-      personName,
-      userEmail: email,
-      role: invite.target_role || "manager",
-    });
+    // Participante (attendee) não precisa de membership: o acesso já vem do
+    // Participant criado no cadastro. Membership é para papéis de GESTÃO.
+    if ((invite.target_role || "manager") !== "attendee") {
+      await ensureMembership(svc, {
+        eventId: invite.event_id,
+        userId,
+        personId,
+        personName,
+        userEmail: email,
+        role: invite.target_role || "manager",
+      });
+    }
 
     // Equipe/gerente convidados passam a existir como participantes do evento.
     await ensureParticipantForRole(svc, {

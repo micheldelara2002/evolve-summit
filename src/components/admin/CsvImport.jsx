@@ -328,6 +328,10 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
           <SummaryCard count={invalidRows.length} label="Inválidos" color="red" />
         </div>
 
+        <p className="text-xs text-muted-foreground">
+          Quem ainda não tem conta no app recebe um convite de cadastro por e-mail; quem já tem é vinculado direto.
+        </p>
+
         {/* Decision for existing unlinked */}
         {existingUnlinked.length > 0 && (
           <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">

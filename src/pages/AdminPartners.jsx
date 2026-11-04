@@ -91,9 +91,12 @@ function RepresentativesDialog({ partner, onClose }) {
     if (!newRep.person_id) { toast.error("Selecione uma pessoa."); return; }
     // Checar duplicidade ativa
     const dup = reps.find(
-      (r) => r.person_id === newRep.person_id && r.role_in_partner === newRep.role_in_partner && r.is_active
+      (r) => r.person_id === newRep.person_id && r.role_in_partner === newRep.role_in_partner && (r.is_active || r.access_status === "pending")
     );
-    if (dup) { toast.error("Vínculo ativo já existe para essa pessoa e papel."); return; }
+    if (dup) {
+      toast.error(dup.access_status === "pending" ? "Já existe um convite pendente para essa pessoa e papel." : "Vínculo ativo já existe para essa pessoa e papel.");
+      return;
+    }
     const res = await base44.functions.invoke('savePartnerRep', {
       partnerId: partner.id,
       personId: newRep.person_id,

@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { canManagePartnerData } from "../../shared/eventAuth.ts";
+import { canManagePartnerData, verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { normalizeEmail } from "../../shared/identity.ts";
-import { findAccountByEmail, inviteAccount } from "../../shared/accountInvites.ts";
+import { findAccountByEmail, inviteAccount, ensurePersonByEmail } from "../../shared/accountInvites.ts";
 
 // 2026-11-04 — REPRESENTANTE PRECISA DE CONTA.
 // O vínculo é da Person, mas só vale (access_status 'active') quando a pessoa
@@ -144,16 +144,43 @@ export default async function(req: Request): Promise<Response> {
       });
     }
 
-    // CREATE
-    if (!partnerId || !personId || !roleInPartner) {
-      return Response.json({ error: 'partnerId, personId e roleInPartner são obrigatórios.' }, { status: 400 });
+    // CREATE — aceita personId (pessoa já existente) ou e-mail (resolve/cadastra).
+    if (!partnerId || !roleInPartner || (!personId && !body.email)) {
+      return Response.json({ error: 'Informe a pessoa (personId ou e-mail) e o papel.' }, { status: 400 });
     }
-    const ok = await canManagePartnerData(base44, user, partnerId);
-    if (!ok) return Response.json({ error: 'Sem permissão para gerenciar representantes deste parceiro.' }, { status: 403 });
 
-    const persons = await svc.entities.Person.filter({ id: personId });
-    const person = persons?.[0];
-    if (!person) return Response.json({ error: 'Pessoa não encontrada.' }, { status: 404 });
+    // Quem pode: admin, o partner_manager da empresa, OU o GERENTE DO EVENTO
+    // onde o parceiro está vinculado (mesma regra da leitura da lista).
+    let allowed = await canManagePartnerData(base44, user, partnerId);
+    if (!allowed && body.eventId) {
+      const managerAuth = await verifyEventMembership(base44, user, body.eventId, EVENT_MANAGER_ROLES);
+      if (managerAuth.authorized) {
+        const links = await svc.entities.EventPartner.filter({
+          event_id: body.eventId,
+          partner_id: partnerId,
+          is_deleted: false,
+        });
+        allowed = !!links?.[0];
+      }
+    }
+    if (!allowed) return Response.json({ error: 'Sem permissão para gerenciar representantes deste parceiro.' }, { status: 403 });
+
+    let person: any = null;
+    if (personId) {
+      const persons = await svc.entities.Person.filter({ id: personId });
+      person = persons?.[0] || null;
+      if (!person) return Response.json({ error: 'Pessoa não encontrada.' }, { status: 404 });
+    } else {
+      try {
+        person = await ensurePersonByEmail(svc, { email: body.email, fullName: body.name });
+      } catch (error: any) {
+        if (error?.message === 'identity_ambiguous') {
+          return Response.json({ error: 'Há mais de um cadastro de pessoa com este e-mail.' }, { status: 409 });
+        }
+        throw error;
+      }
+    }
+    const resolvedPersonId = person.id;
     const email = normalizeEmail(person.contact_email);
     const account = email ? await findAccountByEmail(svc, email) : null;
 
@@ -163,10 +190,21 @@ export default async function(req: Request): Promise<Response> {
 
     const invite = account ? { invited: false, error: '' } : await sendInvite(email);
 
+    // Vínculo duplicado do mesmo papel não se repete (ativo ou pendente).
+    const existing = await svc.entities.PartnerRepresentative.filter({
+      partner_id: partnerId,
+      person_id: resolvedPersonId,
+      role_in_partner: roleInPartner,
+      is_deleted: false,
+    });
+    if (existing?.some((r) => r.is_active !== false || r.access_status === 'pending')) {
+      return Response.json({ error: 'Já existe vínculo (ativo ou pendente) para esta pessoa e papel.' }, { status: 409 });
+    }
+
     if (isPrimary && account) await clearOtherPrimaries(partnerId, null);
     const created = await svc.entities.PartnerRepresentative.create({
       partner_id: partnerId,
-      person_id: personId,
+      person_id: resolvedPersonId,
       user_id: account?.id || '',
       role_in_partner: roleInPartner,
       is_primary: !!isPrimary && !!account,

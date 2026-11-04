@@ -300,6 +300,10 @@ export default async function(req) {
       if (!participantId) return Response.json({ error: 'participant_id ausente.' }, { status: 400 });
       const found = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId });
       if (!found.length) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
+      // Remover alguém da equipe (inclusive a si mesmo) é do gerente/admin.
+      if (found[0].role_in_event === 'team' && !(await isStaffManager(base44, user, eventId))) {
+        return Response.json({ error: 'Apenas o gerente do evento remove a equipe.' }, { status: 403 });
+      }
       if (await speakerHasSessions(base44, eventId, participantId)) {
         return Response.json({ error: 'Não é possível remover: existe sessão associada a esta pessoa.' }, { status: 409 });
       }

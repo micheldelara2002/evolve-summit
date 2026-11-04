@@ -40,6 +40,9 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
   const [selectedRepIds, setSelectedRepIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [newRepEmail, setNewRepEmail] = useState("");
+  const [newRepName, setNewRepName] = useState("");
+  const [addingRep, setAddingRep] = useState(false);
 
   const alreadyAssociated = new Set(existingEventPartners.map((ep) => ep.partner_id));
 
@@ -52,7 +55,7 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
     enabled: submitted.trim().length >= 2,
   });
 
-  const { data: reps = [] } = useQuery({
+  const { data: reps = [], refetch: refetchReps } = useQuery({
     queryKey: ["partner_reps_for_assoc", selected?.id],
     queryFn: async () => {
       const res = await base44.functions.invoke("getPartnerRepresentatives", {
@@ -65,6 +68,8 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
   });
 
   const available = results.filter((p) => !alreadyAssociated.has(p.id));
+  // Representante sem conta ainda não pode representar a empresa no evento.
+  const selectableReps = reps.filter((r) => r.access_status !== "pending");
 
   const handleSave = async () => {
     if (!selected) { toast.error("Selecione um parceiro."); return; }
@@ -89,6 +94,43 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
     setSelected(partner);
     setSelectedRepIds([]);
     setCreating(false);
+    setNewRepEmail("");
+    setNewRepName("");
+  };
+
+  // Gerente do evento também cadastra representantes do parceiro vinculado.
+  // Sem conta no app, o convite é enviado e o vínculo fica pendente.
+  const addRepresentative = async () => {
+    const email = newRepEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
+    setAddingRep(true);
+    try {
+      const res = await base44.functions.invoke("savePartnerRep", {
+        partnerId: selected.id,
+        eventId,
+        email,
+        name: newRepName.trim(),
+        roleInPartner: "representative",
+        isActive: true,
+      });
+      const out = res.data || {};
+      if (out.status === "pending") {
+        if (out.invited) toast.success("Convite de cadastro enviado. O vínculo se completa quando a conta for criada.");
+        else toast.warning(`Vínculo pendente, mas o convite não foi enviado${out.invite_error ? `: ${out.invite_error}` : "."}`);
+      } else {
+        toast.success("Representante cadastrado.");
+      }
+      setNewRepEmail("");
+      setNewRepName("");
+      refetchReps();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err.message || "Não foi possível cadastrar o representante.");
+    } finally {
+      setAddingRep(false);
+    }
   };
 
   if (creating) {
@@ -174,6 +216,31 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
 
           {selected && (
             <div className="space-y-3 border-t border-border pt-3">
+              <div className="space-y-1.5 rounded-xl border border-dashed border-border p-2.5">
+                <Label className="text-xs">Cadastrar representante por e-mail</Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    type="email"
+                    placeholder="e-mail"
+                    value={newRepEmail}
+                    onChange={(e) => setNewRepEmail(e.target.value)}
+                    className="flex-1 h-8 text-sm"
+                  />
+                  <Input
+                    placeholder="nome (opcional)"
+                    value={newRepName}
+                    onChange={(e) => setNewRepName(e.target.value)}
+                    className="flex-1 h-8 text-sm"
+                  />
+                  <Button size="sm" variant="outline" onClick={addRepresentative} disabled={addingRep || !newRepEmail.trim()}>
+                    {addingRep ? "..." : "Adicionar"}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Se a pessoa ainda não tem conta no app, enviamos o convite e o vínculo fica pendente.
+                </p>
+              </div>
+
               <div className="space-y-1">
                 <Label className="text-xs">Plano de patrocínio *</Label>
                 <div className="flex flex-wrap gap-2">
@@ -199,13 +266,13 @@ export default function AssociatePartnerModal({ eventId, existingEventPartners =
                   Representantes neste evento
                   <span className="text-muted-foreground ml-1">(opcional — viram Participant)</span>
                 </Label>
-                {reps.length === 0 ? (
+                {selectableReps.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-1">
-                    Nenhum representante ativo cadastrado para esta empresa.
+                    Nenhum representante com conta ativa cadastrado para esta empresa.
                   </p>
                 ) : (
                   <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {reps.map((rep) => {
+                    {selectableReps.map((rep) => {
                       const checked = selectedRepIds.includes(rep.id);
                       return (
                         <label
