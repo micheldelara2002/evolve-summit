@@ -6,8 +6,8 @@ import {
   canAccessPartnerData,
   verifyEventMembership,
   EVENT_MANAGER_ROLES,
-  resolveUserPersonId,
 } from "../../shared/eventAuth.ts";
+import { resolveIdentity, identityOwnsParticipant } from "../../shared/identity.ts";
 
 // Leitura de Participants com verificação server-side (endurecimento de PII).
 // O SDK direto ficou restrito ao registro próprio (por e-mail) ou admin; TODA
@@ -48,16 +48,25 @@ function stripContact(p: any) {
   return out;
 }
 
-// Registros próprios do chamador (e-mail OU person_id), deduplicados por id.
+// Registros próprios do chamador (e-mail normalizado OU person_ids verificados),
+// deduplicados por id. P1-A — identidade canônica: todas as correspondências
+// contam; e-mail nunca é comparado por caixa.
 async function fetchOwnParticipants(base44: any, svc: any, user: any): Promise<any[]> {
-  const personId = await resolveUserPersonId(base44, user);
-  const queries: any[] = [svc.entities.Participant.filter({ email: user.email, is_deleted: false })];
-  if (personId) queries.push(svc.entities.Participant.filter({ person_id: personId, is_deleted: false }));
-  const [byEmail, byPerson] = await Promise.all(queries);
+  const identity = await resolveIdentity(base44, user);
+  const queries: any[] = [];
+  if (identity.emailNorm) {
+    queries.push(svc.entities.Participant.filter({ email: { $in: identity.emailVariants }, is_deleted: false }));
+  }
+  if (identity.personIds.length > 0) {
+    queries.push(svc.entities.Participant.filter({ person_id: { $in: identity.personIds }, is_deleted: false }));
+  }
+  if (queries.length === 0) return [];
+  const batches = await Promise.all(queries);
   const seen = new Map<string, any>();
-  const merged = [...(byEmail || []), ...(byPerson || [])];
-  for (let i = 0; i < merged.length; i++) {
-    if (!seen.has(merged[i].id)) seen.set(merged[i].id, merged[i]);
+  for (const batch of batches) {
+    for (const p of batch || []) {
+      if (p?.id && !seen.has(p.id) && identityOwnsParticipant(identity, p)) seen.set(p.id, p);
+    }
   }
   return Array.from(seen.values());
 }

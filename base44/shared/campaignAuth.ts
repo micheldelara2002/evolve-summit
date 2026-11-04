@@ -10,6 +10,7 @@
 // membership 'speaker' no evento (antes: qualquer membership) — alinhado à
 // régua do frontend (EVENT_ROLE_SEGMENTS.speaker = ['my_attendees']).
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "./eventAuth.ts";
+import { resolveIdentity } from "./identity.ts";
 
 export const CAMPAIGN_BROADCAST_AUDIENCES = ['all', 'segment', 'manual'];
 export const CAMPAIGN_PARTNER_AUDIENCES = ['my_leads', 'partner_leads', 'partner_all_event'];
@@ -79,14 +80,16 @@ export async function verifyCampaignSenderAuthorization(
 
     const e = entitiesOf(client);
     // Emissor precisa ser rep ativo do parceiro (por user_id ou person_id).
+    // P1-A — identidade canônica: TODO o conjunto verificado de person_ids,
+    // nunca uma única Person escolhida entre candidatas.
     let isRep = ((await e.PartnerRepresentative.filter({
       partner_id: partnerId, user_id: user.id, is_active: true, is_deleted: false,
     })) || []).length > 0;
     if (!isRep) {
-      const persons = await e.Person.filter({ contact_email: user.email, is_active: true });
-      if (persons.length > 0) {
+      const identity = await resolveIdentity(client, user);
+      if (identity.personIds.length > 0) {
         isRep = ((await e.PartnerRepresentative.filter({
-          partner_id: partnerId, person_id: persons[0].id, is_active: true, is_deleted: false,
+          partner_id: partnerId, person_id: { $in: identity.personIds }, is_active: true, is_deleted: false,
         })) || []).length > 0;
       }
     }

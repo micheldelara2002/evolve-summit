@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
 
 const ALLOWED_ENTITIES = new Set([
   'Badge',
@@ -52,19 +53,12 @@ function sanitizeRecord(entityName, data = {}, publicRead = false) {
   return out;
 }
 
+// P1-A — identidade canônica (shared/identity.ts): person_ids verificados +
+// e-mails normalizados, em consultas direcionadas (sem varrer o evento).
 async function isEventParticipant(base44, user, eventId) {
-  const svc = base44.asServiceRole;
-  let personId = user.person_id || null;
-  if (!personId && user.email) {
-    const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-    personId = persons?.[0]?.id || null;
-  }
-
-  const parts = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
-  return parts.some((p) =>
-    p.registration_status !== 'cancelled' &&
-    ((personId && p.person_id === personId) || (user.email && p.email === user.email))
-  );
+  const identity = await resolveIdentity(base44, user);
+  const mine = await findMyParticipants(base44, identity, eventId);
+  return mine.length > 0;
 }
 
 export default async function(req: Request): Promise<Response> {

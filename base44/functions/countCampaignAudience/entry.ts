@@ -17,6 +17,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAuth.ts';
 import { resolveAudienceBatches } from '../../shared/campaignAudience.ts';
+import { resolveIdentity } from '../../shared/identity.ts';
 
 const TIME_BUDGET_MS = 15_000;
 
@@ -46,10 +47,11 @@ export default async function(req: Request): Promise<Response> {
             partner_id: senderPartnerId, user_id: user.id, is_active: true, is_deleted: false,
           });
           if (repRecords.length === 0) {
-            const persons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email, is_active: true });
-            if (persons.length > 0) {
+            // P1-A — conjunto verificado de identidade (nunca "a primeira" Person).
+            const identity = await resolveIdentity(base44, user);
+            if (identity.personIds.length > 0) {
               repRecords = await base44.asServiceRole.entities.PartnerRepresentative.filter({
-                partner_id: senderPartnerId, person_id: persons[0].id, is_active: true, is_deleted: false,
+                partner_id: senderPartnerId, person_id: { $in: identity.personIds }, is_active: true, is_deleted: false,
               });
             }
           }

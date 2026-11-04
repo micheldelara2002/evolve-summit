@@ -2,6 +2,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { sanitizeText } from "../../shared/sanitize.ts";
 import { sortPersonIds } from "../../shared/personPair.ts";
+import { resolveIdentity, identityOwnsPerson, emailMatchVariants, normalizeEmail } from "../../shared/identity.ts";
+
+// P1-A (2026-11-04) — identidade canônica (shared/identity.ts). Não existe mais
+// lookup próprio de Person por e-mail neste fluxo: a posse de um person_id é
+// decidida pelo conjunto verificado (vínculo explícito + e-mails normalizados).
 
 // P1 — Active participant in event: not soft-deleted, not cancelled.
 // Used to validate that both ends of a connection are eligible participants
@@ -12,12 +17,6 @@ async function getActiveParticipant(svc, eventId, personId) {
     event_id: eventId, person_id: personId, is_deleted: false,
   });
   return parts.find((p) => p.registration_status !== "cancelled") || null;
-}
-
-// P1 — Person ids belonging to the authenticated user (resolved by contact_email).
-async function getUserPersonIds(svc, user) {
-  const persons = await svc.entities.Person.filter({ contact_email: user.email });
-  return persons.map((p) => p.id);
 }
 
 // P0 (2026-09-29) — Notificação 'sininho' da Rede, criada SERVER-SIDE na própria
@@ -38,11 +37,11 @@ async function sendConnectionNotification(svc, user, eventId, personId, { title,
     const email = person?.contact_email;
     if (!email) return;
     // Destinatário resolvido por filtro de e-mail no servidor — nunca User.list().
-    const variants = email === email.toLowerCase() ? [email] : [email, email.toLowerCase()];
+    // P1-A — comparação normalizada (caixa não decide destinatário).
     const users = await svc.entities.User.filter({
-      email: { $in: variants }, account_status: { $ne: "deleted" },
+      email: { $in: emailMatchVariants(email) }, account_status: { $ne: "deleted" },
     });
-    const target = users?.[0];
+    const target = (users || []).find((u) => normalizeEmail(u.email) === normalizeEmail(email));
     if (!target) return; // sem conta de app → sem notificação (regra de negócio)
     const now = new Date().toISOString();
     const campaign = await svc.entities.NotificationCampaign.create({
@@ -110,9 +109,9 @@ async function handleSendRequest(base44, { eventId, requesterPersonId, requester
     return Response.json({ ok: false, reason: "self_connection_not_allowed" }, { status: 400 });
   }
 
-  // P1 — ownership: requesterPersonId must belong to the calling user
-  const userPersonIds = await getUserPersonIds(svc, user);
-  if (!userPersonIds.includes(requesterPersonId) && user.role !== 'admin') {
+  // P1-A — ownership pelo conjunto verificado de identidade.
+  const identity = await resolveIdentity(base44, user);
+  if (!identityOwnsPerson(identity, requesterPersonId) && user.role !== 'admin') {
     return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
   }
 
@@ -197,8 +196,8 @@ async function handleAcceptRequest(base44, { requestId, accepterPersonId, accept
   if (!requestId || !accepterPersonId) {
     return Response.json({ ok: false, reason: "missing_params" }, { status: 400 });
   }
-  const userPersonIds = await getUserPersonIds(svc, user);
-  if (!userPersonIds.includes(accepterPersonId) && user.role !== 'admin') {
+  const identity = await resolveIdentity(base44, user);
+  if (!identityOwnsPerson(identity, accepterPersonId) && user.role !== 'admin') {
     return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
   }
 
@@ -215,8 +214,13 @@ async function handleAcceptRequest(base44, { requestId, accepterPersonId, accept
   if (request.status !== "pending") return Response.json({ ok: false, reason: "not_pending" });
 
   // P1 — accepter must be the intended receiver (prevents accepting requests destined to others)
+  // P1-A — o destinatário precisa pertencer ao usuário; o id informado não
+  // basta por si (evita aceitar em nome de um Person que não é seu).
   if (request.receiver_person_id !== accepterPersonId && user.role !== 'admin') {
     return Response.json({ ok: false, reason: 'not_intended_receiver' }, { status: 403 });
+  }
+  if (user.role !== 'admin' && !identityOwnsPerson(identity, request.receiver_person_id)) {
+    return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
   }
 
   // P1 — both ends must be active participants in the request's event
@@ -250,14 +254,13 @@ async function handleAcceptRequest(base44, { requestId, accepterPersonId, accept
 async function handleRefuseRequest(base44, { requestId }, user) {
   // Verify ownership: only the receiver can refuse — server-side guard
   const svc = base44.asServiceRole;
-  const userPersons = await svc.entities.Person.filter({ contact_email: user.email });
-  const userPersonId = userPersons[0]?.id;
+  const identity = await resolveIdentity(base44, user);
 
   const requests = await svc.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
   if (!requests?.length) return Response.json({ ok: false, reason: "not_found" });
   const request = requests[0];
 
-  if (request.receiver_person_id !== userPersonId && user.role !== 'admin') {
+  if (!identityOwnsPerson(identity, request.receiver_person_id) && user.role !== 'admin') {
     return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
   }
   if (request.status !== "pending") {
@@ -270,14 +273,13 @@ async function handleRefuseRequest(base44, { requestId }, user) {
 async function handleCancelRequest(base44, { requestId }, user) {
   // Verify ownership: only the requester can cancel — server-side guard
   const svc = base44.asServiceRole;
-  const userPersons = await svc.entities.Person.filter({ contact_email: user.email });
-  const userPersonId = userPersons[0]?.id;
+  const identity = await resolveIdentity(base44, user);
 
   const requests = await svc.entities.ConnectionRequest.filter({ id: requestId, is_deleted: false });
   if (!requests?.length) return Response.json({ ok: false, reason: "not_found" });
   const request = requests[0];
 
-  if (request.requester_person_id !== userPersonId && user.role !== 'admin') {
+  if (!identityOwnsPerson(identity, request.requester_person_id) && user.role !== 'admin') {
     return Response.json({ ok: false, reason: 'unauthorized' }, { status: 403 });
   }
   if (request.status !== "pending") {

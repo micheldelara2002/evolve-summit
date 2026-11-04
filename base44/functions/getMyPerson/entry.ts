@@ -1,9 +1,15 @@
 // getMyPerson — Lote 4. Leitura da PRÓPRIA Person do usuário autenticado.
 // Person tem RLS admin-only; todo acesso de app user passa por aqui.
-// Resolução: user.person_id (link explícito) → contact_email → Participant.email (legado).
+//
+// P1-A (2026-11-04) — resolução pela identidade canônica (shared/identity.ts):
+//   1. vínculo explícito user.person_id;
+//   2. e-mail normalizado (todas as correspondências);
+//   3. legado: Participant do usuário que já aponta para uma Person.
+// Vínculo explícito vence. Sem vínculo e com MAIS DE UMA Person correspondente,
+// a leitura é NEGADA com motivo (nunca "pega a primeira").
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
-import { isValidId } from '../../shared/idGuard.ts';
+import { resolveIdentity } from '../../shared/identity.ts';
 
 export default async function(req) {
   try {
@@ -14,24 +20,39 @@ export default async function(req) {
     const user = guard.user;
 
     const svc = base44.asServiceRole;
-    let person = null;
+    const identity = await resolveIdentity(base44, user);
 
-    const linkedId = isValidId(user.person_id) ? user.person_id : null;
-    if (linkedId) {
-      const list = await svc.entities.Person.filter({ id: linkedId });
+    if (identity.ambiguous) {
+      return Response.json({
+        error: 'Há mais de um cadastro de pessoa com o seu e-mail. A organização precisa consolidar seu cadastro antes de continuar.',
+        reason: 'identity_ambiguous',
+        person_ids: identity.personIds,
+      }, { status: 409 });
+    }
+
+    let person = null;
+    if (identity.selfPersonId) {
+      const list = await svc.entities.Person.filter({ id: identity.selfPersonId });
       person = list[0] || null;
     }
-    if (!person && user.email) {
-      const list = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-      person = list[0] || null;
-    }
-    if (!person && user.email) {
-      // Contas legados: Person existe mas sem link user.person_id nem contact_email igual
-      const participants = await svc.entities.Participant.filter({ email: user.email, is_deleted: false });
-      const pid = participants.find((p) => p.person_id)?.person_id;
-      if (pid) {
-        const list = await svc.entities.Person.filter({ id: pid });
+
+    // Contas legadas: Person existe mas sem vínculo e sem e-mail correspondente —
+    // o Participant do usuário já aponta para ela.
+    if (!person && identity.emailNorm) {
+      const participants = await svc.entities.Participant.filter({
+        email: { $in: identity.emailVariants },
+        is_deleted: false,
+      });
+      const linkedIds = [...new Set((participants || []).map((p) => p.person_id).filter(Boolean))];
+      if (linkedIds.length === 1) {
+        const list = await svc.entities.Person.filter({ id: linkedIds[0] });
         person = list[0] || null;
+      } else if (linkedIds.length > 1) {
+        return Response.json({
+          error: 'Há mais de um cadastro de pessoa vinculado ao seu e-mail. A organização precisa consolidar seu cadastro antes de continuar.',
+          reason: 'identity_ambiguous',
+          person_ids: linkedIds,
+        }, { status: 409 });
       }
     }
 

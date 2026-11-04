@@ -4,9 +4,9 @@
 // Person.metrics_inc. RLS Person é admin-only — escrita só por aqui (service role).
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
-import { isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';
 import { sanitizeAllowlisted } from '../../shared/sanitize.ts';
+import { resolveIdentity, normalizeEmail } from '../../shared/identity.ts';
 
 const ALLOWED_FIELDS = [
   'full_name', 'contact_email', 'phone', 'company', 'job_title',
@@ -22,18 +22,15 @@ function isValidEmail(value) {
   return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-async function resolveOwnPerson(svc, user) {
-  let person = null;
-  const linkedId = isValidId(user.person_id) ? user.person_id : null;
-  if (linkedId) {
-    const list = await svc.entities.Person.filter({ id: linkedId });
-    person = list[0] || null;
-  }
-  if (!person && user.email) {
-    const list = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-    person = list[0] || null;
-  }
-  return person;
+// P1-A (2026-11-04) — a própria Person é resolvida pela identidade canônica.
+// Devolve { person } ou { ambiguous: true } — nunca escolhe entre candidatos.
+async function resolveOwnPerson(base44, user) {
+  const svc = base44.asServiceRole;
+  const identity = await resolveIdentity(base44, user);
+  if (identity.ambiguous) return { person: null, ambiguous: true, personIds: identity.personIds };
+  if (!identity.selfPersonId) return { person: null, ambiguous: false };
+  const list = await svc.entities.Person.filter({ id: identity.selfPersonId });
+  return { person: list[0] || null, ambiguous: false };
 }
 
 export default async function(req) {
@@ -49,8 +46,19 @@ export default async function(req) {
     if (!isValidEmail(data.contact_email)) {
       return Response.json({ error: 'E-mail de contato inválido.' }, { status: 400 });
     }
+    // P1-A — gravação sempre com e-mail na forma canônica.
+    if (data.contact_email) data.contact_email = normalizeEmail(data.contact_email);
+
     // Foto é opcional; nome obrigatório na criação
-    const existing = await resolveOwnPerson(base44.asServiceRole, user);
+    const resolved = await resolveOwnPerson(base44, user);
+    if (resolved.ambiguous) {
+      return Response.json({
+        error: 'Há mais de um cadastro de pessoa com o seu e-mail. A organização precisa consolidar seu cadastro antes de editar o perfil.',
+        reason: 'identity_ambiguous',
+        person_ids: resolved.personIds,
+      }, { status: 409 });
+    }
+    const existing = resolved.person;
 
     if (existing) {
       if (!data.full_name && !existing.full_name) {
@@ -63,7 +71,7 @@ export default async function(req) {
     if (!data.full_name) {
       return Response.json({ error: 'Nome é obrigatório.' }, { status: 400 });
     }
-    if (!data.contact_email) data.contact_email = user.email;
+    if (!data.contact_email) data.contact_email = normalizeEmail(user.email);
     const created = await base44.asServiceRole.entities.Person.create({
       ...data,
       created_day: new Date().toISOString().slice(0, 10),

@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { incPersons } from "../../shared/businessMetrics.ts";
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { normalizeEmail } from "../../shared/identity.ts";
 
 // P0.4 + P0 residual — Hardened identity resolution.
 //
@@ -67,8 +68,22 @@ export default async function(req) {
     }
 
     // 3. Idempotent lookup — return existing Person if one is already linked.
-    const existing = await base44.asServiceRole.entities.Person.filter({ contact_email: resolvedEmail });
-    if (existing.length > 0) {
+    //    P1-A — e-mail normalizado; MAIS DE UMA correspondência é ambiguidade,
+    //    não escolha: nada é criado e o chamador é informado.
+    resolvedEmail = normalizeEmail(resolvedEmail);
+    const existing = await base44.asServiceRole.entities.Person.filter({
+      contact_email: resolvedEmail,
+      is_active: { $ne: false },
+    });
+    if (existing.length > 1) {
+      return Response.json({
+        status: "ambiguous",
+        reason: "identity_ambiguous",
+        person_ids: existing.map((p) => p.id),
+        error: "Mais de um cadastro de pessoa com este e-mail — consolide o cadastro antes de continuar.",
+      }, { status: 409 });
+    }
+    if (existing.length === 1) {
       return Response.json({ status: "exists", person_id: existing[0].id });
     }
 

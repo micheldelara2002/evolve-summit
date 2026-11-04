@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { resolveUserPersonId } from "../../shared/eventAuth.ts";
+
 import { participantBelongsToUser } from "../../shared/participantOwnership.ts";
 
 export default async function(req: Request): Promise<Response> {
@@ -12,15 +12,14 @@ export default async function(req: Request): Promise<Response> {
 
     const body = await req.json();
     const { id, status, eventId, sessionId, participantId, personId, mentorParticipantId, topic } = body;
-    const userPersonId = await resolveUserPersonId(base44, user);
 
     if (id) {
       // UPDATE status (mentor marca atendida OU participante cancela)
       const reqs = await base44.asServiceRole.entities.MentorshipRequest.filter({ id });
       const m = reqs?.[0];
       if (!m) return Response.json({ error: 'Solicitação não encontrada.' }, { status: 404 });
-      const isMentor = await participantBelongsToUser(base44, m.mentor_participant_id, user, userPersonId);
-      const isRequester = await participantBelongsToUser(base44, m.participant_id, user, userPersonId);
+      const isMentor = await participantBelongsToUser(base44, m.mentor_participant_id, user);
+      const isRequester = await participantBelongsToUser(base44, m.participant_id, user);
       if (!isMentor && !isRequester) return Response.json({ error: 'Sem permissão.' }, { status: 403 });
       await base44.asServiceRole.entities.MentorshipRequest.update(id, { status });
       return Response.json({ ok: true, id });
@@ -30,7 +29,7 @@ export default async function(req: Request): Promise<Response> {
     if (!eventId || !sessionId || !participantId) {
       return Response.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 });
     }
-    const ok = await participantBelongsToUser(base44, participantId, user, userPersonId);
+    const ok = await participantBelongsToUser(base44, participantId, user);
     if (!ok) return Response.json({ error: 'Sem permissão para solicitar mentoria.' }, { status: 403 });
 
     const created = await base44.asServiceRole.entities.MentorshipRequest.create({

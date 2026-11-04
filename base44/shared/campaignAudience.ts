@@ -9,6 +9,7 @@
 //   de app NÃO gera recipient (regra de negócio). Segmentos de papel resolvem
 //   via EventMembership ancorada em user_id.
 import { scanBatches } from "./completeScan.ts";
+import { resolveIdentity } from "./identity.ts";
 
 export const AUDIENCE_BATCH_SIZE = 500;
 
@@ -221,15 +222,15 @@ export async function* resolveAudienceBatches(
     // Paginated resolution: Sender → Person → Speaker Participant → Sessions →
     // Attendance → Participants → User (por e-mail). O(batch) memory em todas as etapas.
 
-    // Step 1: senderUser → Person (O(1) result)
-    const persons = await svc.entities.Person.filter({ contact_email: senderUser.email, is_active: true });
-    const speakerPerson = persons?.[0];
-    if (speakerPerson) {
+    // Step 1: senderUser → Person (P1-A — conjunto verificado de identidade;
+    // todas as correspondências contam, nenhuma é escolhida "primeiro")
+    const senderIdentity = await resolveIdentity(svc, senderUser);
+    if (senderIdentity.personIds.length > 0) {
       // Step 2: Person → Speaker's Participant records (paginated, collect IDs)
       const speakerPartIds: string[] = [];
       for await (const speakerParts of scanBatches(
         svc.entities.Participant,
-        { event_id: scopeEventId, person_id: speakerPerson.id, is_deleted: false },
+        { event_id: scopeEventId, person_id: { $in: senderIdentity.personIds }, is_deleted: false },
         { pageSize: AUDIENCE_BATCH_SIZE }
       )) {
         for (const p of speakerParts) speakerPartIds.push(p.id);

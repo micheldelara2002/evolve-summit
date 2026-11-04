@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { resolveIdentity, identityOwnsParticipant } from "../../shared/identity.ts";
 
 /**
  * getEventSessions — leitura event-scoped de Sessions (Lote 2 RLS).
@@ -45,12 +46,8 @@ export default async function(req: Request): Promise<Response> {
 
     const svc = base44.asServiceRole;
 
-    // Resolve person_id do caller uma única vez (Participant matching por person/email).
-    let personId = user.person_id || null;
-    if (!personId && user.email) {
-      const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-      personId = persons?.[0]?.id || null;
-    }
+    // P1-A — identidade canônica resolvida uma única vez (shared/identity.ts).
+    const identity = await resolveIdentity(base44, user);
 
     let authorizedIds: string[];
     if (user.role === 'admin') {
@@ -65,18 +62,23 @@ export default async function(req: Request): Promise<Response> {
       });
       const membershipEventIds = new Set(memberships.map((m) => m.event_id));
 
-      // Participant ativo nos eventos — consulta única batched, match por person/email.
-      const participants = await svc.entities.Participant.filter({
+      // Participant ativo nos eventos — consulta única batched, restrita ao
+      // conjunto verificado de identidade (person_ids + e-mails normalizados).
+      const identityFilters: any[] = [];
+      if (identity.personIds.length > 0) {
+        identityFilters.push({ person_id: { $in: identity.personIds } });
+      }
+      if (identity.emailNorm) {
+        identityFilters.push({ email: { $in: identity.emailVariants } });
+      }
+      const participants = identityFilters.length === 0 ? [] : await svc.entities.Participant.filter({
         event_id: { $in: uniqueIds },
         is_deleted: false,
+        $or: identityFilters,
       });
       const participantEventIds = new Set(
         participants
-          .filter(
-            (p) =>
-              p.registration_status !== 'cancelled' &&
-              ((personId && p.person_id === personId) || (user.email && p.email === user.email))
-          )
+          .filter((p) => identityOwnsParticipant(identity, p) && p.registration_status !== 'cancelled')
           .map((p) => p.event_id)
       );
 

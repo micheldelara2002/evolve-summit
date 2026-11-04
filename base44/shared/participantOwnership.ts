@@ -1,17 +1,21 @@
 // P2 (2026-09-29) — Fonte única da verificação de posse de um Participant.
 // Era copiado idêntico em getMentorshipRequests e saveMentorshipRequest.
 //
-// Posse = admin OU o próprio registro: por person_id vinculado OU por e-mail
-// do usuário autenticado. Lookup via service role (RLS de Participant é
-// admin-only / dono-por-e-mail).
+// P1-A (2026-11-04) — a posse é decidida pelo conjunto VERIFICADO de identidade
+// (shared/identity.ts): person_ids do usuário (vínculo explícito + correspondências
+// de e-mail normalizadas) ou e-mail normalizado do próprio Participant. Nunca por
+// um único person_id escolhido entre candidatos ambíguos.
+//
+// Lookup via service role (RLS de Participant é admin-only / dono-por-e-mail).
 
-export async function participantBelongsToUser(base44: any, participantId: string, user: any, userPersonId: string | null): Promise<boolean> {
-  if (!participantId) return false;
+import { resolveIdentity, identityOwnsParticipant } from "./identity.ts";
+
+export async function participantBelongsToUser(base44: any, participantId: string, user: any): Promise<boolean> {
+  if (!participantId || !user) return false;
   if (user.role === 'admin') return true;
   const ps = await base44.asServiceRole.entities.Participant.filter({ id: participantId, is_deleted: false });
   const p = ps?.[0];
   if (!p) return false;
-  if (userPersonId && p.person_id === userPersonId) return true;
-  if (p.email && p.email.toLowerCase() === user.email.toLowerCase()) return true;
-  return false;
+  const identity = await resolveIdentity(base44, user);
+  return identityOwnsParticipant(identity, p);
 }

@@ -15,6 +15,8 @@ import { generateTicketHash } from "./commercePolicy.ts";
 import { releaseCheckoutLock } from "./checkoutLock.ts";
 import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decParticipantsByRole } from "./businessMetrics.ts";
 import { retrieveChargeWithBalance } from "./stripeClient.ts";
+import { normalizeEmail, emailMatchVariants } from "./identity.ts";
+import { deterministicCompare } from "./deterministicSurvivor.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
@@ -25,16 +27,27 @@ export const FULFILLING_STALE_MS = 10 * 60 * 1000;
 // inscrição anterior cancelada/reembolsada não impede uma nova inscrição —
 // a identidade existente volta), em vez de criar uma Person duplicada.
 async function ensurePerson(svc: any, name: string, email: string, phone?: string): Promise<string> {
-  const existing = await svc.entities.Person.filter({ contact_email: email });
-  if (existing.length > 0) {
-    if (existing[0].is_active === false) {
-      try { await svc.entities.Person.update(existing[0].id, { is_active: true }); } catch {}
+  // P1-A — e-mail canônico na gravação e na comparação. Se houver mais de um
+  // cadastro com o mesmo e-mail, a escolha é DETERMINÍSTICA (created_date + id):
+  // emitir ingresso não pode falhar por ambiguidade de cadastro, e todos os
+  // caminhos (compra, retry, webhook) elegem o mesmo sobrevivente.
+  const normalized = normalizeEmail(email);
+  const existing = await svc.entities.Person.filter({
+    contact_email: emailMatchVariants(email),
+    is_active: { $ne: false },
+  });
+  const matches = (existing || [])
+    .filter((p: any) => normalizeEmail(p.contact_email) === normalized)
+    .sort(deterministicCompare);
+  if (matches.length > 0) {
+    if (matches[0].is_active === false) {
+      try { await svc.entities.Person.update(matches[0].id, { is_active: true }); } catch {}
     }
-    return existing[0].id;
+    return matches[0].id;
   }
   const person = await svc.entities.Person.create({
     full_name: name,
-    contact_email: email,
+    contact_email: normalized,
     phone: phone || "",
     is_active: true,
     created_day: new Date().toISOString().slice(0, 10),

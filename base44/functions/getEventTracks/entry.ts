@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyAnyEventMembership } from "../../shared/eventAuth.ts";
+import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
 
 /**
  * getEventTracks — leitura event-scoped de Tracks (Lote 2 RLS).
@@ -43,18 +44,11 @@ export default async function(req: Request): Promise<Response> {
     // Participant ativo no evento — attendees não possuem EventMembership;
     // a inscrição válida no evento autoriza a leitura das trilhas (agenda).
     if (!authorized) {
-      let personId = user.person_id || null;
-      if (!personId && user.email) {
-        const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-        personId = persons?.[0]?.id || null;
-      }
-      const parts = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
-      const match = parts.find(
-        (p) =>
-          p.registration_status !== 'cancelled' &&
-          ((personId && p.person_id === personId) || (user.email && p.email === user.email))
-      );
-      authorized = !!match;
+      // P1-A — Participants do usuário por identidade canônica, com consultas
+      // direcionadas (sem varrer a lista de participantes do evento).
+      const identity = await resolveIdentity(base44, user);
+      const mine = await findMyParticipants(base44, identity, eventId);
+      authorized = mine.length > 0;
     }
 
     if (!authorized) {

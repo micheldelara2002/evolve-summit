@@ -3,6 +3,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { sanitizeText } from "../../shared/sanitize.ts";
 import { sortPersonIds } from "../../shared/personPair.ts";
+import { resolveIdentity, identityOwnsPerson } from "../../shared/identity.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -17,9 +18,10 @@ export default async function(req: Request): Promise<Response> {
     }
 
     // Verify ownership: myPersonId must belong to calling user
-    const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
-    const userPersonId = userPersons[0]?.id;
-    if (myPersonId !== userPersonId && user.role !== 'admin') {
+    // P1-A — conjunto verificado de identidade (vínculo explícito + e-mails
+    // normalizados), nunca uma única Person escolhida entre candidatas.
+    const identity = await resolveIdentity(base44, user);
+    if (!identityOwnsPerson(identity, myPersonId) && user.role !== 'admin') {
       return Response.json({ error: 'Sem permissão.' }, { status: 403 });
     }
 

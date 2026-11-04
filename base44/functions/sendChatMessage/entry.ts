@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { sanitizeText } from "../../shared/sanitize.ts";
+import { resolveIdentity, identityOwnsPerson } from "../../shared/identity.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -15,8 +16,8 @@ export default async function(req: Request): Promise<Response> {
     }
 
     // Verify thread ownership: sender must be a participant AND match the authenticated user's Person
-    const userPersons = await base44.asServiceRole.entities.Person.filter({ contact_email: user.email });
-    const userPersonId = userPersons[0]?.id;
+    // P1-A — posse pelo conjunto verificado de identidade.
+    const identity = await resolveIdentity(base44, user);
 
     const threads = await base44.asServiceRole.entities.ChatThread.filter({ id: threadId, is_deleted: false });
     const thread = threads?.[0];
@@ -39,7 +40,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     const isParticipant = thread.person_a_id === senderPersonId || thread.person_b_id === senderPersonId;
-    const isOwner = senderPersonId === userPersonId || user.role === 'admin';
+    const isOwner = identityOwnsPerson(identity, senderPersonId) || user.role === 'admin';
     if (!isParticipant || !isOwner) {
       return Response.json({ error: 'Sem permissão para enviar mensagens nesta conversa.' }, { status: 403 });
     }

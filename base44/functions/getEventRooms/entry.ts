@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyAnyEventMembership } from "../../shared/eventAuth.ts";
+import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
 
 /**
  * getEventRooms — leitura event-scoped de Rooms (piloto RLS).
@@ -42,17 +43,10 @@ export default async function(req: Request): Promise<Response> {
     // a presença/inscrição válida no evento autoriza a leitura das salas
     // (mantém o comportamento atual do participante na agenda).
     if (!authorized) {
-      let personId = user.person_id || null;
-      if (!personId && user.email) {
-        const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-        personId = persons?.[0]?.id || null;
-      }
-      const parts = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
-      const match = parts.find((p) =>
-        p.registration_status !== 'cancelled' &&
-        ((personId && p.person_id === personId) || (user.email && p.email === user.email))
-      );
-      authorized = !!match;
+      // P1-A — identidade canônica, consultas direcionadas (sem varredura).
+      const identity = await resolveIdentity(base44, user);
+      const mine = await findMyParticipants(base44, identity, eventId);
+      authorized = mine.length > 0;
     }
 
     if (!authorized) {

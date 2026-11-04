@@ -5,6 +5,8 @@
 // Import pattern (from a function entry.ts):
 //   import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
+import { resolveIdentity, findMyParticipants, identityOwnsParticipant } from "./identity.ts";
+
 export const EVENT_MANAGER_ROLES = ['manager', 'team'];
 // Papel FINANCEIRO do evento (2026-09-29): comércio (preços/lotes/cupons),
 // relatórios financeiros, estornos e retry de emissão são exclusivos do
@@ -59,33 +61,19 @@ export async function verifyAnyEventMembership(base44, user, eventId) {
  * Resolve o person_id do usuário autenticado a partir do e-mail (Person.contact_email).
  * Usado para autorização cross-entidade (Participant por person_id, PartnerRepresentative por person_id).
  */
-// Resolução da Person do usuário autenticado — MESMA cadeia canônica do
-// getMyPerson (SEC/2026-10-17): 1) link explícito user.person_id; 2) Person
-// por contact_email. Antes só o e-mail era considerado: um representante
-// vinculado por user.person_id com contact_email divergente era NEGADO em
-// funções de autorização (getMyLeads, getPartnerRepresentatives, etc.) mesmo
-// sendo o dono legítimo — inconsistência de disponibilidade (direção segura).
+// P1-A (2026-11-04) — a resolução de identidade tem UMA implementação:
+// shared/identity.ts (precedência vínculo explícito > e-mail normalizado >
+// nenhum, e ambiguidade = negação). Este export é mantido para os chamadores
+// existentes e delega para ela.
 export async function resolveUserPersonId(base44, user) {
-  if (!user?.email && !user?.person_id) return null;
-  try {
-    if (user.person_id) {
-      const linked = await base44.asServiceRole.entities.Person.filter({
-        id: user.person_id,
-        is_active: true,
-      });
-      if (linked?.[0]?.id) return linked[0].id;
-    }
-    if (user.email) {
-      const persons = await base44.asServiceRole.entities.Person.filter({
-        contact_email: user.email,
-        is_active: true,
-      });
-      return persons?.[0]?.id || null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  const identity = await resolveIdentity(base44, user);
+  return identity.selfPersonId || null;
+}
+
+/** Conjunto verificado de person_ids do usuário (posse: "isto é meu?"). */
+export async function resolveUserPersonIds(base44, user) {
+  const identity = await resolveIdentity(base44, user);
+  return identity.personIds;
 }
 
 /**
@@ -109,11 +97,10 @@ export async function verifyOwnSpeakerScope(base44, user, eventId, participantId
   });
   if (!parts?.length) return false;
   const part = parts[0];
-  if (part.person_id) {
-    const personId = await resolveUserPersonId(base44, user);
-    if (personId) return part.person_id === personId;
-  }
-  return (part.email || '').toLowerCase() === (user.email || '').toLowerCase();
+  // P1-A — posse avaliada pelo conjunto verificado (vínculo + e-mails
+  // normalizados), nunca por um único person_id escolhido.
+  const identity = await resolveIdentity(base44, user);
+  return identityOwnsParticipant(identity, part);
 }
 
 /**
@@ -126,39 +113,24 @@ export async function canAccessEventData(base44, user, eventId) {
   if (!user || !eventId) return false;
   if (user.role === 'admin') return true;
 
-  // P2 — Membership e Person são independentes: consultadas em paralelo em vez
-  // de sequencialmente (as de Participant abaixo já eram paralelas entre si).
-  const [memberships, personId] = await Promise.all([
+  // P2 — Membership e identidade são independentes: consultadas em paralelo em
+  // vez de sequencialmente. P1-A — Participants resolvidos pelo conjunto
+  // verificado (person_ids + e-mails normalizados), com consultas direcionadas.
+  const [memberships, identity] = await Promise.all([
     base44.asServiceRole.entities.EventMembership.filter({
       event_id: eventId,
       user_id: user.id,
       is_active: true,
       is_deleted: false,
     }),
-    resolveUserPersonId(base44, user),
+    resolveIdentity(base44, user),
   ]);
   if (memberships.length > 0) return true;
 
-  const queries = [
-    base44.asServiceRole.entities.Participant.filter({
-      event_id: eventId,
-      email: user.email,
-      is_deleted: false,
-      registration_status: { $ne: 'cancelled' },
-    }),
-  ];
-  if (personId) {
-    queries.push(
-      base44.asServiceRole.entities.Participant.filter({
-        event_id: eventId,
-        person_id: personId,
-        is_deleted: false,
-        registration_status: { $ne: 'cancelled' },
-      })
-    );
-  }
-  const [byEmail, byPerson] = await Promise.all(queries);
-  return (byEmail?.length > 0) || (byPerson?.length > 0);
+  const mine = await findMyParticipants(base44, identity, eventId, {
+    registration_status: { $ne: 'cancelled' },
+  });
+  return mine.length > 0;
 }
 
 /**
@@ -169,7 +141,7 @@ export async function canAccessPartnerData(base44, user, partnerId) {
   if (!user || !partnerId) return false;
   if (user.role === 'admin') return true;
 
-  const personId = await resolveUserPersonId(base44, user);
+  const identity = await resolveIdentity(base44, user);
   const queries = [
     base44.asServiceRole.entities.PartnerRepresentative.filter({
       partner_id: partnerId,
@@ -178,11 +150,11 @@ export async function canAccessPartnerData(base44, user, partnerId) {
       is_deleted: false,
     }),
   ];
-  if (personId) {
+  if (identity.personIds.length > 0) {
     queries.push(
       base44.asServiceRole.entities.PartnerRepresentative.filter({
         partner_id: partnerId,
-        person_id: personId,
+        person_id: { $in: identity.personIds },
         is_active: true,
         is_deleted: false,
       })
@@ -202,7 +174,7 @@ export async function canManagePartnerData(base44, user, partnerId) {
   if (!user || !partnerId) return false;
   if (user.role === 'admin') return true;
 
-  const personId = await resolveUserPersonId(base44, user);
+  const identity = await resolveIdentity(base44, user);
   const queries = [
     base44.asServiceRole.entities.PartnerRepresentative.filter({
       partner_id: partnerId,
@@ -212,11 +184,11 @@ export async function canManagePartnerData(base44, user, partnerId) {
       role_in_partner: 'partner_manager',
     }),
   ];
-  if (personId) {
+  if (identity.personIds.length > 0) {
     queries.push(
       base44.asServiceRole.entities.PartnerRepresentative.filter({
         partner_id: partnerId,
-        person_id: personId,
+        person_id: { $in: identity.personIds },
         is_active: true,
         is_deleted: false,
         role_in_partner: 'partner_manager',
@@ -238,7 +210,7 @@ export async function canManagePartnerData(base44, user, partnerId) {
  */
 export async function resolveUserPartnerIds(base44, user, roleInPartner = undefined) {
   if (!user) return [];
-  const personId = await resolveUserPersonId(base44, user);
+  const identity = await resolveIdentity(base44, user);
   const scope = roleInPartner ? { role_in_partner: roleInPartner } : {};
   const queries = [
     base44.asServiceRole.entities.PartnerRepresentative.filter({
@@ -248,10 +220,10 @@ export async function resolveUserPartnerIds(base44, user, roleInPartner = undefi
       ...scope,
     }),
   ];
-  if (personId) {
+  if (identity.personIds.length > 0) {
     queries.push(
       base44.asServiceRole.entities.PartnerRepresentative.filter({
-        person_id: personId,
+        person_id: { $in: identity.personIds },
         is_active: true,
         is_deleted: false,
         ...scope,

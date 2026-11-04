@@ -9,6 +9,7 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from '../../shared/eventAu
 import { validIds, isValidId } from '../../shared/idGuard.ts';
 import { incPersons } from '../../shared/businessMetrics.ts';
 import { sanitizeAllowlisted } from '../../shared/sanitize.ts';
+import { normalizeEmail } from '../../shared/identity.ts';
 
 const ALLOWED_FIELDS = [
   'full_name', 'contact_email', 'phone', 'company', 'job_title',
@@ -95,6 +96,9 @@ export default async function(req) {
           }
         }
       }
+
+      // P1-A — e-mail de contato sempre gravado na forma canônica.
+      if (data.contact_email) data.contact_email = normalizeEmail(data.contact_email);
 
       if (personId) {
         const found = await svc.entities.Person.filter({ id: personId });

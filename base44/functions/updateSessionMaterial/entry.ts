@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
 
 /**
  * updateSessionMaterial — escrita específica e deliberada (Lote 2 RLS).
@@ -54,21 +55,11 @@ export default async function(req: Request): Promise<Response> {
 
     const eventId = session.event_id;
 
-    // Resolve person_id do caller (Participant matching por person/email).
-    let personId = user.person_id || null;
-    if (!personId && user.email) {
-      const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-      personId = persons?.[0]?.id || null;
-    }
-
-    // Caller precisa ser speaker ativo neste evento.
-    const participants = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
-    const callerParticipant = participants.find(
-      (p) =>
-        p.role_in_event === 'speaker' &&
-        p.registration_status !== 'cancelled' &&
-        ((personId && p.person_id === personId) || (user.email && p.email === user.email))
-    );
+    // Caller precisa ser speaker ativo neste evento — P1-A: identidade canônica
+    // e consulta direcionada (sem varrer os participantes do evento).
+    const identity = await resolveIdentity(base44, user);
+    const myParticipants = await findMyParticipants(base44, identity, eventId);
+    const callerParticipant = myParticipants.find((p) => p.role_in_event === 'speaker');
 
     if (!callerParticipant) {
       return Response.json(
