@@ -19,7 +19,7 @@
 | Fase | Status | Observações |
 |---|---|---|
 | P0-A | **Concluída** | Validação em `base44/shared/commerceValidation.ts`, aplicada em `manageCommerce` (TicketType, SalesLot, Coupon e política de estorno). Recusas por campo verificadas; caminho válido verificado. |
-| P0-B | Não iniciada | Aguarda aceite de P0-A. |
+| P0-B | **Concluída** | Trilha obrigatória bloqueante (`base44/shared/auditTrail.ts`) aplicada em checkout, estorno (solicitação/confirmação/falha), webhook, expiração de pagamento, configuração de comércio e repasses; reconciliação de casos pendentes na varredura de manutenção. Ver §5. |
 | P1-A · P1-B · P1-C · P2 | Não iniciadas | — |
 
 **Decisões provisórias adotadas em P0-A** (§11, itens 1 e 2): preço de lote e desconto fixo até R$ 1.000.000,00; código de cupom de 3 a 40 caracteres (`A-Z 0-9 _ -`). Ajustar aqui se a regra de negócio for outra.
@@ -122,6 +122,24 @@ P0-A concluída (valores já confiáveis antes de virarem trilha).
 - Reenvio do mesmo evento de webhook e retry manual do estorno.
 - Verificação de que nenhum ingresso permanece em `refund_pending` após bloqueio.
 - Verificação de que teto de estorno reservado é devolvido quando a operação não conclui.
+
+### Status de implementação (2026-11-04)
+**Contrato (`base44/shared/auditTrail.ts`):** `writeMandatoryAudit` grava com chave determinística (`audit_key`) derivada da operação — repetição, webhook duplicado e retry não duplicam registro nem efeito; `recordPendingTrail` registra o caso quando o efeito externo já ocorreu e a trilha falhou; `resolvePendingTrails` (executado por `expireStaleReservations`) regrava a trilha e marca `status='resolved'`.
+
+| Operação | Ponto de bloqueio | Compensação em falha |
+|---|---|---|
+| Abertura de checkout (`createPaymentIntent`) | Antes de criar a cobrança | Libera lock, cupom e quantidades reservadas; nenhuma cobrança criada |
+| Solicitação de estorno (`requestRefund`) | Antes de disparar o estorno | Devolve teto de estorno, destrava ingressos (escopado por dono da trava), marca a solicitação como falha; nada é estornado |
+| Estorno confirmado (`stripeWebhook`) | Depois do efeito externo | Webhook responde erro → Stripe reenvia; a trilha é regravada na repetição sem segundo efeito |
+| Pagamento confirmado/cancelado (`stripeWebhook`) | Depois do efeito externo | Idem (reenvio do Stripe conclui a trilha) |
+| Expiração de pagamento (`expireStaleReservations`) | Antes de expirar | Pedido mantido de pé na rodada; a próxima varredura reavalia |
+| Falha de estorno (`requestRefund`) | Depois do efeito externo | Caso pendente registrado; a devolução de teto/travas NÃO é bloqueada (ingresso travado é pior) e a reconciliação conclui a trilha |
+| Configuração de comércio (`manageCommerce`: criar/alterar/excluir tipo, lote, cupom, política, exigência de pagamento) | Antes de concluir a alteração | Alteração revertida ao estado anterior (e código de cupom devolvido/reaplicado); resposta 503 |
+| Repasses (`managePayouts`: comissão da plataforma, comissão do evento, conta recebedora) | Antes de concluir a alteração | Alteração revertida; resposta 503 |
+
+**Exceção consciente:** `setReserve` (reserva de saldo configurada no Stripe) permanece **auxiliar** — é um ajuste no provedor sem efeito local de valor; uma trilha bloqueante depois do efeito externo criaria divergência entre Stripe e app, que é pior do que a ausência do registro. Reavaliar se a reserva passar a ter contrapartida local.
+
+**Validação executada:** sonda temporária (`zzProbeAudit`, removida após o aceite) confirmou idempotência da trilha, bloqueio antes do efeito (exceção `AuditUnavailableError` sem registro) e ciclo pendente → reconciliado. Em produção de teste: criação/exclusão de tipo de ingresso com trilha determinística e alteração/restauração de comissão com trilha antes/depois (`comissao_anterior` → `comissao_nova`).
 
 ---
 
@@ -293,8 +311,8 @@ Estes pontos precisam de decisão antes da fase correspondente; nenhum deve ser 
 | 1 | Teto máximo aceito para preço de lote e para desconto fixo de cupom. | P0-A |
 | 2 | Formato e comprimento padrão de código de cupom. | P0-A |
 | 3 | Relação exata entre janela de estorno integral, percentual parcial e janela sem estorno. | P0-A |
-| 4 | Lista oficial de operações com auditoria obrigatória. | P0-B |
-| 5 | Política de comunicação ao usuário quando a operação fica pendente de trilha. | P0-B |
+| 4 | Lista oficial de operações com auditoria obrigatória. **Resolvida provisoriamente** pela tabela em §5 (Status de implementação) — confirmar se falta alguma operação de dinheiro. | P0-B |
+| 5 | Política de comunicação ao usuário quando a operação fica pendente de trilha. **Adotada provisoriamente:** bloqueio antes do efeito = 503 com mensagem "Nada foi alterado/estornado — tente novamente em instantes"; caso pendente pós-efeito = nunca comunicar sucesso, resposta 502 pedindo verificação em minutos. Confirmar redação final. | P0-B |
 | 6 | Múltiplas Persons para o mesmo usuário: bloquear ou exigir consolidação. | P1-A |
 | 7 | Escopo de consultas de parceiro: por evento ou global. | P1-B |
 | 8 | Campos mínimos por perfil em listas de participantes. | P1-B |
