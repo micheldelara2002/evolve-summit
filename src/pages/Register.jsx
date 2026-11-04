@@ -10,12 +10,20 @@ import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import EmailInUseNotice from "@/components/auth/EmailInUseNotice";
+
+// A plataforma é a autoridade sobre "um e-mail, uma conta": o segundo cadastro
+// com um e-mail existente não cria conta. Qualquer recusa por isso vira o MESMO
+// aviso neutro, sem confirmar a existência do endereço a quem não está logado.
+const EXISTING_ACCOUNT_PATTERN = /already|in use|em uso|taken|duplicate|cadastrad|registrad|registered|já existe|já est[aá]/i;
+const looksLikeExistingAccount = (message) => EXISTING_ACCOUNT_PATTERN.test(String(message || ""));
 
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [emailInUse, setEmailInUse] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -23,6 +31,7 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setEmailInUse(false);
     if (password !== confirmPassword) {
       setError("As senhas não coincidem");
       return;
@@ -32,7 +41,11 @@ export default function Register() {
       await base44.auth.register({ email, password });
       setShowOtp(true);
     } catch (err) {
-      setError(err.message || "Registration failed");
+      if (looksLikeExistingAccount(err?.message)) {
+        setEmailInUse(true);
+      } else {
+        setError(err.message || "Não foi possível criar a conta. Tente novamente.");
+      }
     } finally {
       setLoading(false);
     }
@@ -156,6 +169,8 @@ export default function Register() {
           <span className="bg-card px-3 text-muted-foreground">ou</span>
         </div>
       </div>
+
+      {emailInUse && <EmailInUseNotice />}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

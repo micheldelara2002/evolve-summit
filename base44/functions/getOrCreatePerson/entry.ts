@@ -14,18 +14,26 @@ import { normalizeEmail } from "../../shared/identity.ts";
 // email belongs to a registered user — the only unauthenticated path requires a valid
 // user_id, which the caller cannot guess or enumerate.
 //
-// This preserves the "Criar Person no Cadastro" workflow (trigger provides user_id)
-// while blocking: email enumeration, creation for non-users, impersonation.
+// CADASTRO ÚNICO (2026-11-04): uma conta por e-mail é garantida pela autenticação da
+// plataforma (o segundo signup com o mesmo e-mail não cria conta). Aqui o e-mail
+// normalizado é a chave do cadastro global de pessoa: se já existe Person ativa com
+// ele, NENHUMA segunda é criada — a existente é vinculada ao usuário. Mais de uma
+// correspondência é ambiguidade: o vínculo é interrompido e a revisão é exigida.
+// O vínculo explícito (User.person_id) é PERSISTIDO, para que a identidade não
+// dependa do e-mail nas próximas requisições.
 export default async function(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const { user_id } = body;
 
     const base44 = createClientFromRequest(req);
+    const svc = base44.asServiceRole;
 
     let resolvedEmail = null;
     let resolvedName = null;
     let authenticatedUser = null;
+    // Conta (User) que está sendo ligada a uma Person nesta chamada.
+    let accountUser = null;
 
     // 1. Authenticated path — identity from auth.me(), never from client body.
     //    P1: requireActiveUser blocks account_status='deleted' from mutating.
@@ -33,6 +41,7 @@ export default async function(req) {
       const guard = await requireActiveUser(base44);
       if (guard.ok) {
         authenticatedUser = guard.user;
+        accountUser = guard.user;
         resolvedEmail = guard.user.email;
         resolvedName = guard.user.full_name || "Novo Usuário";
       } else if (guard.status === 403) {
@@ -52,7 +61,7 @@ export default async function(req) {
       if (!user_id) {
         return Response.json({ error: "identity could not be established — user_id required" }, { status: 401 });
       }
-      const users = await base44.asServiceRole.entities.User.filter({ id: user_id });
+      const users = await svc.entities.User.filter({ id: user_id });
       if (users.length === 0) {
         return Response.json({ error: "identity does not match a registered user" }, { status: 403 });
       }
@@ -65,17 +74,27 @@ export default async function(req) {
       if (ageMinutes > 5) {
         return Response.json({ error: "identity window expired" }, { status: 403 });
       }
+      accountUser = systemUser;
       resolvedEmail = systemUser.email;
       resolvedName = systemUser.full_name || "Novo Usuário";
     }
 
+    // Persiste o vínculo explícito User → Person. É o que torna a identidade
+    // estável entre sessões (o e-mail deixa de ser a única âncora).
+    async function linkAccountToPerson(personId: string) {
+      if (!accountUser?.id || !personId) return;
+      if (accountUser.person_id === personId) return;
+      try {
+        await svc.entities.User.update(accountUser.id, { person_id: personId });
+      } catch (linkErr: any) {
+        console.error('[getOrCreatePerson] vínculo person_id não persistido:', linkErr?.message || linkErr);
+      }
+    }
+
     // 2b. P1-A — vínculo explícito tem PRECEDÊNCIA sobre o e-mail: o sistema
     //     já declarou quem é esta pessoa.
-    const linkedPersonId = (() => {
-      try { return authenticatedUser?.person_id || null; } catch { return null; }
-    })();
-    if (linkedPersonId) {
-      const linked = await base44.asServiceRole.entities.Person.filter({ id: linkedPersonId });
+    if (accountUser?.person_id) {
+      const linked = await svc.entities.Person.filter({ id: accountUser.person_id });
       if (linked?.[0]?.id) return Response.json({ status: "exists", person_id: linked[0].id });
     }
 
@@ -83,7 +102,7 @@ export default async function(req) {
     //    P1-A — e-mail normalizado; MAIS DE UMA correspondência é ambiguidade,
     //    não escolha: nada é criado e o chamador é informado.
     resolvedEmail = normalizeEmail(resolvedEmail);
-    const existing = await base44.asServiceRole.entities.Person.filter({
+    const existing = await svc.entities.Person.filter({
       contact_email: resolvedEmail,
       is_active: { $ne: false },
     });
@@ -96,11 +115,12 @@ export default async function(req) {
       }, { status: 409 });
     }
     if (existing.length === 1) {
+      await linkAccountToPerson(existing[0].id);
       return Response.json({ status: "exists", person_id: existing[0].id });
     }
 
     // 4. Create Person for the resolved (trusted) identity.
-    const person = await base44.asServiceRole.entities.Person.create({
+    const person = await svc.entities.Person.create({
       full_name: resolvedName,
       contact_email: resolvedEmail,
       is_active: true,
@@ -110,6 +130,7 @@ export default async function(req) {
     // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
     try { await incPersons(base44.asServiceRole, person.created_date); } catch {}
 
+    await linkAccountToPerson(person.id);
     return Response.json({ status: "created", person_id: person.id });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
