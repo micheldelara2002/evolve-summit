@@ -6,7 +6,7 @@ import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess, lockTicketsForRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
 import { extractClientIp } from "../../shared/commerceAudit.ts";
-import { buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -476,6 +476,36 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (refund.status === "failed") {
+      // P0-B — trilha da FALHA de estorno: o valor não voltou ao comprador e o
+      // teto/travas serão devolvidos. A trilha não bloqueia a devolução (deixar
+      // ingresso travado por falta de trilha é pior); se ela falhar, o caso é
+      // registrado como pendente e a reconciliação o conclui.
+      const failTrail = {
+        action: "status_change",
+        entity_type: "RefundRequest",
+        entity_id: refundRequest.id,
+        user_id: user.id,
+        user_name: user.full_name || "",
+        event_id: order.event_id,
+        ip_address: clientIp,
+        audit_key: buildAuditKey("estorno_falhou", refundRequest.id),
+        provider: "stripe",
+        external_reference: payment.intent_id || "",
+        amount: refundAmountCents / 100,
+        details: JSON.stringify({
+          type: "estorno_falhou",
+          order_id: order.id,
+          payment_id: payment.id,
+          valor_solicitado: refundAmountCents / 100,
+          itens: itemIds?.length || 0,
+        }),
+      };
+      try {
+        await writeMandatoryAudit(svc, failTrail);
+      } catch (auditErr: any) {
+        console.error('[requestRefund] trilha da falha indisponível — caso pendente:', auditErr?.message || auditErr);
+        await recordPendingTrail(svc, { ...failTrail, failure_reason: auditErr?.message || String(auditErr) });
+      }
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
       try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
       await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);

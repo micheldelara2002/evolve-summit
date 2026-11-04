@@ -8,6 +8,7 @@ import {
   retrieveConnectedAccount,
   updateConnectedAccountPayoutSettings,
 } from "../../shared/stripeClient.ts";
+import { auditHash, buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Stripe Connect — o organizador do evento recebe as vendas direto na conta
 // conectada dele (destination charge). A plataforma retém apenas a comissão
@@ -142,6 +143,34 @@ export default async function(req: Request): Promise<Response> {
     const { action, eventId, legal_name, legal_document_number, percent, commission_percent, payout_account_id, amount } = body;
 
     if (!action) return Response.json({ error: "Ação obrigatória." }, { status: 400 });
+
+    // ===== P0-B — TRILHA OBRIGATÓRIA DE REPASSE =====
+    // Comissão (plataforma ou por evento) e vinculação da conta recebedora
+    // decidem PARA ONDE o dinheiro vai: a alteração só CONCLUI com a trilha
+    // confirmada (D1). Falha ⇒ a alteração é revertida e a resposta é 503 —
+    // nenhum valor financeiro muda sem evidência correspondente. Chave
+    // determinística (operação + hash do novo estado): repetir não duplica.
+    const trailPayoutChange = async (
+      op: string,
+      entityTypeApplied: string,
+      entityIdApplied: string,
+      payloadForHash: any,
+      details: Record<string, any>,
+    ): Promise<void> => {
+      await writeMandatoryAudit(svc, {
+        action: "update",
+        entity_type: entityTypeApplied,
+        entity_id: entityIdApplied,
+        user_id: user.id,
+        user_name: user.full_name || user.email || "",
+        event_id: eventId || "",
+        audit_key: buildAuditKey("config_repasse_alterada", `${op}:${entityIdApplied}`, auditHash(payloadForHash)),
+        provider: "stripe",
+        amount: 0,
+        details: JSON.stringify(details),
+      });
+    };
+    const PAYOUT_TRAIL_ERROR = "Não foi possível registrar a trilha desta alteração de repasse. Nada foi alterado — tente novamente em instantes.";
 
     const loadEvent = async () => {
       const event = (await svc.entities.Event.filter({ id: eventId, is_deleted: false }))[0];
@@ -323,10 +352,30 @@ export default async function(req: Request): Promise<Response> {
         if (!isAdmin) return Response.json({ error: "Sem permissão." }, { status: 403 });
         const p = Math.min(100, Math.max(0, Number(percent) || 0));
         const existing = await svc.entities.PlatformSetting.filter({ key: "commission" });
+        const previousJson = existing.length > 0 ? existing[0].value_json ?? null : null;
+        const newJson = JSON.stringify({ default_commission_percent: p });
+        let createdSetting: any = null;
         if (existing.length > 0) {
-          await svc.entities.PlatformSetting.update(existing[0].id, { value_json: JSON.stringify({ default_commission_percent: p }) });
+          await svc.entities.PlatformSetting.update(existing[0].id, { value_json: newJson });
         } else {
-          await svc.entities.PlatformSetting.create({ key: "commission", value_json: JSON.stringify({ default_commission_percent: p }) });
+          createdSetting = await svc.entities.PlatformSetting.create({ key: "commission", value_json: newJson });
+        }
+        try {
+          await trailPayoutChange("comissao_plataforma", "PlatformSetting", existing[0]?.id || createdSetting?.id || "commission", { default_commission_percent: p }, {
+            type: "comissao_plataforma_alterada",
+            anterior: previousJson,
+            novo: newJson,
+          });
+        } catch (auditErr: any) {
+          try {
+            if (existing.length > 0) {
+              await svc.entities.PlatformSetting.update(existing[0].id, { value_json: previousJson });
+            } else if (createdSetting) {
+              await svc.entities.PlatformSetting.delete(createdSetting.id);
+            }
+          } catch {}
+          console.error('[managePayouts] trilha obrigatória indisponível (comissão da plataforma):', auditErr?.message || auditErr);
+          return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
         }
         return Response.json({ ok: true, platform_default: p });
       }
@@ -334,24 +383,62 @@ export default async function(req: Request): Promise<Response> {
       if (action === "setEventCommission") {
         if (!isAdmin) return Response.json({ error: "Sem permissão." }, { status: 403 });
         if (!eventId) return Response.json({ error: "eventId obrigatório." }, { status: 400 });
-        await loadEvent();
+        const existingEvent = await loadEvent();
+        const previousCommission = existingEvent.commission_percent ?? null;
         const hasOverride = commission_percent !== null && commission_percent !== undefined && commission_percent !== "";
         const value = hasOverride ? Math.min(100, Math.max(0, Number(commission_percent))) : null;
         await svc.entities.Event.update(eventId, { commission_percent: value });
+        try {
+          await trailPayoutChange("comissao_evento", "Event", eventId, { commission_percent: value }, {
+            type: "comissao_evento_alterada",
+            comissao_anterior: previousCommission,
+            comissao_nova: value,
+          });
+        } catch (auditErr: any) {
+          try { await svc.entities.Event.update(eventId, { commission_percent: previousCommission }); } catch {}
+          console.error('[managePayouts] trilha obrigatória indisponível (comissão do evento):', auditErr?.message || auditErr);
+          return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
+        }
         return Response.json({ ok: true, override: value });
       }
 
       if (action === "linkAccount") {
         if (!isAdmin) return Response.json({ error: "Sem permissão." }, { status: 403 });
         if (!eventId) return Response.json({ error: "eventId obrigatório." }, { status: 400 });
-        await loadEvent();
+        const linkEvent = await loadEvent();
+        const previousAccountId = linkEvent.payout_account_id || "";
+        const revertLink = async () => {
+          try { await svc.entities.Event.update(eventId, { payout_account_id: previousAccountId }); } catch {}
+        };
         if (!payout_account_id) {
           await svc.entities.Event.update(eventId, { payout_account_id: "" });
+          try {
+            await trailPayoutChange("conta_recebedora", "Event", eventId, { payout_account_id: "" }, {
+              type: "conta_recebedora_alterada",
+              conta_anterior: previousAccountId,
+              conta_nova: "",
+            });
+          } catch (auditErr: any) {
+            await revertLink();
+            console.error('[managePayouts] trilha obrigatória indisponível (desvínculo):', auditErr?.message || auditErr);
+            return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
+          }
           return Response.json({ ok: true, linked: null });
         }
         const acct = (await svc.entities.PayoutAccount.filter({ id: payout_account_id, is_deleted: false }))[0];
         if (!acct) return Response.json({ error: "Conta não encontrada." }, { status: 404 });
         await svc.entities.Event.update(eventId, { payout_account_id: acct.id });
+        try {
+          await trailPayoutChange("conta_recebedora", "Event", eventId, { payout_account_id: acct.id }, {
+            type: "conta_recebedora_alterada",
+            conta_anterior: previousAccountId,
+            conta_nova: acct.id,
+          });
+        } catch (auditErr: any) {
+          await revertLink();
+          console.error('[managePayouts] trilha obrigatória indisponível (vínculo):', auditErr?.message || auditErr);
+          return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
+        }
         return Response.json({ ok: true, linked: sanitizeAccount(acct) });
       }
 
