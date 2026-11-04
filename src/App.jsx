@@ -6,6 +6,7 @@ import PageNotFound from "./lib/PageNotFound";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import AccountDeletedScreen from "@/components/AccountDeletedScreen";
+import AccountNotProvisionedScreen from "@/components/AccountNotProvisionedScreen";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import EventManageRoute from "@/components/EventManageRoute";
@@ -95,6 +96,8 @@ const AuthenticatedApp = () => {
       return <UserNotRegisteredError />;
     } else if (authError.type === "account_deleted") {
       return <AccountDeletedScreen />;
+    } else if (authError.type === "account_not_provisioned") {
+      return <AccountNotProvisionedScreen message={authError.message} />;
     } else if (authError.type === "auth_required") {
       navigateToLogin();
       return null;

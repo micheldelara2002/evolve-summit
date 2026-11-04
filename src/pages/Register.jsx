@@ -11,6 +11,7 @@ import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import EmailInUseNotice from "@/components/auth/EmailInUseNotice";
+import { provisionMyPerson } from "@/lib/accountProvisioning";
 
 // A plataforma é a autoridade sobre "um e-mail, uma conta": o segundo cadastro
 // com um e-mail existente não cria conta. Qualquer recusa por isso vira o MESMO
@@ -27,6 +28,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [provisioningFailed, setProvisioningFailed] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,11 +55,21 @@ export default function Register() {
 
   const handleVerify = async () => {
     setError("");
+    setProvisioningFailed(false);
     setLoading(true);
     try {
       const result = await base44.auth.verifyOtp({ email, otpCode });
       if (result?.access_token) {
         base44.auth.setToken(result.access_token);
+      }
+      // Cadastro atômico (2026-11-04) — a conta só existe com a Person vinculada.
+      // Sem o vínculo confirmado no servidor a sessão não é aproveitada e o app
+      // não abre: o cadastro é dado como não concluído.
+      const provisioning = await provisionMyPerson();
+      if (!provisioning.ok) {
+        setProvisioningFailed(true);
+        setError(provisioning.message);
+        return;
       }
       window.location.href = safeReturnTo();
     } catch (err) {
@@ -95,6 +107,13 @@ export default function Register() {
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
             {error}
           </div>
+        )}
+        {provisioningFailed && (
+          <p className="text-center text-sm text-muted-foreground mb-4">
+            <Link to="/login" className="text-primary font-medium hover:underline">
+              Entrar para tentar novamente
+            </Link>
+          </p>
         )}
         <div className="flex justify-center mb-6">
           <InputOTP

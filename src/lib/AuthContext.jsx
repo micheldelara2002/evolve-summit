@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 import { loadPartnerReps } from '@/lib/access';
+import { provisionMyPerson } from '@/lib/accountProvisioning';
 
 const AuthContext = createContext();
 
@@ -104,6 +105,20 @@ export const AuthProvider = ({ children }) => {
         setAuthChecked(true);
         return;
       }
+      // CADASTRO ATÔMICO (2026-11-04) — User e Person nascem juntos. Enquanto o
+      // vínculo não estiver CONFIRMADO no servidor, nenhuma área do app é
+      // liberada: a conta completa é a única que abre o app.
+      const provisioning = await provisionMyPerson();
+      if (!provisioning.ok) {
+        setAuthError({ type: 'account_not_provisioned', message: provisioning.message });
+        setUser(null);
+        setIsAuthenticated(false);
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
+        return;
+      }
+      currentUser.person_id = provisioning.personId;
+
       currentUser.partner_reps = await loadPartnerReps(currentUser).catch(() => []);
       setUser(currentUser);
       setIsAuthenticated(true);
