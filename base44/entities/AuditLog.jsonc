@@ -1,6 +1,7 @@
 {
   "name": "AuditLog",
   "type": "object",
+  "description": "Trilha de auditoria. P0-B (2026-11-04): as transi\u00e7\u00f5es financeiras usam TRILHA OBRIGAT\u00d3RIA (mandatory=true, status='recorded') \u2014 a opera\u00e7\u00e3o s\u00f3 conclui com a grava\u00e7\u00e3o CONFIRMADA (shared/auditTrail). audit_key \u00e9 a chave de idempot\u00eancia derivada da opera\u00e7\u00e3o (nunca do hor\u00e1rio): webhook duplicado, retry ou replay n\u00e3o geram segundo registro nem segundo efeito financeiro. Quando o efeito externo j\u00e1 ocorreu (ex.: Stripe confirmou o pagamento) e a trilha falhou, o caso \u00e9 registrado como status='pending' com provider, refer\u00eancia externa, valor e motivo \u2014 e a rotina de manuten\u00e7\u00e3o regrava a trilha e marca status='resolved'. Registros sem mandatory/status s\u00e3o auxiliares (telemetria, engajamento) e permanecem best-effort.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -30,7 +31,7 @@
     },
     "user_id": {
       "type": "string",
-      "description": "ID do usu\u00e1rio que executou"
+      "description": "ID do usu\u00e1rio que executou (ou 'system' quando autom\u00e1tico)"
     },
     "user_name": {
       "type": "string",
@@ -42,6 +43,51 @@
     },
     "ip_address": {
       "type": "string"
+    },
+    "audit_key": {
+      "type": "string",
+      "description": "P0-B \u2014 Chave determin\u00edstica de idempot\u00eancia da trilha: '<opera\u00e7\u00e3o>|<refer\u00eancia>[|<extra>]'. Uma opera\u00e7\u00e3o repetida (webhook duplicado, retry, replay) nunca duplica o registro obrigat\u00f3rio. Casos pendentes usam a mesma chave com o sufixo '|pending'."
+    },
+    "mandatory": {
+      "type": "boolean",
+      "default": false,
+      "description": "P0-B \u2014 true = trilha obrigat\u00f3ria de opera\u00e7\u00e3o financeira (grava\u00e7\u00e3o confirmada faz parte do contrato da opera\u00e7\u00e3o). false/ausente = trilha auxiliar best-effort."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "recorded",
+        "pending",
+        "resolved"
+      ],
+      "default": "recorded",
+      "enumColors": [
+        "green",
+        "yellow",
+        "blue"
+      ],
+      "description": "P0-B \u2014 recorded = trilha gravada e confirmada; pending = efeito externo ocorreu mas a trilha falhou (aguarda reconcilia\u00e7\u00e3o, sem comunicar sucesso); resolved = caso pendente conclu\u00eddo pela rotina de manuten\u00e7\u00e3o."
+    },
+    "provider": {
+      "type": "string",
+      "description": "P0-B \u2014 Provedor do efeito externo (stripe, free) \u2014 usado na reconcilia\u00e7\u00e3o do caso pendente."
+    },
+    "external_reference": {
+      "type": "string",
+      "description": "P0-B \u2014 Refer\u00eancia externa da opera\u00e7\u00e3o (ex.: PaymentIntent, charge ou refund do Stripe) para confer\u00eancia no provedor."
+    },
+    "amount": {
+      "type": "number",
+      "description": "P0-B \u2014 Valor financeiro da opera\u00e7\u00e3o em BRL (quando aplic\u00e1vel)"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "P0-B \u2014 Motivo da falha de trilha no caso pendente / desfecho da reconcilia\u00e7\u00e3o"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "P0-B \u2014 Quando o caso pendente foi conclu\u00eddo pela reconcilia\u00e7\u00e3o"
     }
   },
   "required": [

@@ -6,6 +6,7 @@ import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_M
 import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
 import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
+import { buildAuditKey, resolvePendingTrails, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -245,6 +246,35 @@ export default async function(req: Request): Promise<Response> {
         // se ainda estiver 'pending'. Falha no CAS = outro caminho (webhook/
         // re-checkout/pagamento confirmado) já moveu o estado — não
         // sobrescreve; o pedido fica para reavaliação na próxima varredura.
+        // P0-B — trilha obrigatória ANTES de expirar o pagamento: sem trilha
+        // confirmada a transição não acontece nesta rodada (o pedido fica de pé
+        // e a próxima varredura reavalia) — nenhum estado financeiro sem
+        // evidência correspondente.
+        try {
+          await writeMandatoryAudit(svc, {
+            action: 'status_change',
+            entity_type: 'Payment',
+            entity_id: p.id,
+            user_id: 'system',
+            user_name: 'Manutenção automática',
+            event_id: order.event_id,
+            audit_key: buildAuditKey('pagamento_expirado', p.id),
+            provider: p.provider || 'stripe',
+            external_reference: p.intent_id || '',
+            amount: Number(p.amount) || 0,
+            details: JSON.stringify({
+              type: 'pagamento_expirado',
+              order_id: order.id,
+              payment_id: p.id,
+              intent_id: p.intent_id || '',
+              motivo: 'Reserva expirada (checkout abandonado).',
+            }),
+          });
+        } catch (auditErr: any) {
+          console.error('[expireStaleReservations] trilha obrigatória indisponível (expiração):', p.id, auditErr?.message || auditErr);
+          keepAlive = true;
+          break;
+        }
         const payClaim = await svc.entities.Payment.updateMany(
           { id: p.id, status: 'pending' },
           { $set: { status: 'expired', error_reason: 'Checkout abandonado (reserva expirada).' } }
@@ -673,6 +703,24 @@ export default async function(req: Request): Promise<Response> {
       console.error('[expireStaleReservations] campaign sweep failed:', campaignSweepErr?.message || campaignSweepErr);
     }
 
+    // ===== P0-B — RECONCILIAÇÃO DE TRILHA PENDENTE =====
+    // Casos em que o efeito externo (Stripe) já ocorreu mas a trilha obrigatória
+    // falhou ficam com status 'pending'. Aqui a trilha é regravada e o desfecho
+    // registrado — nada fica pendente indefinidamente. Idempotente: rodar de
+    // novo não duplica nem reescreve casos já resolvidos.
+    let trailResolved = 0;
+    let trailPending = 0;
+    try {
+      const trail = await resolvePendingTrails(svc, 50);
+      trailResolved = trail.resolved;
+      trailPending = trail.failed;
+      if (trail.examined > 0) {
+        console.log('[expireStaleReservations] trilha: examinados=%d resolvidos=%d pendentes=%d', trail.examined, trail.resolved, trail.failed);
+      }
+    } catch (trailErr: any) {
+      console.error('[expireStaleReservations] reconciliação de trilha falhou:', trailErr?.message || trailErr);
+    }
+
     // Resumo da rodada persistido na config (resposta das chamadas throttled)
     // + auditoria da execução real (sem PII — apenas contadores).
     const summary = {
@@ -692,6 +740,9 @@ export default async function(req: Request): Promise<Response> {
       // Campanhas agendadas (P2 2026-09-29).
       campaigns_dispatched: campaignsDispatched,
       campaigns_failed: campaignsFailed,
+      // Trilha obrigatória (P0-B): casos concluídos nesta rodada e ainda pendentes.
+      audit_trail_resolved: trailResolved,
+      audit_trail_pending: trailPending,
     };
     if (maintenanceSetting) {
       try {

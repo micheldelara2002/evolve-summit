@@ -3,6 +3,7 @@ import { secrets } from "base44:runtime";
 import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
 import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
+import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
 //   payment_intent.succeeded  → idempotent fulfillment (participants + tickets + email)
@@ -47,6 +48,51 @@ export default async function(req: Request): Promise<Response> {
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false });
+
+      // ===== P0-B — TRILHA OBRIGATÓRIA (pagamento confirmado) =====
+      // Efeito externo já ocorreu (o Stripe cobrou): nada é reenviado ao
+      // provedor. Sem trilha confirmada NÃO há emissão de ingressos nem
+      // resposta de sucesso — o caso fica pendente e rastreável, e o 5xx faz o
+      // Stripe reenviar (o fulfillment é idempotente).
+      const paidAmountBRL = (Number(pi.amount_received ?? pi.amount) || 0) / 100;
+      try {
+        await writeMandatoryAudit(svc, {
+          action: "status_change",
+          entity_type: "Payment",
+          entity_id: payment.id,
+          user_id: "system",
+          user_name: "Stripe",
+          event_id: order.event_id,
+          audit_key: buildAuditKey("pagamento_confirmado", pi.id),
+          provider: "stripe",
+          external_reference: pi.id,
+          amount: paidAmountBRL,
+          details: JSON.stringify({
+            type: "pagamento_confirmado",
+            order_id: order.id,
+            payment_id: payment.id,
+            intent_id: pi.id,
+            valor_pago: paidAmountBRL,
+            valor_pedido: order.total || 0,
+            moeda: pi.currency || "brl",
+          }),
+        });
+      } catch (auditErr: any) {
+        await recordPendingTrail(svc, {
+          action: "status_change",
+          entity_type: "Payment",
+          entity_id: payment.id,
+          event_id: order.event_id,
+          audit_key: buildAuditKey("pagamento_confirmado", pi.id),
+          provider: "stripe",
+          external_reference: pi.id,
+          amount: paidAmountBRL,
+          failure_reason: auditErr?.message || String(auditErr),
+          details: JSON.stringify({ type: "pagamento_confirmado", order_id: order.id, payment_id: payment.id, intent_id: pi.id }),
+        });
+        console.error("[stripeWebhook] trilha obrigatória indisponível (succeeded):", auditErr?.message || auditErr);
+        return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
+      }
 
       // Captura a taxa do Stripe desta venda (balance_transaction do charge) —
       // best-effort, nunca bloqueia o fulfillment; gravação idempotente (só
@@ -95,6 +141,44 @@ export default async function(req: Request): Promise<Response> {
       const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
       if (payment && payment.status === "pending") {
+        // P0-B — trilha obrigatória antes de encerrar pagamento e devolver
+        // reservas: sem trilha confirmada o encerramento não acontece (o Stripe
+        // reenvia o evento; a expiração é idempotente).
+        try {
+          await writeMandatoryAudit(svc, {
+            action: "status_change",
+            entity_type: "Payment",
+            entity_id: payment.id,
+            user_id: "system",
+            user_name: "Stripe",
+            event_id: payment.event_id,
+            audit_key: buildAuditKey("pagamento_cancelado", pi.id),
+            provider: "stripe",
+            external_reference: pi.id,
+            amount: (Number(pi.amount) || 0) / 100,
+            details: JSON.stringify({
+              type: "pagamento_cancelado",
+              order_id: payment.order_id,
+              payment_id: payment.id,
+              intent_id: pi.id,
+            }),
+          });
+        } catch (auditErr: any) {
+          await recordPendingTrail(svc, {
+            action: "status_change",
+            entity_type: "Payment",
+            entity_id: payment.id,
+            event_id: payment.event_id,
+            audit_key: buildAuditKey("pagamento_cancelado", pi.id),
+            provider: "stripe",
+            external_reference: pi.id,
+            amount: (Number(pi.amount) || 0) / 100,
+            failure_reason: auditErr?.message || String(auditErr),
+            details: JSON.stringify({ type: "pagamento_cancelado", order_id: payment.order_id, payment_id: payment.id, intent_id: pi.id }),
+          });
+          console.error("[stripeWebhook] trilha obrigatória indisponível (canceled):", auditErr?.message || auditErr);
+          return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
+        }
         await expirePaymentOnce(svc, payment);
       }
       return Response.json({ received: true });
@@ -131,6 +215,51 @@ export default async function(req: Request): Promise<Response> {
       // job agendado: cancela ingressos/participantes afetados, atribui o
       // valor cumulativo autoritativo, alerta ingresso já utilizado e
       // confirma a solicitação correspondente.
+      // ===== P0-B — TRILHA OBRIGATÓRIA (estorno confirmado) =====
+      // O dinheiro já voltou no Stripe: nada é reenviado ao provedor. Sem trilha
+      // confirmada o estado local não é alterado e nenhuma tela informa sucesso;
+      // o reenvio do Stripe (idempotente) conclui depois.
+      const refundedAmountBRL = (Number(charge.amount_refunded) || 0) / 100;
+      try {
+        await writeMandatoryAudit(svc, {
+          action: "status_change",
+          entity_type: "Payment",
+          entity_id: payment.id,
+          user_id: "system",
+          user_name: "Stripe",
+          event_id: order.event_id,
+          audit_key: buildAuditKey("estorno_confirmado", charge.id, charge.amount_refunded || 0),
+          provider: "stripe",
+          external_reference: charge.id,
+          amount: refundedAmountBRL,
+          details: JSON.stringify({
+            type: "estorno_confirmado",
+            order_id: order.id,
+            payment_id: payment.id,
+            intent_id: piId,
+            charge_id: charge.id,
+            refund_request_id: matched?.id || "",
+            valor_estornado_acumulado: refundedAmountBRL,
+            valor_pago: (Number(charge.amount) || 0) / 100,
+          }),
+        });
+      } catch (auditErr: any) {
+        await recordPendingTrail(svc, {
+          action: "status_change",
+          entity_type: "Payment",
+          entity_id: payment.id,
+          event_id: order.event_id,
+          audit_key: buildAuditKey("estorno_confirmado", charge.id, charge.amount_refunded || 0),
+          provider: "stripe",
+          external_reference: charge.id,
+          amount: refundedAmountBRL,
+          failure_reason: auditErr?.message || String(auditErr),
+          details: JSON.stringify({ type: "estorno_confirmado", order_id: order.id, payment_id: payment.id, intent_id: piId, charge_id: charge.id }),
+        });
+        console.error("[stripeWebhook] trilha obrigatória indisponível (refunded):", auditErr?.message || auditErr);
+        return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
+      }
+
       const outcome = await applyConfirmedStripeRefund(
         svc, payment, order, matched,
         (charge.amount_refunded || 0), (charge.amount || 0)

@@ -9,6 +9,7 @@ import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeCli
 import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse } from "../../shared/commerceFulfillment.ts";
 import { claimCheckoutLock, attachCheckoutLock, releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
+import { buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
 // Reserves lot quantities atomically (cannot oversell). Returns the client secret
@@ -399,6 +400,73 @@ export default async function(req: Request): Promise<Response> {
       orderItems.push(oi);
     }
 
+    // ===== P0-B — TRILHA OBRIGATÓRIA ANTES DE ABRIR A COBRANÇA =====
+    // Sem trilha confirmada nenhuma cobrança é criada (D1). A chave é
+    // determinística por pedido — retry/duas abas não duplicam o registro.
+    // Falha aqui devolve estoque, cupom e lock: nada fica preso e nenhum
+    // PaymentIntent existe no provedor.
+    const checkoutAuditKey = buildAuditKey("checkout_iniciado", order.id);
+    const checkoutDetails = {
+      type: "compra_iniciada",
+      gratuito: totals.total <= 0,
+      comprador: { id: user.id, nome: user.full_name || "", email: user.email || "" },
+      itens: lines.map((l: any) => ({
+        tipo: l.ticket_type_name,
+        titular: l.holder_name,
+        email: l.holder_email,
+        lote: lotById[l.lot_id]?.name || l.lot_id,
+        valor: l.unit_price,
+      })),
+      subtotal: totals.subtotal,
+      desconto: totals.discount,
+      cupom: coupon?.code || "",
+      total: totals.total,
+    };
+    try {
+      await writeMandatoryAudit(svc, {
+        action: "create",
+        entity_type: "Order",
+        entity_id: order.id,
+        user_id: user.id,
+        user_name: user.full_name || user.email || "",
+        event_id: eventId,
+        ip_address: clientIp,
+        audit_key: checkoutAuditKey,
+        provider: totals.total <= 0 ? "free" : "stripe",
+        amount: totals.total,
+        details: JSON.stringify(checkoutDetails),
+      });
+    } catch (auditErr: any) {
+      for (const lotId of reservedLots) {
+        try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
+      }
+      await releaseCouponUse(svc, order);
+      try { await svc.entities.Order.update(order.id, { status: "cancelled", error_reason: "Trilha de auditoria indisponível." }); } catch {}
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
+      console.error("[createPaymentIntent] trilha obrigatória indisponível:", auditErr?.message || auditErr);
+      return Response.json({
+        error: "Não foi possível registrar a trilha desta compra. Nenhuma cobrança foi criada — tente novamente em instantes.",
+      }, { status: 503 });
+    }
+
+    // A trilha já existe; o identificador do provedor é anexado em seguida
+    // (best-effort — o Payment guarda o mesmo intent_id).
+    const enrichCheckoutTrail = async (extra: Record<string, any>) => {
+      try {
+        await svc.entities.AuditLog.updateMany(
+          { audit_key: checkoutAuditKey },
+          {
+            $set: {
+              external_reference: String(extra.intent_id || ""),
+              details: JSON.stringify({ ...checkoutDetails, ...extra }),
+            },
+          },
+        );
+      } catch (enrichErr: any) {
+        console.error("[createPaymentIntent] enriquecimento da trilha falhou:", enrichErr?.message || enrichErr);
+      }
+    };
+
     // Free order (100% discount) — skip Stripe, fulfill immediately.
     if (totals.total <= 0) {
       const freePayment = await svc.entities.Payment.create({
@@ -429,33 +497,12 @@ export default async function(req: Request): Promise<Response> {
       }
       const freshPayment = (await svc.entities.Payment.filter({ id: freePayment.id }))[0];
       const freeFulfillmentStatus = freshPayment?.fulfillment_status || (freeFulfillmentError ? 'pending_retry' : 'fulfilled');
-      // Trail — compra gratuita registrada com comprador, carrinho, valores e IP.
-      await writeAudit(svc, {
-        action: 'create',
-        entity_type: 'Order',
-        entity_id: order.id,
-        user_id: user.id,
-        user_name: user.full_name || user.email || '',
-        event_id: eventId,
-        ip_address: clientIp,
-        details: JSON.stringify({
-          type: 'compra_iniciada',
-          gratuito: true,
-          payment_id: freePayment.id,
-          intent_id: freePayment.intent_id,
-          comprador: { id: user.id, nome: user.full_name || '', email: user.email || '' },
-          itens: lines.map((l: any) => ({
-            tipo: l.ticket_type_name,
-            titular: l.holder_name,
-            email: l.holder_email,
-            lote: lotById[l.lot_id]?.name || l.lot_id,
-            valor: l.unit_price,
-          })),
-          subtotal: totals.subtotal,
-          desconto: totals.discount,
-          cupom: coupon?.code || '',
-          total: totals.total,
-        }),
+      // P0-B — a trilha já foi gravada e confirmada antes da emissão; aqui só o
+      // desfecho da emissão é anexado (best-effort).
+      await enrichCheckoutTrail({
+        payment_id: freePayment.id,
+        intent_id: freePayment.intent_id,
+        fulfillment_status: freeFulfillmentStatus,
       });
       // P2 — o uso do cupom é contabilizado dentro do fulfillOrder (idempotente,
       // com marker no pedido) — não aqui na criação.
@@ -523,6 +570,18 @@ export default async function(req: Request): Promise<Response> {
       await releaseCouponUse(svc, order);
       await svc.entities.Order.update(order.id, { status: 'cancelled', error_reason: err?.message });
       console.error('[createPaymentIntent] Stripe error:', err?.message || err);
+      // Trilha compensatória (auxiliar): a trilha obrigatória registrou o início
+      // do checkout; este registro diz que a cobrança não chegou a existir.
+      await writeAudit(svc, {
+        action: 'status_change',
+        entity_type: 'Order',
+        entity_id: order.id,
+        user_id: user.id,
+        user_name: user.full_name || user.email || '',
+        event_id: eventId,
+        ip_address: clientIp,
+        details: JSON.stringify({ type: 'checkout_falhou', motivo: err?.message || 'erro Stripe' }),
+      });
       await releaseCheckoutLock(svc, buyerPersonId, eventId);
       return Response.json({ error: `Falha ao iniciar pagamento: ${err?.message || 'erro Stripe'}` }, { status: 502 });
     }
@@ -545,36 +604,12 @@ export default async function(req: Request): Promise<Response> {
       application_fee_amount: applicationFeeCents ? applicationFeeCents / 100 : 0,
     });
 
-    // Trail — compra com pagamento Stripe registrada com comprador, carrinho,
-    // valores, identificador único da transação (intent_id) e IP do comprador.
-    await writeAudit(svc, {
-      action: 'create',
-      entity_type: 'Order',
-      entity_id: order.id,
-      user_id: user.id,
-      user_name: user.full_name || user.email || '',
-      event_id: eventId,
-      ip_address: clientIp,
-      details: JSON.stringify({
-        type: 'compra_iniciada',
-        gratuito: false,
-        payment_id: payment.id,
-        intent_id: intent.id,
-        destino_conta_stripe: destinationAccountId || '',
-        comissao_plataforma: applicationFeeCents ? applicationFeeCents / 100 : 0,
-        comprador: { id: user.id, nome: user.full_name || '', email: user.email || '' },
-        itens: lines.map((l: any) => ({
-          tipo: l.ticket_type_name,
-          titular: l.holder_name,
-          email: l.holder_email,
-          lote: lotById[l.lot_id]?.name || l.lot_id,
-          valor: l.unit_price,
-        })),
-        subtotal: totals.subtotal,
-        desconto: totals.discount,
-        cupom: coupon?.code || '',
-        total: totals.total,
-      }),
+    // P0-B — trilha já confirmada antes da cobrança; completa com o provedor.
+    await enrichCheckoutTrail({
+      payment_id: payment.id,
+      intent_id: intent.id,
+      destino_conta_stripe: destinationAccountId || '',
+      comissao_plataforma: applicationFeeCents ? applicationFeeCents / 100 : 0,
     });
 
     // P2 — o uso do cupom é contabilizado no fulfillment (pagamento confirmado,

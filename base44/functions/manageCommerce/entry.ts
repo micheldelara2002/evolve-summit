@@ -3,6 +3,7 @@ import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { validateCommerceRecord, validateRefundPolicyPayload } from "../../shared/commerceValidation.ts";
+import { auditHash, buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Admin/event-manager commerce config CRUD.
 // Entities managed: TicketType, SalesLot, Coupon.
@@ -90,6 +91,36 @@ export default async function(req: Request): Promise<Response> {
     const body = await req.json();
     const { action, entityName, eventId, id, data = {} } = body;
 
+    // ===== P0-B — TRILHA OBRIGATÓRIA DE CONFIGURAÇÃO FINANCEIRA =====
+    // Alteração de preço, lote, cupom, política de estorno ou exigência de
+    // pagamento só CONCLUI com a trilha confirmada (D1). Falha na trilha ⇒ a
+    // alteração é REVERTIDA e a resposta é 503: nenhum valor financeiro muda
+    // sem evidência correspondente. A chave é determinística (operação +
+    // registro + hash do conteúdo), então repetir a mesma alteração não
+    // duplica a trilha.
+    const trailConfigChange = async (
+      op: string,
+      ref: string,
+      entityTypeApplied: string,
+      entityIdApplied: string,
+      payloadForHash: any,
+      details: Record<string, any>,
+    ): Promise<void> => {
+      await writeMandatoryAudit(svc, {
+        action: 'update',
+        entity_type: entityTypeApplied,
+        entity_id: entityIdApplied,
+        user_id: user.id,
+        user_name: user.full_name || user.email || '',
+        event_id: eventId || '',
+        audit_key: buildAuditKey('config_comercio_alterada', `${op}:${ref}`, auditHash(payloadForHash)),
+        provider: 'internal',
+        amount: 0,
+        details: JSON.stringify(details),
+      });
+    };
+    const CONFIG_TRAIL_ERROR = 'Não foi possível registrar a trilha desta alteração financeira. Nada foi alterado — tente novamente em instantes.';
+
     // ===== Refund policy (per-event override + global default) =====
     if (action === 'getPolicy') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
@@ -111,7 +142,19 @@ export default async function(req: Request): Promise<Response> {
       if (!policyCheck.ok) {
         return Response.json({ error: 'Política de estorno inválida.', errors: policyCheck.errors }, { status: 400 });
       }
+      const previousPolicy = (await svc.entities.Event.filter({ id: eventId }))[0]?.refund_policy ?? null;
       await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(policyCheck.data) });
+      try {
+        await trailConfigChange('politica', eventId, 'Event', eventId, policyCheck.data, {
+          type: 'politica_estorno_alterada',
+          politica_anterior: previousPolicy,
+          politica_nova: policyCheck.data,
+        });
+      } catch (auditErr: any) {
+        try { await svc.entities.Event.update(eventId, { refund_policy: previousPolicy ?? '' }); } catch {}
+        console.error('[manageCommerce] trilha obrigatória indisponível (política):', auditErr?.message || auditErr);
+        return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
+      }
       const policy = resolveRefundPolicy(policyCheck.data, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
       return Response.json({ ok: true, policy });
     }
@@ -120,7 +163,19 @@ export default async function(req: Request): Promise<Response> {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
       const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
       if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
+      const previousRequires = (await svc.entities.Event.filter({ id: eventId }))[0]?.requires_payment ?? false;
       await svc.entities.Event.update(eventId, { requires_payment: !!data.requires_payment });
+      try {
+        await trailConfigChange('exigencia_pagamento', eventId, 'Event', eventId, { requires_payment: !!data.requires_payment }, {
+          type: 'exigencia_pagamento_alterada',
+          anterior: !!previousRequires,
+          novo: !!data.requires_payment,
+        });
+      } catch (auditErr: any) {
+        try { await svc.entities.Event.update(eventId, { requires_payment: !!previousRequires }); } catch {}
+        console.error('[manageCommerce] trilha obrigatória indisponível (requires_payment):', auditErr?.message || auditErr);
+        return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
+      }
       return Response.json({ ok: true, requires_payment: !!data.requires_payment });
     }
 
@@ -204,6 +259,21 @@ export default async function(req: Request): Promise<Response> {
         }
         throw err;
       }
+      // P0-B — trilha obrigatória da criação: falhou ⇒ a criação é desfeita.
+      try {
+        await trailConfigChange('criacao', record.id, entityName, record.id, clean, {
+          type: 'configuracao_criada',
+          entidade: entityName,
+          registro: clean,
+        });
+      } catch (auditErr: any) {
+        try { await svc.entities[entityName].update(record.id, { is_deleted: true, is_active: false }); } catch {}
+        if (entityName === 'Coupon' && clean.code) {
+          try { await releaseCouponCode(svc, eventId, clean.code); } catch {}
+        }
+        console.error('[manageCommerce] trilha obrigatória indisponível (criação):', auditErr?.message || auditErr);
+        return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
+      }
       return Response.json({ record });
     }
 
@@ -246,6 +316,12 @@ export default async function(req: Request): Promise<Response> {
           return Response.json({ error: `Já existe um cupom com o código "${clean.code}" neste evento.` }, { status: 409 });
         }
       }
+      // P0-B — foto dos campos alterados: se a trilha falhar, a alteração é
+      // revertida exatamente ao estado anterior.
+      const previousValues: Record<string, any> = {};
+      for (const k of Object.keys(clean)) {
+        if (k in existing[0]) previousValues[k] = existing[0][k];
+      }
       let record;
       try {
         record = await svc.entities[entityName].update(id, clean);
@@ -258,6 +334,26 @@ export default async function(req: Request): Promise<Response> {
       if (entityName === 'Coupon' && oldCouponCode && clean.code && clean.code !== oldCouponCode) {
         await releaseCouponCode(svc, eventId, oldCouponCode);
       }
+      try {
+        await trailConfigChange('alteracao', id, entityName, id, clean, {
+          type: 'configuracao_alterada',
+          entidade: entityName,
+          antes: previousValues,
+          depois: clean,
+        });
+      } catch (auditErr: any) {
+        if (Object.keys(previousValues).length > 0) {
+          try { await svc.entities[entityName].update(id, previousValues); } catch {}
+        }
+        if (entityName === 'Coupon' && clean.code && clean.code !== oldCouponCode) {
+          try { await releaseCouponCode(svc, eventId, clean.code); } catch {}
+          if (oldCouponCode) {
+            try { await claimCouponCode(svc, eventId, oldCouponCode); } catch {}
+          }
+        }
+        console.error('[manageCommerce] trilha obrigatória indisponível (alteração):', auditErr?.message || auditErr);
+        return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
+      }
       return Response.json({ record });
     }
 
@@ -265,11 +361,27 @@ export default async function(req: Request): Promise<Response> {
       if (!id) return Response.json({ error: 'id obrigatório.' }, { status: 400 });
       const existing = await svc.entities[entityName].filter({ id, event_id: eventId });
       if (!existing.length) return Response.json({ error: 'Registro não encontrado.' }, { status: 404 });
+      const previousActive = existing[0].is_active;
       const record = await svc.entities[entityName].update(id, { is_deleted: true, is_active: false });
       // DAT-001 — devolve o código ao registro apenas se NENHUM outro cupom
       // ativo o usa (duplicatas legadas permanecem; só diagnosticadas).
       if (entityName === 'Coupon' && record?.code) {
         await releaseCouponCode(svc, eventId, normalizeCouponCode(record.code));
+      }
+      // P0-B — trilha obrigatória da exclusão: falhou ⇒ o registro é restaurado.
+      try {
+        await trailConfigChange('exclusao', id, entityName, id, { is_deleted: true }, {
+          type: 'configuracao_excluida',
+          entidade: entityName,
+          registro_anterior: existing[0],
+        });
+      } catch (auditErr: any) {
+        try { await svc.entities[entityName].update(id, { is_deleted: false, is_active: !!previousActive }); } catch {}
+        if (entityName === 'Coupon' && record?.code) {
+          try { await claimCouponCode(svc, eventId, normalizeCouponCode(record.code)); } catch {}
+        }
+        console.error('[manageCommerce] trilha obrigatória indisponível (exclusão):', auditErr?.message || auditErr);
+        return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
       }
       return Response.json({ record });
     }

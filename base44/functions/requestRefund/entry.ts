@@ -5,7 +5,8 @@ import { resolveRefundPolicy, evaluateRefund, toCents, DEFAULT_GLOBAL_REFUND_POL
 import { createRefund } from "../../shared/stripeClient.ts";
 import { processRefundSuccess, lockTicketsForRefund, unlockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
-import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
+import { extractClientIp } from "../../shared/commerceAudit.ts";
+import { buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -202,28 +203,48 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
       }
 
-      // Trail — solicitação de estorno (pedido gratuito) com solicitante e IP.
-      await writeAudit(svc, {
-        action: "create",
-        entity_type: "RefundRequest",
-        entity_id: refundRequest.id,
-        user_id: user.id,
-        user_name: user.full_name || "",
-        event_id: order.event_id,
-        ip_address: clientIp,
-        details: JSON.stringify({
-          type: "estorno_solicitado",
-          order_id: order.id,
-          payment_id: payment.id,
-          intent_id: payment.intent_id,
-          gratuito: true,
-          tipo: refundType,
-          valor_solicitado: 0,
-          itens: itemIds?.length || 0,
-          motivo: reason || "",
-          decisao_politica: evalFree.decision,
-        }),
-      });
+      // ===== P0-B — TRILHA OBRIGATÓRIA ANTES DO CANCELAMENTO =====
+      // Sem trilha confirmada o cancelamento não acontece: a solicitação é
+      // marcada como falha e as travas dos ingressos são devolvidas (nada fica
+      // em refund_pending sem estorno).
+      try {
+        await writeMandatoryAudit(svc, {
+          action: "create",
+          entity_type: "RefundRequest",
+          entity_id: refundRequest.id,
+          user_id: user.id,
+          user_name: user.full_name || "",
+          event_id: order.event_id,
+          ip_address: clientIp,
+          audit_key: buildAuditKey("estorno_solicitado", refundRequest.id),
+          provider: "free",
+          amount: 0,
+          details: JSON.stringify({
+            type: "estorno_solicitado",
+            order_id: order.id,
+            payment_id: payment.id,
+            intent_id: payment.intent_id,
+            gratuito: true,
+            tipo: refundType,
+            valor_solicitado: 0,
+            itens: itemIds?.length || 0,
+            motivo: reason || "",
+            decisao_politica: evalFree.decision,
+          }),
+        });
+      } catch (auditErr: any) {
+        try {
+          await svc.entities.RefundRequest.update(refundRequest.id, {
+            status: "failed",
+            rejection_reason: "Trilha de auditoria indisponível — cancelamento não executado.",
+          });
+        } catch {}
+        await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
+        console.error('[requestRefund] trilha obrigatória indisponível (gratuito):', auditErr?.message || auditErr);
+        return Response.json({
+          error: "Não foi possível registrar a trilha do cancelamento. Nenhum ingresso foi cancelado — tente novamente em instantes.",
+        }, { status: 503 });
+      }
 
       // Cancelamento local idempotente (ingressos/participantes/pedido).
       // Falha no meio → destrava os ingressos (nada fica travado sem estorno).
@@ -364,27 +385,54 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
     }
 
-    // Trail — solicitação de estorno (pedido pago) com solicitante, valor e IP.
-    await writeAudit(svc, {
-      action: "create",
-      entity_type: "RefundRequest",
-      entity_id: refundRequest.id,
-      user_id: user.id,
-      user_name: user.full_name || "",
-      event_id: order.event_id,
-      ip_address: clientIp,
-      details: JSON.stringify({
-        type: "estorno_solicitado",
-        order_id: order.id,
-        payment_id: payment.id,
-        intent_id: payment.intent_id,
-        tipo: refundType,
-        valor_solicitado: refundAmountCents / 100,
-        itens: itemIds?.length || 0,
-        motivo: reason || "",
-        decisao_politica: evalResult.decision,
-      }),
-    });
+    // ===== P0-B — TRILHA OBRIGATÓRIA ANTES DE DISPARAR O ESTORNO =====
+    // Falha na trilha ⇒ o estorno NÃO é disparado no Stripe e toda a preparação
+    // local é devolvida: teto de estorno liberado, ingressos destravados
+    // (escopado por dono da trava) e solicitação marcada como falha.
+    try {
+      await writeMandatoryAudit(svc, {
+        action: "create",
+        entity_type: "RefundRequest",
+        entity_id: refundRequest.id,
+        user_id: user.id,
+        user_name: user.full_name || "",
+        event_id: order.event_id,
+        ip_address: clientIp,
+        audit_key: buildAuditKey("estorno_solicitado", refundRequest.id),
+        provider: "stripe",
+        external_reference: payment.intent_id || "",
+        amount: refundAmountCents / 100,
+        details: JSON.stringify({
+          type: "estorno_solicitado",
+          order_id: order.id,
+          payment_id: payment.id,
+          intent_id: payment.intent_id,
+          tipo: refundType,
+          valor_solicitado: refundAmountCents / 100,
+          itens: itemIds?.length || 0,
+          motivo: reason || "",
+          decisao_politica: evalResult.decision,
+        }),
+      });
+    } catch (auditErr: any) {
+      try {
+        await svc.entities.RefundRequest.update(refundRequest.id, {
+          status: "failed",
+          rejection_reason: "Trilha de auditoria indisponível — estorno não disparado.",
+        });
+      } catch {}
+      try {
+        await svc.entities.Payment.updateMany(
+          { id: payment.id, refunded_amount: { $gte: refundBRL } },
+          { $inc: { refunded_amount: -refundBRL } },
+        );
+      } catch {}
+      await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
+      console.error('[requestRefund] trilha obrigatória indisponível:', auditErr?.message || auditErr);
+      return Response.json({
+        error: "Não foi possível registrar a trilha do estorno. Nenhum estorno foi disparado — tente novamente em instantes.",
+      }, { status: 503 });
+    }
 
     let refund;
     const refundCall = () => createRefund({
