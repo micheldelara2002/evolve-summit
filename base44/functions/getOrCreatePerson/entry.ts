@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { incPersons } from "../../shared/businessMetrics.ts";
 import { normalizeEmail, emailMatchVariants } from "../../shared/identity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
-import { linkPendingInvites } from "../../shared/eventInvites.ts";
+import { linkPendingInvites, linkPendingPartnerReps } from "../../shared/eventInvites.ts";
 
 // CADASTRO ÚNICO E ATÔMICO (2026-11-04) — User e Person nascem juntos.
 //
@@ -78,6 +78,10 @@ export default async function(req) {
           });
           linkedInvites = claimed.linked;
         } catch (e) { console.error('linkPendingInvites failed:', e?.message || e); }
+        // Representantes de parceiro que esperavam conta nascem agora.
+        try {
+          await linkPendingPartnerReps(svc, { personId: linked[0].id, userId: account.id });
+        } catch (e) { console.error('linkPendingPartnerReps failed:', e?.message || e); }
         return Response.json({ status: 'exists', person_id: linked[0].id, linked_invites: linkedInvites });
       }
       // vínculo aponta para Person inexistente → re-resolve abaixo
@@ -157,6 +161,10 @@ export default async function(req) {
       });
       linkedInvites = claimed.linked;
     } catch (e) { console.error('linkPendingInvites failed:', e?.message || e); }
+
+    try {
+      await linkPendingPartnerReps(svc, { personId: person.id, userId: account.id });
+    } catch (e) { console.error('linkPendingPartnerReps failed:', e?.message || e); }
 
     return Response.json({
       status: createdId === person.id ? 'created' : 'exists',

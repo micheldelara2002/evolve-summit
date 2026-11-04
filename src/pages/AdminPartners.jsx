@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Building2, Search, Plus, MoreVertical, Pencil, UserPlus,
-  UserCheck, UserX, Star, Trash2, Upload,
+  UserCheck, UserX, Star, Trash2, Upload, Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeText } from "@/utils/sanitize";
@@ -94,18 +94,35 @@ function RepresentativesDialog({ partner, onClose }) {
       (r) => r.person_id === newRep.person_id && r.role_in_partner === newRep.role_in_partner && r.is_active
     );
     if (dup) { toast.error("Vínculo ativo já existe para essa pessoa e papel."); return; }
-    await base44.functions.invoke('savePartnerRep', {
+    const res = await base44.functions.invoke('savePartnerRep', {
       partnerId: partner.id,
       personId: newRep.person_id,
       roleInPartner: newRep.role_in_partner,
       isPrimary: newRep.is_primary,
       isActive: true,
     });
+    const out = res.data || {};
     setNewRep({ person_id: "", role_in_partner: "partner_manager", is_primary: false });
     setAdding(false);
     setPersonSearch("");
     refetchReps();
-    toast.success("Representante adicionado.");
+    // Representante precisa de conta: sem ela o vínculo fica pendente e o
+    // convite de cadastro é enviado.
+    if (out.status === "pending") {
+      if (out.invited) toast.success("Convite de cadastro enviado. O vínculo se completa quando a conta for criada.");
+      else toast.warning(`Vínculo pendente, mas o convite não foi enviado${out.invite_error ? `: ${out.invite_error}` : "."}`);
+    } else {
+      toast.success("Representante adicionado.");
+    }
+  };
+
+  const handleResendInvite = async (rep) => {
+    const res = await base44.functions.invoke('savePartnerRep', { id: rep.id, action: 'resendInvite' });
+    const out = res.data || {};
+    refetchReps();
+    if (out.status === "active") toast.success("Conta encontrada — representante ativado.");
+    else if (out.invited) toast.success("Convite de cadastro reenviado.");
+    else toast.warning(`Convite não enviado${out.invite_error ? `: ${out.invite_error}` : "."}`);
   };
 
   const handleToggleActive = async (rep) => {
@@ -138,25 +155,36 @@ function RepresentativesDialog({ partner, onClose }) {
           )}
           {reps.map((rep) => {
             const person = personMap[rep.person_id];
+            const pending = rep.access_status === "pending";
             return (
-              <div key={rep.id} className={`flex items-center justify-between border rounded-lg px-3 py-2 gap-2 ${!rep.is_active ? "opacity-50" : ""}`}>
+              <div key={rep.id} className={`flex items-center justify-between border rounded-lg px-3 py-2 gap-2 ${!rep.is_active && !pending ? "opacity-50" : ""} ${pending ? "border-amber-200 bg-amber-50" : ""}`}>
                 <div className="min-w-0 text-sm">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-medium truncate">{person?.full_name ?? rep.person_id}</span>
                     {rep.is_primary && <Badge variant="secondary" className="text-[10px] py-0">Principal</Badge>}
-                    {!rep.is_active && <Badge variant="outline" className="text-[10px] py-0">Inativo</Badge>}
+                    {pending && <Badge variant="outline" className="text-[10px] py-0 border-amber-300 text-amber-700">Aguardando cadastro</Badge>}
+                    {!pending && !rep.is_active && <Badge variant="outline" className="text-[10px] py-0">Inativo</Badge>}
                   </div>
-                  <div className="text-xs text-muted-foreground">{ROLE_OPTIONS.find((r) => r.value === rep.role_in_partner)?.label ?? rep.role_in_partner}</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {ROLE_OPTIONS.find((r) => r.value === rep.role_in_partner)?.label ?? rep.role_in_partner}
+                    {pending && (rep.invite_error ? ` · convite não enviado` : " · convite enviado")}
+                  </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  {!rep.is_primary && rep.is_active && (
+                  {!rep.is_primary && rep.is_active && !pending && (
                     <Button type="button" variant="ghost" size="icon" className="w-7 h-7" title="Tornar principal" onClick={() => handleSetPrimary(rep)}>
                       <Star className="w-3.5 h-3.5" />
                     </Button>
                   )}
-                  <Button type="button" variant="ghost" size="icon" className="w-7 h-7" onClick={() => handleToggleActive(rep)} title={rep.is_active ? "Inativar" : "Reativar"}>
-                    {rep.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                  </Button>
+                  {pending ? (
+                    <Button type="button" variant="ghost" size="icon" className="w-7 h-7 text-amber-600" onClick={() => handleResendInvite(rep)} title="Reenviar convite / vincular conta">
+                      <Mail className="w-3.5 h-3.5" />
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="ghost" size="icon" className="w-7 h-7" onClick={() => handleToggleActive(rep)} title={rep.is_active ? "Inativar" : "Reativar"}>
+                      {rep.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                    </Button>
+                  )}
                   <Button type="button" variant="ghost" size="icon" className="w-7 h-7 text-destructive" onClick={() => handleDelete(rep.id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>

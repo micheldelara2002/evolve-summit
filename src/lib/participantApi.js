@@ -12,15 +12,51 @@ async function invokeOp(payload) {
   return res.data;
 }
 
+/**
+ * Cadastro de participante. O servidor resolve a Person pelo e-mail e, quando
+ * a pessoa ainda não tem conta, dispara o convite de cadastro:
+ *   { participant, account_linked, invite: { status: 'sent'|'failed', error } }
+ */
 export async function createParticipant(eventId, data) {
   const out = await invokeOp({ op: "create", event_id: eventId, data });
-  return out.participant;
+  return {
+    participant: out.participant,
+    account_linked: !!out.account_linked,
+    invite: out.invite || null,
+  };
 }
 
 export async function bulkCreateParticipants(eventId, items) {
   const out = await invokeOp({ op: "bulkCreate", event_id: eventId, items });
   // duplicates: bloqueados pela política de dedup (1 e-mail ativo = 1 inscrição).
-  return { participants: out.participants || [], duplicates: out.duplicates || [] };
+  // invites/failed_invites: convites de cadastro enviados (e os que falharam).
+  return {
+    participants: out.participants || [],
+    duplicates: out.duplicates || [],
+    accounts_linked: out.accounts_linked || 0,
+    invites: out.invites || { sent: 0, failed: 0 },
+    failed_invites: out.failed_invites || [],
+  };
+}
+
+// ── Equipe do evento (staff) ────────────────────────────────────────────────
+// Só admin ou o GERENTE do evento: o servidor recusa 'team' nesses comandos.
+export async function getEventStaff(eventId) {
+  const out = await invokeOp({ op: "listStaff", event_id: eventId });
+  return {
+    memberships: out.memberships || [],
+    invites: out.invites || [],
+    participants: out.participants || [],
+  };
+}
+
+export async function assignEventStaff(eventId, { email, full_name }) {
+  const out = await invokeOp({ op: "assignStaff", event_id: eventId, email, full_name });
+  return out;
+}
+
+export async function removeEventStaff(eventId, { participantId, email }) {
+  return invokeOp({ op: "removeStaff", event_id: eventId, participant_id: participantId || "", email: email || "" });
 }
 
 export async function updateParticipant(eventId, participantId, data) {

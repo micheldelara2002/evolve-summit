@@ -19,20 +19,22 @@ import {
 import { moveParticipantRoleCounter } from "@/lib/businessCounters";
 import { logAudit } from "@/lib/audit";
 
+// 'Equipe' NÃO é atribuída aqui (2026-11-04): staff exige conta + Person e é
+// gerenciado no botão "Equipe do evento" (StaffDialog), exclusivo do gerente.
 const ROLE_OPTIONS = [
   { value: "speaker",  label: "Palestrante" },
-  { value: "team",     label: "Equipe" },
   { value: "manager",  label: "Gerente" },
   { value: "reviewer",  label: "Avaliador" },
 ];
 
 export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSuccess }) {
   const isPartnerRep = pessoa.role_in_event === "partner_rep";
+  const isStaff = pessoa.role_in_event === "team";
 
   const [roles, setRoles] = useState(() => {
     if (isPartnerRep) return []; // managed elsewhere
     const r = [];
-    if (["speaker", "team", "manager"].includes(pessoa.role_in_event)) r.push(pessoa.role_in_event);
+    if (["speaker", "manager"].includes(pessoa.role_in_event)) r.push(pessoa.role_in_event);
     return r;
   });
   const [isReviewer, setIsReviewer] = useState(false);
@@ -79,12 +81,11 @@ export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, 
 
     setSaving(true);
     try {
-      // Papel no Participant (speaker/team/manager/attendee)
+      // Papel no Participant (speaker/manager/attendee). Equipe tem porta própria.
       let newRole = "attendee";
       if (roles.includes("manager")) newRole = "manager";
       else if (roles.includes("speaker")) newRole = "speaker";
-      else if (roles.includes("team")) newRole = "team";
-      if (newRole !== pessoa.role_in_event) {
+      if (!isStaff && newRole !== pessoa.role_in_event) {
         await updateParticipant(eventId, pessoa.id, { role_in_event: newRole });
         // P0.3 — move o bucket participants_by_role do papel antigo para o novo (unique não muda)
         await moveParticipantRoleCounter(eventId, pessoa.created_date, pessoa.role_in_event, newRole);
@@ -133,9 +134,14 @@ export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, 
             </div>
           ) : (
             <>
+              {isStaff && (
+                <div className="text-sm text-muted-foreground bg-emerald-50 rounded-lg px-3 py-2">
+                  Esta pessoa faz parte da <strong>Equipe do evento</strong>. O papel de staff é gerenciado em <strong>Equipe do evento</strong>, pelo gerente.
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">Participante é implícito. Selecione papéis adicionais:</p>
               <div className="grid grid-cols-2 gap-2">
-                {ROLE_OPTIONS.map(({ value, label }) => {
+                {(isStaff ? ROLE_OPTIONS.filter((r) => r.value === "reviewer") : ROLE_OPTIONS).map(({ value, label }) => {
                   const active = value === "reviewer" ? isReviewer : roles.includes(value);
                   const disabled = value === "reviewer" ? false : disabledRoles.has(value);
                   return (

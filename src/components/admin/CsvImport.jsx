@@ -188,6 +188,9 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
     let existentesVinculados = 0;
     let jaVinculadosIgnorados = alreadyLinked.length;
     let errosCriacao = 0;
+    // Convites de cadastro — quem ainda não tem conta recebe e-mail para se cadastrar.
+    let convitesEnviados = 0;
+    const convitesFalhos = [];
 
     // Create NEW in batches of 50 — o servidor valida a política de dedup
     // (1 e-mail ativo = 1 inscrição por evento) e devolve os bloqueados.
@@ -199,6 +202,8 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         const report = await bulkCreateParticipants(eventId, batch);
         novosCriados += report.participants.length;
         duplicadosBloqueados.push(...report.duplicates);
+        convitesEnviados += report.invites.sent;
+        convitesFalhos.push(...report.failed_invites);
         const createdDates = report.participants.map((p) => p?.created_date).filter(Boolean);
         await bulkIncParticipantsCounter(eventId, createdDates, createdDates.map(() => "attendee"));
       } catch {
@@ -213,7 +218,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         // Create a new event-linked record reusing data, or just update event_id if needed
         // Since participant is per-event, create a new record with same person data + this event
         try {
-          const created = await createParticipant(eventId, {
+          const { participant: created, account_linked, invite } = await createParticipant(eventId, {
             event_id: eventId,
             full_name: sanitizeText(gp.full_name),
             email: gp.email,
@@ -233,6 +238,10 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
             import_id: importRecord.id,
           });
           await incParticipantCounter(eventId, created?.created_date, "attendee");
+          if (!account_linked) {
+            if (invite?.status === "sent") convitesEnviados += 1;
+            else convitesFalhos.push({ email: gp.email, error: invite?.error || "Falha no envio do convite." });
+          }
           existentesVinculados++;
         } catch {
           errosCriacao++;
@@ -266,6 +275,8 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
       duplicados_detalhe: duplicadosBloqueados.slice(0, 100),
       invalidos: invalidRows.length,
       erros_por_linha: invalidRows,
+      convites_enviados: convitesEnviados,
+      convites_falhos: convitesFalhos.slice(0, 100),
     });
 
     setStep("result");
@@ -419,7 +430,24 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
         {result.duplicados_bloqueados > 0 && (
           <ResultStat label="Bloqueados (e-mail já inscrito)" value={result.duplicados_bloqueados} color="text-amber-600" />
         )}
+        <ResultStat label="Convites de cadastro enviados" value={result.convites_enviados} color="text-sky-600" />
       </div>
+
+      {result.convites_falhos.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-destructive">
+            {result.convites_falhos.length} convite(s) não enviados — reenvie individualmente
+          </p>
+          <div className="max-h-32 overflow-y-auto space-y-1 rounded-lg border border-amber-200 p-2">
+            {result.convites_falhos.map((e, i) => (
+              <div key={i} className="text-xs flex items-start gap-2">
+                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
+                <span className="truncate">{e.email} · {e.error}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {result.erros_por_linha.length > 0 && (
         <div className="space-y-1">

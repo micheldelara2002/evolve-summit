@@ -101,10 +101,18 @@ export default async function(req) {
         return Response.json({ error: 'Papéis de gestão são atribuídos em Equipe do evento.' }, { status: 400 });
       }
       // Cadastro único: a inscrição sempre aponta para a Person do e-mail.
-      const person = await ensurePersonByEmail(base44.asServiceRole, {
-        email: data.email,
-        fullName: data.full_name,
-      });
+      let person;
+      try {
+        person = await ensurePersonByEmail(base44.asServiceRole, {
+          email: data.email,
+          fullName: data.full_name,
+        });
+      } catch (error: any) {
+        if (error?.message === 'identity_ambiguous') {
+          return Response.json({ error: 'Há mais de um cadastro de pessoa com este e-mail. Consolide antes de inscrever.' }, { status: 409 });
+        }
+        throw error;
+      }
       data.person_id = person.id;
       const created = await base44.asServiceRole.entities.Participant.create({ ...data, event_id: eventId });
 
@@ -261,7 +269,8 @@ export default async function(req) {
       const current = found[0];
       // EQUIPE — mexer no papel de equipe (dar ou tirar) é do gerente/admin.
       // Impede que 'team' se descadastre ou promova alguém.
-      if (current.role_in_event === 'team' || data.role_in_event === 'team' || data.role_in_event === 'manager') {
+      const changesRole = data.role_in_event !== undefined && data.role_in_event !== current.role_in_event;
+      if (changesRole && (current.role_in_event === 'team' || data.role_in_event === 'team' || data.role_in_event === 'manager')) {
         if (!(await isStaffManager(base44, user, eventId))) {
           return Response.json({ error: 'Apenas o gerente do evento pode alterar papéis de gestão da equipe.' }, { status: 403 });
         }

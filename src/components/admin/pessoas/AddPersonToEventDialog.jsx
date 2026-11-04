@@ -59,8 +59,12 @@ export default function AddPersonToEventDialog({ eventId, existingParticipants, 
       toast.error("Já existe um participante com este e-mail neste evento.");
       return;
     }
+    if (!person.contact_email) {
+      toast.error("Esta pessoa não tem e-mail de contato — sem ele não é possível convidar para o app.");
+      return;
+    }
     setAssociating(true);
-    const created = await createParticipant(eventId, {
+    const { participant: created, account_linked, invite } = await createParticipant(eventId, {
       event_id: eventId,
       full_name: person.full_name,
       email: person.contact_email || "",
@@ -81,7 +85,16 @@ export default function AddPersonToEventDialog({ eventId, existingParticipants, 
     setAssociating(false);
     onSuccess();
     onClose();
-    toast.success("Pessoa associada ao evento.");
+    // Sem conta no app: o convite de cadastro é enviado junto com a associação.
+    if (!account_linked) {
+      if (invite?.status === "sent") {
+        toast.success(`Pessoa associada. Convite de cadastro enviado para ${person.contact_email}.`);
+      } else {
+        toast.warning(`Pessoa associada, mas o convite não foi enviado${invite?.error ? `: ${invite.error}` : "."}`);
+      }
+    } else {
+      toast.success("Pessoa associada ao evento.");
+    }
   };
 
   const handlePersonCreated = async (newPerson) => {

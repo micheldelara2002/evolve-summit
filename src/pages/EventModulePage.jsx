@@ -40,7 +40,7 @@ const MODULE_TITLES = {
   tickets: t("adminSections.tickets"),
   };
 
-function PeopleContent({ eventId, hasAccess }) {
+function PeopleContent({ eventId, hasAccess, canManageStaff }) {
   const [showImport, setShowImport] = useState(false);
   const { data: participants = [] } = useQuery({
     queryKey: ["participants", eventId],
@@ -57,6 +57,7 @@ function PeopleContent({ eventId, hasAccess }) {
       participants={participants}
       sessions={sessions}
       hasAccess={hasAccess}
+      canManageStaff={canManageStaff}
       showImport={showImport}
       onShowImport={() => setShowImport(true)}
       onHideImport={() => setShowImport(false)}
@@ -85,7 +86,9 @@ export default function EventModulePage({ module }) {
         <h2 className="text-lg font-display font-bold">{MODULE_TITLES[module]}</h2>
       </div>
 
-      {module === "people" && <PeopleContent eventId={eventId} hasAccess={hasAccess} />}
+      {module === "people" && (
+        <PeopleContent eventId={eventId} hasAccess={hasAccess} canManageStaff={hasFinanceAccess} />
+      )}
       {module === "tracks" && <EventStructureManager eventId={eventId} hasAccess={hasAccess} user={user} module="tracks" />}
       {module === "rooms" && <EventStructureManager eventId={eventId} hasAccess={hasAccess} user={user} module="rooms" />}
       {module === "sessions" && <EventStructureManager eventId={eventId} hasAccess={hasAccess} user={user} module="sessions" />}

@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { normalizeEmail } from "../../shared/identity.ts";
 import { grantEventRole } from "../../shared/eventInvites.ts";
+import { verifyEventMembership } from "../../shared/eventAuth.ts";
 
 // 2026-11-04 — O ADMIN define quem gerencia o evento pelo e-mail.
 // Conta existente → vínculo imediato. Sem conta → convite enviado e o vínculo
@@ -13,13 +14,25 @@ export default async function (req: Request): Promise<Response> {
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
 
-    if (user.role !== 'admin') {
-      return Response.json({ error: 'Apenas administradores podem definir gerentes de evento.' }, { status: 403 });
-    }
-
     const svc = base44.asServiceRole;
     const body = await req.json().catch(() => ({}));
     const { action = 'invite', eventId, email, name, role = 'manager', inviteId } = body;
+
+    // 2026-11-04 — ADMIN define gerentes; o GERENTE do evento cadastra a
+    // própria equipe (staff). 'TEAM' não gerencia equipe.
+    const isAdmin = user.role === 'admin';
+    let isEventManager = false;
+    if (!isAdmin && eventId) {
+      const { authorized } = await verifyEventMembership(base44, user, eventId, ['manager']);
+      isEventManager = authorized;
+    }
+    const managerScope = isEventManager && (action === 'list' || action === 'revoke' || role === 'team');
+    if (!isAdmin && !managerScope) {
+      return Response.json({ error: 'Sem permissão para gerenciar acessos deste evento.' }, { status: 403 });
+    }
+    if (!isAdmin && role === 'manager') {
+      return Response.json({ error: 'Apenas administradores definem gerentes de evento.' }, { status: 403 });
+    }
 
     if (action === 'list') {
       if (!eventId) return Response.json({ error: 'eventId é obrigatório.' }, { status: 400 });

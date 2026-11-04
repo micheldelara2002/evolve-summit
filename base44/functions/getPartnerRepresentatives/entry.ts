@@ -38,6 +38,9 @@ export default async function (req: Request): Promise<Response> {
 
     const enriched = (representatives || []).map((r: any) => {
       const person: any = personMap.get(r.person_id);
+      // 2026-11-04 — representante sem conta fica PENDENTE: o convite de
+      // cadastro foi enviado e o vínculo só vale quando a conta existir.
+      const pending = r.access_status === 'pending' || (!r.user_id && r.is_active === false);
       return {
         id: r.id,
         partner_id: r.partner_id,
@@ -45,6 +48,9 @@ export default async function (req: Request): Promise<Response> {
         role_in_partner: r.role_in_partner,
         is_primary: !!r.is_primary,
         is_active: r.is_active !== false,
+        access_status: pending ? 'pending' : 'active',
+        has_account: !!r.user_id,
+        invite_error: r.invite_error || '',
         full_name: person?.full_name || '',
         contact_email: person?.contact_email || '',
         photo_url: person?.photo_url || '',

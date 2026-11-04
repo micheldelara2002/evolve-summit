@@ -23,9 +23,10 @@ import PessoasTable from "@/components/admin/pessoas/PessoasTable";
 import AddPersonToEventDialog from "@/components/admin/pessoas/AddPersonToEventDialog";
 import EditParticipantDataDialog from "@/components/admin/pessoas/EditParticipantDataDialog";
 import EditRolesDialog from "@/components/admin/pessoas/EditRolesDialog";
+import StaffDialog from "@/components/admin/pessoas/StaffDialog";
 
 export default function PessoasTab({
-  eventId, participants, sessions = [], hasAccess,
+  eventId, participants, sessions = [], hasAccess, canManageStaff,
   onShowImport, showImport, onHideImport,
 }) {
   const { user } = useAuth();
@@ -37,6 +38,7 @@ export default function PessoasTab({
   const [page, setPage] = useState(1);
 
   const [addDialog, setAddDialog] = useState(false);
+  const [staffDialog, setStaffDialog] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [editDataDialog, setEditDataDialog] = useState(null);
   const [editRolesDialog, setEditRolesDialog] = useState(null);
@@ -221,6 +223,8 @@ export default function PessoasTab({
         onExport={handleExportCsv}
         onImport={onShowImport}
         onAdd={() => setAddDialog(true)}
+        canManageStaff={canManageStaff}
+        onManageStaff={() => setStaffDialog(true)}
       />
 
       <PessoasTable
@@ -244,6 +248,14 @@ export default function PessoasTab({
           user={user}
           onClose={() => setAddDialog(false)}
           onSuccess={invalidate}
+        />
+      )}
+
+      {staffDialog && (
+        <StaffDialog
+          eventId={eventId}
+          onClose={() => setStaffDialog(false)}
+          onChanged={invalidate}
         />
       )}
 
