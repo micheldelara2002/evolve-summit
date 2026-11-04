@@ -188,9 +188,8 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'A pessoa precisa de e-mail de contato para ser convidada.' }, { status: 400 });
     }
 
-    const invite = account ? { invited: false, error: '' } : await sendInvite(email);
-
-    // Vínculo duplicado do mesmo papel não se repete (ativo ou pendente).
+    // Vínculo duplicado do mesmo papel não se repete (ativo ou pendente) —
+    // checado ANTES de enviar convite, para não convidar em vínculo recusado.
     const existing = await svc.entities.PartnerRepresentative.filter({
       partner_id: partnerId,
       person_id: resolvedPersonId,
@@ -200,6 +199,8 @@ export default async function(req: Request): Promise<Response> {
     if (existing?.some((r) => r.is_active !== false || r.access_status === 'pending')) {
       return Response.json({ error: 'Já existe vínculo (ativo ou pendente) para esta pessoa e papel.' }, { status: 409 });
     }
+
+    const invite = account ? { invited: false, error: '' } : await sendInvite(email);
 
     if (isPrimary && account) await clearOtherPrimaries(partnerId, null);
     const created = await svc.entities.PartnerRepresentative.create({
