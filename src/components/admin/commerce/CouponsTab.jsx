@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { listCommerce, createCommerce, updateCommerce, deleteCommerce } from "@/lib/commerceApi";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 import CommerceFormDialog from "./CommerceFormDialog";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function CouponsTab({ eventId, hasAccess }) {
   const qc = useQueryClient();
@@ -92,6 +93,7 @@ function CouponDialog({ eventId, mode, data, onClose, onSaved }) {
     is_active: data.is_active !== false,
   });
   const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
 
   const submit = async () => {
     if (!form.code.trim()) return;
@@ -109,6 +111,7 @@ function CouponDialog({ eventId, mode, data, onClose, onSaved }) {
       onSaved();
     } catch (e) {
       setSaving(false);
+      toast({ variant: "destructive", title: "Não foi possível salvar", description: e.message });
     }
   };
 

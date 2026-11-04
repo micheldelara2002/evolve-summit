@@ -2,10 +2,27 @@ import { base44 } from "@/api/base44Client";
 
 // Frontend API wrapper for the commerce backend functions.
 
+// Mensagem legível a partir do erro do backend. As validações de comércio
+// retornam `{ error, errors: [{ field, message }] }` (P0-A) — as mensagens por
+// campo são juntadas para o formulário mostrar o motivo real da recusa.
+function backendMessage(data) {
+  const details = Array.isArray(data?.errors)
+    ? data.errors.map((e) => e?.message).filter(Boolean)
+    : [];
+  if (details.length > 0) return details.join(" ");
+  return data?.error || "Não foi possível concluir a operação.";
+}
+
 async function invoke(name, payload) {
-  const res = await base44.functions.invoke(name, payload);
-  if (res?.data?.error) throw new Error(res.data.error);
-  return res.data;
+  try {
+    const res = await base44.functions.invoke(name, payload);
+    if (res?.data?.error) throw new Error(backendMessage(res.data));
+    return res.data;
+  } catch (e) {
+    // Erro HTTP (4xx/5xx): o SDK rejeita e a mensagem vem em response.data.
+    if (e?.response?.data?.error) throw new Error(backendMessage(e.response.data));
+    throw e;
+  }
 }
 
 // ===== Admin commerce config =====

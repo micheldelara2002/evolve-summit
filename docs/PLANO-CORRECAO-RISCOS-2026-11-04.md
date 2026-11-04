@@ -14,6 +14,16 @@
 | D2 | Implantação em **fases com validação**, avançando só após os critérios de aceite passarem. | Nenhuma fase começa antes do aceite formal da anterior. |
 | D3 | Testes de aceite cobrem **todos os perfis** do diagnóstico. | Matriz de aceite por perfil (§8) obrigatória em toda fase. |
 
+## 1.1 Status de execução
+
+| Fase | Status | Observações |
+|---|---|---|
+| P0-A | **Concluída** | Validação em `base44/shared/commerceValidation.ts`, aplicada em `manageCommerce` (TicketType, SalesLot, Coupon e política de estorno). Recusas por campo verificadas; caminho válido verificado. |
+| P0-B | Não iniciada | Aguarda aceite de P0-A. |
+| P1-A · P1-B · P1-C · P2 | Não iniciadas | — |
+
+**Decisões provisórias adotadas em P0-A** (§11, itens 1 e 2): preço de lote e desconto fixo até R$ 1.000.000,00; código de cupom de 3 a 40 caracteres (`A-Z 0-9 _ -`). Ajustar aqui se a regra de negócio for outra.
+
 ## 2. Regras de execução
 
 1. **Backend é a autoridade.** Nenhuma fase pode depender de guard de frontend para autorização, validação ou elegibilidade.

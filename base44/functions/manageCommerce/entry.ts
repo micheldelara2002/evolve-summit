@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAuth.ts";
 import { resolveRefundPolicy, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
+import { validateCommerceRecord, validateRefundPolicyPayload } from "../../shared/commerceValidation.ts";
 
 // Admin/event-manager commerce config CRUD.
 // Entities managed: TicketType, SalesLot, Coupon.
@@ -103,9 +104,15 @@ export default async function(req: Request): Promise<Response> {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
       const managerAuth = await verifyEventMembership(base44, user, eventId, EVENT_FINANCE_ROLES);
       if (!managerAuth.authorized && user.role !== 'admin') return Response.json({ error: 'Sem permissão.' }, { status: 403 });
-      const event = (await svc.entities.Event.filter({ id: eventId }))[0];
-      await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(data) });
-      const policy = resolveRefundPolicy(data, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
+      // P0-A (2026-11-04) — política só é gravada se for estruturalmente válida
+      // e coerente (chaves conhecidas, faixas e ordem das janelas). Antes, o JSON
+      // recebido era persistido sem checagem. Valida antes de qualquer acesso ao banco.
+      const policyCheck = validateRefundPolicyPayload(data);
+      if (!policyCheck.ok) {
+        return Response.json({ error: 'Política de estorno inválida.', errors: policyCheck.errors }, { status: 400 });
+      }
+      await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(policyCheck.data) });
+      const policy = resolveRefundPolicy(policyCheck.data, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
       return Response.json({ ok: true, policy });
     }
 
@@ -156,6 +163,28 @@ export default async function(req: Request): Promise<Response> {
       const clean: any = { event_id: eventId };
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
       if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
+
+      // P0-A (2026-11-04) — validação server-side de domínio ANTES de persistir:
+      // tipo, faixa e coerência entre campos (preço, quantidade, janelas, desconto,
+      // limite de usos). Entrada inválida é recusada por campo; nada é gravado.
+      const validated = validateCommerceRecord(entityName, clean, null);
+      if (!validated.ok) {
+        return Response.json({ error: 'Dados inválidos.', errors: validated.errors }, { status: 400 });
+      }
+      Object.assign(clean, validated.data);
+      // Lote: o tipo de ingresso precisa existir NO MESMO evento (vínculo verificado aqui).
+      if (entityName === 'SalesLot') {
+        const tt = await svc.entities.TicketType.filter({
+          id: clean.ticket_type_id, event_id: eventId, is_deleted: false,
+        });
+        if (!tt.length) {
+          return Response.json({
+            error: 'Dados inválidos.',
+            errors: [{ field: 'ticket_type_id', message: 'Tipo de ingresso não encontrado neste evento.' }],
+          }, { status: 400 });
+        }
+      }
+
       // DAT-001 — claim ATÔMICO do código no registro do evento: em corrida há
       // exatamente um vencedor; a perdedora recebe 409 sem criar nada e sem
       // tocar no cupom vencedor (nunca mais o soft-delete dos dois).
@@ -186,6 +215,26 @@ export default async function(req: Request): Promise<Response> {
       for (const k of SANITIZE[entityName]) if (k in data) clean[k] = data[k];
       delete clean.is_deleted;
       if (entityName === 'Coupon' && clean.code) clean.code = normalizeCouponCode(clean.code);
+
+      // P0-A (2026-11-04) — valida o registro RESULTANTE (existente + alterações),
+      // para que a coerência entre campos não seja burlada editando um campo por vez.
+      const validated = validateCommerceRecord(entityName, clean, existing[0]);
+      if (!validated.ok) {
+        return Response.json({ error: 'Dados inválidos.', errors: validated.errors }, { status: 400 });
+      }
+      Object.assign(clean, validated.data);
+      if (entityName === 'SalesLot' && 'ticket_type_id' in clean) {
+        const tt = await svc.entities.TicketType.filter({
+          id: clean.ticket_type_id, event_id: eventId, is_deleted: false,
+        });
+        if (!tt.length) {
+          return Response.json({
+            error: 'Dados inválidos.',
+            errors: [{ field: 'ticket_type_id', message: 'Tipo de ingresso não encontrado neste evento.' }],
+          }, { status: 400 });
+        }
+      }
+
       // DAT-001 — claim atômico do NOVO código (no-op se igual ao atual):
       // update concorrente para código existente perde a disputa com 409 sem
       // corromper o cupom existente. Na troca de código, o antigo só sai do
