@@ -1,7 +1,7 @@
 {
   "name": "PartnerRepresentative",
   "type": "object",
-  "description": "V\u00ednculo de uma Person a um Partner com papel (partner_manager/representative). Lote 2 RLS: travado para admin (SDK direto s\u00f3 pelo admin). O pr\u00f3prio usu\u00e1rio l\u00ea seus v\u00ednculos via getMyPartnerReps; gestores leem os reps da sua empresa via getPartnerRepresentatives e gerenciam via savePartnerRep (backend functions que validam canManagePartnerData).",
+  "description": "V\u00ednculo de uma Person a um Partner com papel (partner_manager/representative). Lote 2 RLS: travado para admin (SDK direto s\u00f3 pelo admin). O pr\u00f3prio usu\u00e1rio l\u00ea seus v\u00ednculos via getMyPartnerReps; gestores leem os reps da sua empresa via getPartnerRepresentatives e gerenciam via savePartnerRep (backend functions que validam canManagePartnerData). ACESSO (2026-11-04): representante precisa de CONTA (User) + Person. Sem conta, o v\u00ednculo nasce 'pending' (is_active false, user_id vazio) com convite de cadastro registrado; linkPendingPartnerReps o ativa automaticamente no primeiro acesso da pessoa.",
   "properties": {
     "partner_id": {
       "type": "string",
@@ -13,7 +13,7 @@
     },
     "user_id": {
       "type": "string",
-      "description": "ID do User vinculado (opcional, se tiver conta de acesso)"
+      "description": "ID do User vinculado. Vazio = pessoa ainda sem conta no app (v\u00ednculo pendente, sem acesso)."
     },
     "role_in_partner": {
       "type": "string",
@@ -27,7 +27,29 @@
     "is_active": {
       "type": "boolean",
       "default": true,
-      "description": "Se o v\u00ednculo est\u00e1 ativo"
+      "description": "Se o v\u00ednculo est\u00e1 ativo. V\u00ednculo pendente (sem conta) permanece inativo at\u00e9 a conta existir."
+    },
+    "access_status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "pending"
+      ],
+      "default": "active",
+      "enumColors": [
+        "green",
+        "yellow"
+      ],
+      "description": "active = pessoa tem conta e o v\u00ednculo vale; pending = convite enviado, aguardando a cria\u00e7\u00e3o da conta (n\u00e3o concede acesso nem aparece como representante ativo)."
+    },
+    "invite_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o convite de cadastro foi enviado (apenas v\u00ednculos pendentes)."
+    },
+    "invite_error": {
+      "type": "string",
+      "description": "Motivo da falha no envio do convite de cadastro (quando houver)."
     },
     "is_deleted": {
       "type": "boolean",

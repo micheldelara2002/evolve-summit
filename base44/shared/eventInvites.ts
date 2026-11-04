@@ -84,6 +84,56 @@ async function ensureMembership(
   });
 }
 
+// Papéis de GESTÃO que também existem como presença no evento (Participant).
+// 'attendee' nunca é criado aqui (a inscrição já nasceu antes do convite).
+const ROLE_TO_PARTICIPANT: Record<string, string> = {
+  team: "team",
+  manager: "manager",
+  attendee: "attendee",
+};
+
+/**
+ * Garante a presença (Participant) de um papel de gestão. Idempotente por
+ * person_id ou e-mail. É o que faz "estar no evento" virar participante no
+ * momento em que a pessoa conclui o cadastro.
+ */
+async function ensureParticipantForRole(
+  svc: any,
+  { eventId, personId, role, personName, userEmail }: any,
+): Promise<any | null> {
+  const roleInEvent = ROLE_TO_PARTICIPANT[role];
+  if (!roleInEvent) return null;
+  const email = normalizeEmail(userEmail);
+
+  const existing = await svc.entities.Participant.filter({ event_id: eventId, is_deleted: false });
+  const found = (existing || []).find(
+    (p: any) => (personId && p.person_id === personId) || (email && normalizeEmail(p.email) === email),
+  );
+
+  if (found) {
+    const needsUpdate = found.role_in_event !== roleInEvent || (personId && found.person_id !== personId);
+    if (!needsUpdate) return found;
+    return await svc.entities.Participant.update(found.id, {
+      role_in_event: roleInEvent,
+      ...(personId && !found.person_id ? { person_id: personId } : {}),
+    });
+  }
+
+  // Só papéis de gestão criam presença a partir do convite.
+  if (role !== "team" && role !== "manager") return null;
+
+  return await svc.entities.Participant.create({
+    event_id: eventId,
+    full_name: personName || "",
+    email,
+    role_in_event: roleInEvent,
+    registration_status: "confirmed",
+    person_id: personId || "",
+    is_deleted: false,
+    created_day: new Date().toISOString().slice(0, 10),
+  });
+}
+
 /**
  * Concede um papel de evento a um e-mail. Conta existente → vínculo imediato
  * (idempotente). Sem conta → convite pendente + e-mail de convite do app.
@@ -121,6 +171,15 @@ export async function grantEventRole(
         manager_name: target.full_name || displayName || "",
       });
     }
+
+    // Estar no evento com papel de gestão = ser participante.
+    await ensureParticipantForRole(svc, {
+      eventId,
+      personId,
+      role,
+      personName: displayName || target.full_name || "",
+      userEmail: target.email,
+    });
 
     // Convites antigos para este e-mail passam a valer agora.
     await linkPendingInvites(client, { personId, userId: target.id, email: target.email });
@@ -204,6 +263,15 @@ export async function linkPendingInvites(
       role: invite.target_role || "manager",
     });
 
+    // Equipe/gerente convidados passam a existir como participantes do evento.
+    await ensureParticipantForRole(svc, {
+      eventId: invite.event_id,
+      personId,
+      role: invite.target_role || "manager",
+      personName,
+      userEmail: email,
+    });
+
     if ((invite.target_role || "manager") === "manager" && !event.manager_id) {
       await svc.entities.Event.update(event.id, {
         manager_id: userId,
@@ -215,6 +283,40 @@ export async function linkPendingInvites(
       status: "accepted",
       accepted_at: new Date().toISOString(),
       accepted_user_id: userId,
+    });
+    linked += 1;
+  }
+  return { linked };
+}
+
+/**
+ * 2026-11-04 — Vínculos de representante que esperavam a conta nascem agora.
+ * Um PartnerRepresentative 'pending' (sem user_id) passa a 'active' no primeiro
+ * acesso da pessoa. Idempotente; nunca troca o titular de um vínculo que já
+ * pertence a outra conta.
+ */
+export async function linkPendingPartnerReps(
+  client: any,
+  { personId, userId }: any,
+): Promise<{ linked: number }> {
+  const svc = svcOf(client);
+  if (!personId || !userId) return { linked: 0 };
+
+  const rows = await svc.entities.PartnerRepresentative.filter({
+    person_id: personId,
+    is_deleted: false,
+  });
+
+  let linked = 0;
+  for (const rep of rows || []) {
+    if (!rep?.id) continue;
+    if (rep.user_id && rep.user_id !== userId) continue;
+    if (rep.user_id === userId && rep.access_status === "active" && rep.is_active !== false) continue;
+    await svc.entities.PartnerRepresentative.update(rep.id, {
+      user_id: userId,
+      is_active: true,
+      access_status: "active",
+      invite_error: "",
     });
     linked += 1;
   }

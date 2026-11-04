@@ -9,7 +9,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
+import { grantEventRole } from "../../shared/eventInvites.ts";
+import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
+// (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
 
 const WRITABLE_FIELDS = [
   'full_name', 'email', 'cpf', 'phone', 'company', 'job_title',
@@ -18,6 +21,15 @@ const WRITABLE_FIELDS = [
   'checkin_status', 'checkin_at', 'checked_in_by_user_id', 'created_day',
 ];
 const ROLE_ENUM = ['attendee', 'speaker', 'team', 'manager', 'partner_rep'];
+// Papéis de GESTÃO da equipe: só admin ou o GERENTE do evento atribui/remove.
+// 'team' não se descadastra nem cadastra outros membros.
+const STAFF_ROLES = ['team'];
+const EVENT_STAFF_MANAGER_ROLES = ['manager'];
+
+async function isStaffManager(base44, user, eventId) {
+  const { authorized } = await verifyEventMembership(base44, user, eventId, EVENT_STAFF_MANAGER_ROLES);
+  return authorized;
+}
 
 function pickFields(data) {
   const out = {};
@@ -84,8 +96,35 @@ export default async function(req) {
       if (dup.size > 0) {
         return Response.json({ error: `"${data.email}" já possui inscrição ativa neste evento (1 e-mail = 1 inscrição).` }, { status: 409 });
       }
+      // Papéis de gestão da equipe têm porta própria (assignStaff/removeStaff).
+      if (STAFF_ROLES.includes(data.role_in_event) || data.role_in_event === 'manager') {
+        return Response.json({ error: 'Papéis de gestão são atribuídos em Equipe do evento.' }, { status: 400 });
+      }
+      // Cadastro único: a inscrição sempre aponta para a Person do e-mail.
+      const person = await ensurePersonByEmail(base44.asServiceRole, {
+        email: data.email,
+        fullName: data.full_name,
+      });
+      data.person_id = person.id;
       const created = await base44.asServiceRole.entities.Participant.create({ ...data, event_id: eventId });
-      return Response.json({ participant: created });
+
+      // Conta: quem já usa o app é vinculado; quem não usa recebe o convite.
+      const account = await findAccountByEmail(base44.asServiceRole, data.email);
+      let invite = null;
+      if (!account) {
+        try {
+          invite = await inviteToEvent(base44.asServiceRole, {
+            eventId,
+            email: data.email,
+            displayName: data.full_name,
+            role: 'attendee',
+            actor: user,
+          });
+        } catch (e: any) {
+          invite = { status: 'failed', error: e?.message || 'Falha no envio do convite.' };
+        }
+      }
+      return Response.json({ participant: created, account_linked: !!account, invite });
     }
 
     if (op === 'bulkCreate') {
@@ -110,6 +149,7 @@ export default async function(req) {
       }
       const activeDup = await findActiveDuplicateEmails(base44.asServiceRole, eventId, [...seen]);
       const toCreate = [];
+      const toCreateIdx = [];
       for (const p of payloads) {
         if (activeDup.has(p.email)) {
           duplicates.push({ email: p.email, reason: 'Já possui inscrição ativa neste evento' });
@@ -117,10 +157,96 @@ export default async function(req) {
           toCreate.push(p);
         }
       }
-      const created = toCreate.length > 0
-        ? await base44.asServiceRole.entities.Participant.bulkCreate(toCreate)
-        : [];
-      return Response.json({ participants: created, duplicates });
+      for (const p of toCreate) {
+        if (STAFF_ROLES.includes(p.role_in_event) || p.role_in_event === 'manager') {
+          duplicates.push({ email: p.email, reason: 'Papéis de gestão são atribuídos em Equipe do evento' });
+        } else {
+          toCreateIdx.push(p);
+        }
+      }
+      const svc = base44.asServiceRole;
+      const emails = [...new Set(toCreateIdx.map((p) => p.email))];
+
+      // PESSOA — uma consulta por lote; o e-mail sem par exato cai no resolvedor
+      // único (variantes + ambiguidade recusada).
+      const personByEmail = new Map();
+      for (let i = 0; i < emails.length; i += 200) {
+        const chunk = emails.slice(i, i + 200);
+        const rows = await svc.entities.Person.filter({
+          contact_email: { $in: chunk },
+          is_active: { $ne: false },
+        });
+        for (const p of rows || []) {
+          const key = normalizeParticipantEmail(p?.contact_email);
+          if (!key || !p?.id) continue;
+          personByEmail.set(key, personByEmail.has(key) ? null : p);
+        }
+      }
+
+      // CONTA — quem já usa o app é só vinculado.
+      const accountByEmail = new Set();
+      for (let i = 0; i < emails.length; i += 200) {
+        const chunk = emails.slice(i, i + 200);
+        const users = await svc.entities.User.filter({ email: { $in: chunk } });
+        for (const u of users || []) {
+          const key = normalizeParticipantEmail(u?.email);
+          if (!key || !u?.id || u.account_status === 'deleted') continue;
+          accountByEmail.add(key);
+        }
+      }
+
+      const ready = [];
+      const invites = { sent: 0, failed: 0 };
+      const failed_invites = [];
+      for (const p of toCreateIdx) {
+        let person = personByEmail.get(p.email);
+        if (person === null) {
+          duplicates.push({ email: p.email, reason: 'Mais de um cadastro de pessoa usa este e-mail' });
+          continue;
+        }
+        if (!person) {
+          try {
+            person = await ensurePersonByEmail(svc, { email: p.email, fullName: p.full_name });
+            personByEmail.set(p.email, person);
+          } catch {
+            duplicates.push({ email: p.email, reason: 'Não foi possível criar o cadastro da pessoa' });
+            continue;
+          }
+        }
+        ready.push({ ...p, person_id: person.id });
+      }
+
+      const created = ready.length > 0 ? await svc.entities.Participant.bulkCreate(ready) : [];
+
+      // CONVITE — só quem ainda não tem conta. Falha por linha não derruba o lote.
+      for (const p of ready) {
+        if (accountByEmail.has(p.email)) continue;
+        try {
+          const res = await inviteToEvent(svc, {
+            eventId,
+            email: p.email,
+            displayName: p.full_name,
+            role: 'attendee',
+            actor: user,
+          });
+          if (res.status === 'sent') invites.sent += 1;
+          else {
+            invites.failed += 1;
+            failed_invites.push({ email: p.email, error: res.error });
+          }
+        } catch (e: any) {
+          invites.failed += 1;
+          failed_invites.push({ email: p.email, error: e?.message || 'Falha no envio do convite.' });
+        }
+      }
+
+      return Response.json({
+        participants: created,
+        duplicates,
+        accounts_linked: ready.filter((p) => accountByEmail.has(p.email)).length,
+        invites,
+        failed_invites,
+      });
     }
 
     if (op === 'update') {
@@ -133,6 +259,13 @@ export default async function(req) {
       const found = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId });
       if (!found.length) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
       const current = found[0];
+      // EQUIPE — mexer no papel de equipe (dar ou tirar) é do gerente/admin.
+      // Impede que 'team' se descadastre ou promova alguém.
+      if (current.role_in_event === 'team' || data.role_in_event === 'team' || data.role_in_event === 'manager') {
+        if (!(await isStaffManager(base44, user, eventId))) {
+          return Response.json({ error: 'Apenas o gerente do evento pode alterar papéis de gestão da equipe.' }, { status: 403 });
+        }
+      }
       // P0 — Deduplicidade na edição: trocar o e-mail por um que já tem inscrição
       // ativa no evento é bloqueado (ignora o próprio registro na consulta).
       if (data.email) {
@@ -281,6 +414,89 @@ export default async function(req) {
       // explicitamente podia limpar contadores/status em updates parciais.
       await base44.asServiceRole.entities.Import.update(importId, data);
       return Response.json({ ok: true });
+    }
+
+    // ── EQUIPE DO EVENTO (2026-11-04) ───────────────────────────────────────
+    // Staff precisa de conta (User) + Person. Sem conta → convite por e-mail e
+    // vínculo pendente, concluído no primeiro acesso (linkPendingInvites).
+    if (op === 'listStaff') {
+      if (!(await isStaffManager(base44, user, eventId))) {
+        return Response.json({ error: 'Apenas o gerente do evento gerencia a equipe.' }, { status: 403 });
+      }
+      const svc = base44.asServiceRole;
+      const [memberships, invites, participants] = await Promise.all([
+        svc.entities.EventMembership.filter({ event_id: eventId, role: 'team', is_active: true, is_deleted: false }),
+        svc.entities.EventInvite.filter({ event_id: eventId, target_role: 'team', status: 'pending', is_deleted: false }),
+        svc.entities.Participant.filter({ event_id: eventId, role_in_event: 'team', is_deleted: false }),
+      ]);
+      return Response.json({ memberships, invites, participants });
+    }
+
+    if (op === 'assignStaff') {
+      if (!(await isStaffManager(base44, user, eventId))) {
+        return Response.json({ error: 'Apenas o gerente do evento cadastra a equipe.' }, { status: 403 });
+      }
+      const email = normalizeParticipantEmail(body.email || body.data?.email || '');
+      const displayName = String(body.full_name || body.data?.full_name || '').slice(0, 120);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return Response.json({ error: 'Informe um e-mail válido.' }, { status: 400 });
+      }
+      try {
+        const result: any = await grantEventRole(base44, {
+          eventId,
+          email,
+          displayName,
+          role: 'team',
+          actor: user,
+        });
+        if (result.status === 'linked') {
+          return Response.json({ status: 'linked', membership: result.membership });
+        }
+        return Response.json({
+          status: 'invited',
+          invite: { invited: !!result.invited, error: result.inviteError || '' },
+        });
+      } catch (error: any) {
+        const map: Record<string, [string, number]> = {
+          event_not_found: ['Evento não encontrado.', 404],
+          account_deleted: ['Esta conta foi excluída e não pode receber acesso.', 409],
+          identity_ambiguous: ['Há mais de um cadastro de pessoa com este e-mail. Consolide o cadastro antes.', 409],
+        };
+        const mapped = map[error?.message];
+        if (mapped) return Response.json({ error: mapped[0] }, { status: mapped[1] });
+        throw error;
+      }
+    }
+
+    if (op === 'removeStaff') {
+      if (!(await isStaffManager(base44, user, eventId))) {
+        return Response.json({ error: 'Apenas o gerente do evento remove a equipe.' }, { status: 403 });
+      }
+      const participantId = String(body.participant_id || '');
+      const svc = base44.asServiceRole;
+      const parts = participantId
+        ? await svc.entities.Participant.filter({ id: participantId, event_id: eventId })
+        : [];
+      const participant = parts?.[0] || null;
+      const email = normalizeParticipantEmail(body.email || participant?.email || '');
+      if (!participant && !email) {
+        return Response.json({ error: 'Informe quem deve sair da equipe.' }, { status: 400 });
+      }
+
+      const memberships = await svc.entities.EventMembership.filter({
+        event_id: eventId,
+        role: 'team',
+        is_deleted: false,
+        ...(participant?.person_id ? { person_id: participant.person_id } : { user_email: email }),
+      });
+      for (const m of memberships || []) {
+        await svc.entities.EventMembership.update(m.id, { is_active: false, is_deleted: true });
+      }
+      // Remover da equipe não apaga a presença: volta a ser participante.
+      if (participant && participant.role_in_event === 'team') {
+        await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
+      }
+      return Response.json({ ok: true, memberships_removed: (memberships || []).length });
     }
 
     return Response.json({ error: 'Operação desconhecida: ' + op }, { status: 400 });
