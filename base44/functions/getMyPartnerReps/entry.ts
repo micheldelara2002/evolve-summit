@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { resolveUserPersonId } from "../../shared/eventAuth.ts";
+import { resolveUserPersonIds } from "../../shared/eventAuth.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -10,7 +10,9 @@ export default async function(req: Request): Promise<Response> {
     const user = guard.user;
     if (!user?.id) return Response.json({ error: 'Usuário inválido.' }, { status: 400 });
 
-    const userPersonId = await resolveUserPersonId(base44, user);
+    // P1-A — conjunto verificado: um usuário pode responder por mais de uma
+    // Person; todas as correspondências contam (nenhum vínculo fica oculto).
+    const userPersonIds = await resolveUserPersonIds(base44, user);
 
     const queries = [
       base44.asServiceRole.entities.PartnerRepresentative.filter({
@@ -19,10 +21,10 @@ export default async function(req: Request): Promise<Response> {
         is_deleted: false,
       }),
     ];
-    if (userPersonId) {
+    if (userPersonIds.length > 0) {
       queries.push(
         base44.asServiceRole.entities.PartnerRepresentative.filter({
-          person_id: userPersonId,
+          person_id: { $in: userPersonIds },
           is_active: true,
           is_deleted: false,
         })

@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { scanBatches } from "../../shared/completeScan.ts";
+import { resolveIdentity } from "../../shared/identity.ts";
 
 // Account Deletion — self-service exclusão de conta do próprio usuário.
 //
@@ -51,7 +52,12 @@ export default async function(req) {
     const body = await req.json().catch(() => ({}));
     const dryRun = !!body.dryRun;
 
-    const personId = user.person_id || null;
+    // P1-A — conjunto VERIFICADO de Persons do usuário (vínculo explícito +
+    // correspondências por e-mail normalizado): a exclusão precisa alcançar
+    // TODAS as identidades dele, não apenas a vinculada.
+    const identity = await resolveIdentity(base44, user);
+    const personIds = identity.personIds;
+    const personId = identity.linkedPersonId || identity.selfPersonId || null;
     const counts = {
       person: 0,
       participants: 0,
@@ -69,12 +75,12 @@ export default async function(req) {
     // =========================================================================
     // 1. PERSON (por id) — limpa toda PII, mantém id + relacionamentos
     // =========================================================================
-    if (personId) {
-      const [person] = await svc.entities.Person.filter({ id: personId });
+    for (const pid of personIds) {
+      const [person] = await svc.entities.Person.filter({ id: pid });
       if (person) {
-        counts.person = 1;
+        counts.person += 1;
         if (!dryRun) {
-          await svc.entities.Person.update(personId, {
+          await svc.entities.Person.update(pid, {
             full_name: DELETED_NAME,
             contact_email: null,
             phone: null,
@@ -127,8 +133,8 @@ export default async function(req) {
       }
     };
 
-    if (personId) await pageParticipants({ person_id: personId });
-    if (user.email) await pageParticipants({ email: user.email });
+    if (personIds.length > 0) await pageParticipants({ person_id: { $in: personIds } });
+    if (identity.emailNorm) await pageParticipants({ email: { $in: identity.emailVariants } });
 
     // =========================================================================
     // 3. LEAD (por person_id, depois por participant_id $in) — preserva partner
@@ -144,8 +150,8 @@ export default async function(req) {
       person_job_title: null,
     });
 
-    if (personId) {
-      for await (const batch of scanBatches(svc.entities.Lead, { person_id: personId }, { pageSize: BATCH })) {
+    if (personIds.length > 0) {
+      for await (const batch of scanBatches(svc.entities.Lead, { person_id: { $in: personIds } }, { pageSize: BATCH })) {
         const updates = [];
         for (const l of batch) {
           if (leadIds.has(l.id)) continue;
@@ -174,8 +180,8 @@ export default async function(req) {
     // =========================================================================
     // 4. CHATMESSAGE (por sender_person_id) — preserva texto, anonimiza nome
     // =========================================================================
-    if (personId) {
-      for await (const batch of scanBatches(svc.entities.ChatMessage, { sender_person_id: personId }, { pageSize: BATCH })) {
+    if (personIds.length > 0) {
+      for await (const batch of scanBatches(svc.entities.ChatMessage, { sender_person_id: { $in: personIds } }, { pageSize: BATCH })) {
         if (!dryRun) {
           await svc.entities.ChatMessage.bulkUpdate(
             batch.map((m) => ({ id: m.id, sender_name: DELETED_NAME }))
@@ -191,7 +197,7 @@ export default async function(req) {
     if (personId) {
       for (const side of ['person_a_id', 'person_b_id']) {
         const nameField = side === 'person_a_id' ? 'person_a_name' : 'person_b_name';
-        for await (const batch of scanBatches(svc.entities.ChatThread, { [side]: personId }, { pageSize: BATCH })) {
+        for await (const batch of scanBatches(svc.entities.ChatThread, { [side]: { $in: personIds } }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.ChatThread.bulkUpdate(
               batch.map((t) => ({ id: t.id, [nameField]: DELETED_NAME }))
@@ -208,7 +214,7 @@ export default async function(req) {
     if (personId) {
       for (const side of ['person_a_id', 'person_b_id']) {
         const nameField = side === 'person_a_id' ? 'person_a_name' : 'person_b_name';
-        for await (const batch of scanBatches(svc.entities.Connection, { [side]: personId }, { pageSize: BATCH })) {
+        for await (const batch of scanBatches(svc.entities.Connection, { [side]: { $in: personIds } }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.Connection.bulkUpdate(
               batch.map((c) => ({ id: c.id, [nameField]: DELETED_NAME }))
@@ -225,7 +231,7 @@ export default async function(req) {
     if (personId) {
       for (const side of ['requester_person_id', 'receiver_person_id']) {
         const nameField = side === 'requester_person_id' ? 'requester_name' : 'receiver_name';
-        for await (const batch of scanBatches(svc.entities.ConnectionRequest, { [side]: personId }, { pageSize: BATCH })) {
+        for await (const batch of scanBatches(svc.entities.ConnectionRequest, { [side]: { $in: personIds } }, { pageSize: BATCH })) {
           if (!dryRun) {
             await svc.entities.ConnectionRequest.bulkUpdate(
               batch.map((c) => ({ id: c.id, [nameField]: DELETED_NAME }))
@@ -246,7 +252,8 @@ export default async function(req) {
       user_email: null,
     });
     for (const queryKey of [
-      personId ? { person_id: personId } : null,
+      personIds.length > 0 ? { person_id: { $in: personIds } } : null,
+      identity.emailNorm ? { user_email: { $in: identity.emailVariants } } : null,
       { user_id: user.id },
     ]) {
       if (!queryKey) continue;
@@ -288,8 +295,8 @@ export default async function(req) {
     // ser primário e fica inativo. Idempotente (reexecução reescreve o
     // marcador).
     // =========================================================================
-    if (personId) {
-      for await (const batch of scanBatches(svc.entities.PersonDocument, { person_id: personId }, { pageSize: BATCH })) {
+    if (personIds.length > 0) {
+      for await (const batch of scanBatches(svc.entities.PersonDocument, { person_id: { $in: personIds } }, { pageSize: BATCH })) {
         if (!dryRun && batch.length > 0) {
           await svc.entities.PersonDocument.bulkUpdate(
             batch.map((d) => ({

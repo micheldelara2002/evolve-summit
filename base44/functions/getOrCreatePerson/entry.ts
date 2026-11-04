@@ -25,12 +25,14 @@ export default async function(req) {
 
     let resolvedEmail = null;
     let resolvedName = null;
+    let authenticatedUser = null;
 
     // 1. Authenticated path — identity from auth.me(), never from client body.
     //    P1: requireActiveUser blocks account_status='deleted' from mutating.
     try {
       const guard = await requireActiveUser(base44);
       if (guard.ok) {
+        authenticatedUser = guard.user;
         resolvedEmail = guard.user.email;
         resolvedName = guard.user.full_name || "Novo Usuário";
       } else if (guard.status === 403) {
@@ -65,6 +67,16 @@ export default async function(req) {
       }
       resolvedEmail = systemUser.email;
       resolvedName = systemUser.full_name || "Novo Usuário";
+    }
+
+    // 2b. P1-A — vínculo explícito tem PRECEDÊNCIA sobre o e-mail: o sistema
+    //     já declarou quem é esta pessoa.
+    const linkedPersonId = (() => {
+      try { return authenticatedUser?.person_id || null; } catch { return null; }
+    })();
+    if (linkedPersonId) {
+      const linked = await base44.asServiceRole.entities.Person.filter({ id: linkedPersonId });
+      if (linked?.[0]?.id) return Response.json({ status: "exists", person_id: linked[0].id });
     }
 
     // 3. Idempotent lookup — return existing Person if one is already linked.

@@ -20,7 +20,8 @@
 |---|---|---|
 | P0-A | **Concluída** | Validação em `base44/shared/commerceValidation.ts`, aplicada em `manageCommerce` (TicketType, SalesLot, Coupon e política de estorno). Recusas por campo verificadas; caminho válido verificado. |
 | P0-B | **Concluída** | Trilha obrigatória bloqueante (`base44/shared/auditTrail.ts`) aplicada em checkout, estorno (solicitação/confirmação/falha), webhook, expiração de pagamento, configuração de comércio e repasses; reconciliação de casos pendentes na varredura de manutenção. Ver §5. |
-| P1-A · P1-B · P1-C · P2 | Não iniciadas | — |
+| P1-A | **Concluída** | Identidade canônica em `base44/shared/identity.ts` (precedência vínculo explícito > e-mail normalizado > nenhum; ambiguidade = negação). Todos os fluxos migrados: conexões, presença em sessão, campanhas, conversas, perfil próprio, sorteios, premiação, pontuação, contador global, leitura de participantes, parceiros e exclusão de conta. Nenhum lookup próprio de `contact_email` restante. Dados de teste: sem backfill necessário. |
+| P1-B · P1-C · P2 | Não iniciadas | — |
 
 **Decisões provisórias adotadas em P0-A** (§11, itens 1 e 2): preço de lote e desconto fixo até R$ 1.000.000,00; código de cupom de 3 a 40 caracteres (`A-Z 0-9 _ -`). Ajustar aqui se a regra de negócio for outra.
 
@@ -176,6 +177,9 @@ P0-B (trilha obrigatória já garante registro de mudanças de vínculo).
 - Tentativa de operar sobre participante de terceiro → negada.
 - Tentativa com e-mail de terceiro em caixa diferente → negada.
 - Usuário com vínculo explícito e e-mail divergente → autorizado pelo vínculo.
+
+### Encerramento
+`resolveIdentity`, `requireSelfPersonId`, `findMyParticipant(s)` e os helpers de posse são a única porta de identidade do app; `eventAuth.resolveUserPersonId(s)` apenas delegam. Comparação de e-mail sempre por `normalizeEmail`; gravação normaliza. Ambiguidade (duas Persons para o mesmo e-mail, sem vínculo) **nega** as operações que exigem "quem sou eu" — conexão, presença, campanha, perfil, sorteio, premiação, pontuação, contador — com motivo explícito, enquanto as checagens de posse continuam exatas reconhecendo todas as correspondências.
 
 ---
 

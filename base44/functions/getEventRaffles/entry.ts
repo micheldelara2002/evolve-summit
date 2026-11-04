@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { canAccessEventData, verifyEventMembership, EVENT_MANAGER_ROLES, resolveUserPartnerIds } from "../../shared/eventAuth.ts";
+import { resolveIdentity, identityOwnsParticipant } from "../../shared/identity.ts";
 
 export default async function(req) {
   try {
@@ -31,16 +32,27 @@ export default async function(req) {
       const speakerMemberships = await svc.entities.EventMembership.filter({
         event_id: eventId, user_id: user.id, role: 'speaker', is_active: true, is_deleted: false,
       });
-      const personIds = [...new Set((speakerMemberships || []).map((m) => m.person_id).filter(Boolean))];
+      // P1-A — person_ids da membership SOMADOS ao conjunto verificado de
+      // identidade; o e-mail é consultado na forma normalizada + bruta.
+      const identity = await resolveIdentity(base44, user);
+      const personIds = [...new Set([
+        ...(speakerMemberships || []).map((m) => m.person_id).filter(Boolean),
+        ...identity.personIds,
+      ])];
       const [ownByPerson, ownByEmail] = await Promise.all([
         personIds.length
           ? svc.entities.Participant.filter({ event_id: eventId, is_deleted: false, person_id: { $in: personIds } })
           : Promise.resolve([]),
-        user.email
-          ? svc.entities.Participant.filter({ event_id: eventId, is_deleted: false, email: user.email })
+        identity.emailNorm
+          ? svc.entities.Participant.filter({ event_id: eventId, is_deleted: false, email: { $in: identity.emailVariants } })
           : Promise.resolve([]),
       ]);
-      const ownPartIds = [...new Set([...(ownByPerson || []), ...(ownByEmail || [])].map((p) => p.id))];
+      // Posse conferida em memória (e-mail legado com caixa diferente).
+      const ownPartIds = [...new Set(
+        [...(ownByPerson || []), ...(ownByEmail || [])]
+          .filter((p) => personIds.includes(p.person_id) || identityOwnsParticipant(identity, p))
+          .map((p) => p.id)
+      )];
       // Sem papel de gestão: apenas os próprios sorteios de estande OU de
       // palestrante — vencedores de outros parceiros/palestrantes não vazam.
       raffles = raffles.filter((r) =>

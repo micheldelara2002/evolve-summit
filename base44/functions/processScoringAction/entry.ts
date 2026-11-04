@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { validIds } from "../../shared/idGuard.ts";
+import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
 
 function buildIdempotencyKey({ eventId, participantId, acao, refId, limiteTipo }) {
   switch (limiteTipo) {
@@ -58,10 +59,12 @@ export default async function(req: Request): Promise<Response> {
     if (user.role !== 'admin' && acao === 'conexao_aceita') {
       const svcE = base44.asServiceRole.entities;
       const deny = { error: 'Conexão aceita não encontrada para esta pontuação.' };
-      const callerParts = await svcE.Participant.filter({
-        event_id: targetPart.event_id, email: user.email, is_deleted: false,
-      });
-      const callerPart = callerParts[0];
+      // P1-A — o participante do chamador vem da identidade canônica (vínculo
+      // explícito ou e-mail normalizado). Ambiguidade NEGA o crédito: escolher
+      // "o primeiro" creditaria a pessoa errada.
+      const callerIdentity = await resolveIdentity(base44, user);
+      const callerParts = await findMyParticipants(base44, callerIdentity, targetPart.event_id);
+      const callerPart = callerParts.length === 1 ? callerParts[0] : null;
       if (!validIds([refId]).length) {
         return Response.json(deny, { status: 403 });
       }

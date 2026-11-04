@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { incPersons } from "../../shared/businessMetrics.ts";
+import { resolveIdentity, normalizeEmail } from "../../shared/identity.ts";
 
 /**
  * manageAward — backend function do módulo de premiação (fluxo CFP-like).
@@ -45,22 +46,31 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'Inscrições encerradas' }, { status: 400 });
       }
 
-      // resolve/cria Person
-      let personId = user.person_id;
+      // resolve/cria Person — P1-A, identidade canônica. Com dois cadastros
+      // para o mesmo e-mail a inscrição é NEGADA (nunca se escolhe "o primeiro":
+      // o case iria para a pessoa errada).
+      const identity = await resolveIdentity(base44, user);
+      if (identity.ambiguous) {
+        return Response.json({
+          error: 'Há mais de um cadastro de pessoa com o seu e-mail. A organização precisa consolidar seu cadastro antes da inscrição.',
+        }, { status: 409 });
+      }
+      let personId = identity.selfPersonId;
       let personName = user.full_name || user.email;
-      const personEmail = user.email;
-      if (!personId) {
-        const byEmail = user.email ? await svc.entities.Person.filter({ contact_email: user.email }) : [];
-        if (byEmail[0]) {
-          personId = byEmail[0].id;
-          personName = byEmail[0].full_name || personName;
-        } else {
-          const created = await svc.entities.Person.create({ full_name: personName, contact_email: personEmail, created_day: new Date().toISOString().slice(0, 10) });
-          personId = created.id;
-          await base44.auth.updateMe({ person_id: personId });
-          // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
-          try { await incPersons(svc, created.created_date); } catch {}
-        }
+      if (personId) {
+        const [own] = await svc.entities.Person.filter({ id: personId });
+        if (own?.full_name) personName = own.full_name;
+      } else {
+        const created = await svc.entities.Person.create({
+          full_name: personName,
+          contact_email: normalizeEmail(user.email),
+          created_day: new Date().toISOString().slice(0, 10),
+          is_active: true,
+        });
+        personId = created.id;
+        await base44.auth.updateMe({ person_id: personId });
+        // P0.3 — bucket global diário de persons (best-effort; reconcile corrige drift)
+        try { await incPersons(svc, created.created_date); } catch {}
       }
 
       // garante EventMembership{entrant} (idempotente) — service role bypassa RLS create

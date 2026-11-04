@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
+import { resolveIdentity } from "../../shared/identity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import {
   incUniqueParticipant, decUniqueParticipant,
@@ -116,8 +117,14 @@ export default async function(req: Request): Promise<Response> {
       // Normal users may only maintain the counter for their own Person, created recently.
       // Global/admin imports remain restricted to admins.
       if (user.role !== 'admin') {
-        const persons = await svc.entities.Person.filter({ contact_email: user.email, is_active: true });
-        const ownPerson = persons[0];
+        // P1-A — identidade canônica: a Person precisa estar no conjunto
+        // verificado do usuário e ser ÚNICA (ambiguidade nega — nunca se marca
+        // o contador da pessoa errada).
+        const identity = await resolveIdentity(base44, user);
+        if (identity.ambiguous) return Response.json({ error: 'Cadastro de pessoa ambíguo — contador não alterado.' }, { status: 409 });
+        const ownPerson = identity.selfPersonId
+          ? (await svc.entities.Person.filter({ id: identity.selfPersonId, is_active: true }))[0]
+          : null;
         if (!ownPerson) return Response.json({ error: 'Sem permissão para manter este contador.' }, { status: 403 });
         const requestedDay = new Date(createdDateISO).toISOString().slice(0, 10);
         const personDay = new Date(ownPerson.created_date).toISOString().slice(0, 10);
