@@ -5,7 +5,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Upload, Download, QrCode, UserPlus, Users } from "lucide-react";
+import { Search, Upload, Download, QrCode, UserPlus, Users, ShieldCheck } from "lucide-react";
 
 export default function PessoasToolbar({
   search, onSearchChange,
@@ -14,7 +14,7 @@ export default function PessoasToolbar({
   partnerNames = [],
   hasAccess,
   canManageStaff,
-  onScan, onExport, onImport, onAdd, onManageStaff,
+  onScan, onExport, onImport, onAdd, onManageStaff, onManageRoles,
 }) {
   return (
     <div className="flex flex-wrap gap-2 items-center">
@@ -58,9 +58,14 @@ export default function PessoasToolbar({
           </Button>
         )}
         {canManageStaff && (
-          <Button variant="outline" size="sm" className="gap-1" onClick={onManageStaff}>
-            <Users className="w-4 h-4" /> Equipe
-          </Button>
+          <>
+            <Button variant="outline" size="sm" className="gap-1" onClick={onManageStaff}>
+              <Users className="w-4 h-4" /> Equipe
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1" onClick={onManageRoles}>
+              <ShieldCheck className="w-4 h-4" /> Curadoria/Avaliação
+            </Button>
+          </>
         )}
         {hasAccess && (
           <Button size="sm" className="gap-1" onClick={onAdd}>

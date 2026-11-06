@@ -4,6 +4,9 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Check, Users } from "lucide-react";
+import { toast } from "sonner";
+import { getEventReviewers } from "@/lib/participantApi";
+import { eventRoleErrorMessage } from "@/lib/eventRoleApi";
 
 /**
  * Designa a banca avaliadora de uma premiação (AwardConfig).
@@ -15,9 +18,10 @@ export default function AssignBancaDialog({ open, onClose, eventId, award, curre
   const qc = useQueryClient();
   const [selected, setSelected] = useState([]);
 
+  // Avaliadores do evento vêm do servidor (o SDK direto só lê o próprio vínculo).
   const { data: reviewers = [], isLoading } = useQuery({
     queryKey: ["event-reviewers", eventId],
-    queryFn: () => base44.entities.EventMembership.filter({ event_id: eventId, role: "reviewer", is_active: true, is_deleted: false }),
+    queryFn: () => getEventReviewers(eventId),
     enabled: !!eventId,
   });
 
@@ -31,7 +35,9 @@ export default function AssignBancaDialog({ open, onClose, eventId, award, curre
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["award-configs", eventId] });
       onClose();
+      toast.success("Banca atualizada.");
     },
+    onError: (err) => toast.error(eventRoleErrorMessage(err)),
   });
 
   return (

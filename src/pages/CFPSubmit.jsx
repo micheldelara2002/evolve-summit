@@ -9,7 +9,6 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import { fetchMyPerson, getOrCreateMyPerson } from "@/lib/personApi";
+import { saveSubmission, submissionErrorMessage } from "@/lib/submissionApi";
+import { useToast } from "@/components/ui/use-toast";
 
 const SESSION_TYPES = [
   { value: "palestra", label: "Palestra" },
@@ -42,8 +42,8 @@ export default function CFPSubmit() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const navigate = useNavigate();
-  const { user } = useAuth();
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
@@ -66,13 +66,6 @@ export default function CFPSubmit() {
       return list[0];
     },
     enabled: !!cfp?.event_id,
-  });
-
-  // Person do usuário (via backend — Lote 4)
-  const { data: person } = useQuery({
-    queryKey: ["my-person", user?.person_id, user?.email],
-    queryFn: () => fetchMyPerson(),
-    enabled: !!user,
   });
 
   // Edição: carrega submission existente
@@ -98,43 +91,27 @@ export default function CFPSubmit() {
   const closed = cfp?.end_date && new Date(cfp.end_date) < new Date();
   const readOnly = !!editId && closed;
 
-  const ensurePerson = async () => {
-    if (person) return person;
-    // Lote 4 — create via backend (contador idempotente server-side)
-    const personId = await getOrCreateMyPerson();
-    await base44.auth.updateMe({ person_id: personId });
-    return { id: personId, full_name: user.full_name || user.email, contact_email: user.email };
-  };
-
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const p = await ensurePerson();
-      const payload = {
-        call_for_papers_id: cfpId,
-        event_id: cfp.event_id,
-        person_id: p.id,
-        submitter_name: p.full_name || user.full_name,
-        submitter_email: p.contact_email || user.email,
-        status: "pending",
+    mutationFn: () =>
+      saveSubmission({
+        cfpId,
+        editId,
         title: title.trim(),
         summary: summary.trim(),
-        proposed_type: proposedType,
-        custom_answers: JSON.stringify(answers),
-      };
-      if (editId) {
-        return base44.entities.Submission.update(editId, {
-          title: title.trim(),
-          summary: summary.trim(),
-          proposed_type: proposedType,
-          custom_answers: JSON.stringify(answers),
-        });
-      }
-      return base44.entities.Submission.create(payload);
-    },
+        proposedType,
+        answers,
+      }),
     onSuccess: () => {
-      qc.invalidateQueries(["my-submissions"]);
-      qc.invalidateQueries(["cfp-submissions"]);
+      qc.invalidateQueries({ queryKey: ["my-submissions"] });
+      qc.invalidateQueries({ queryKey: ["cfp-review-queue"] });
       navigate("/speaker-dashboard");
+    },
+    onError: (err) => {
+      toast({
+        title: "Não foi possível salvar a submissão",
+        description: submissionErrorMessage(err),
+        variant: "destructive",
+      });
     },
   });
 

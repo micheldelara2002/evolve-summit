@@ -348,6 +348,16 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true });
     }
 
+    // ── listSubmissions: gestão lê as inscrições do evento ───────────────────
+    if (action === 'listSubmissions') {
+      const { event_id } = body;
+      if (!event_id) return Response.json({ error: 'event_id obrigatório' }, { status: 400 });
+      const listAuth = await verifyEventMembership(base44, user, event_id, EVENT_MANAGER_ROLES);
+      if (!listAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const submissions = await svc.entities.AwardSubmission.filter({ event_id, is_deleted: false });
+      return Response.json({ ok: true, submissions });
+    }
+
     // ── setStatus: gestão muda o andamento sem liberar acesso ────────────────
     if (action === 'setStatus') {
       const { submission_id } = body;

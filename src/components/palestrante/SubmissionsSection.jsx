@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Pencil, Copy, Trash2, FileText } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { deleteSubmission, reuseSubmission, submissionErrorMessage } from "@/lib/submissionApi";
 
 const STATUS_LABEL = {
   pending: "Pendente",
@@ -74,35 +75,24 @@ export default function SubmissionsSection({ person }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Submission.update(id, { is_deleted: true }),
+    mutationFn: (id) => deleteSubmission(id),
     onSuccess: () => {
-      qc.invalidateQueries(["my-submissions", personId]);
+      qc.invalidateQueries({ queryKey: ["my-submissions", personId] });
+      qc.invalidateQueries({ queryKey: ["cfp-review-queue"] });
       toast({ title: "Submissão excluída" });
     },
+    onError: (e) => toast({ title: "Erro ao excluir", description: submissionErrorMessage(e), variant: "destructive" }),
   });
 
   const reuseMutation = useMutation({
-    mutationFn: async ({ source, targetCfp }) => {
-      return base44.entities.Submission.create({
-        call_for_papers_id: targetCfp.id,
-        event_id: targetCfp.event_id,
-        person_id: source.person_id,
-        submitter_name: source.submitter_name,
-        submitter_email: source.submitter_email,
-        status: "pending",
-        title: source.title,
-        summary: source.summary,
-        proposed_type: source.proposed_type || "palestra",
-        custom_answers: source.custom_answers || "",
-        original_submission_id: source.id,
-      });
-    },
+    mutationFn: ({ source, targetCfp }) => reuseSubmission(source.id, targetCfp.id),
     onSuccess: () => {
-      qc.invalidateQueries(["my-submissions", personId]);
+      qc.invalidateQueries({ queryKey: ["my-submissions", personId] });
+      qc.invalidateQueries({ queryKey: ["cfp-review-queue"] });
       setReuseTarget(null);
       toast({ title: "Submissão copiada para a nova chamada!" });
     },
-    onError: (e) => toast({ title: "Erro ao copiar", description: e.message, variant: "destructive" }),
+    onError: (e) => toast({ title: "Erro ao copiar", description: submissionErrorMessage(e), variant: "destructive" }),
   });
 
   const eventMap = Object.fromEntries(events.map((e) => [e.id, e]));

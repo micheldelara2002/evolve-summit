@@ -1,7 +1,7 @@
 {
   "name": "EventInvite",
   "type": "object",
-  "description": "Convite de acesso a um evento, criado pelo admin ao informar o e-mail de quem vai gerir o evento. Se a pessoa ainda n\u00e3o tem conta, o convite fica 'pending' e \u00e9 convertido em EventMembership automaticamente no primeiro acesso (shared/eventInvites.linkPendingInvites, chamado pelo getOrCreatePerson). Se j\u00e1 tem conta, o v\u00ednculo \u00e9 criado na hora e o convite nasce 'accepted'. Escritas somente por backend (service role).",
+  "description": "Convite de acesso a um evento, criado ao informar o e-mail de quem vai atuar nele (gerente, equipe, curador, avaliador ou participante). Se a pessoa ainda n\u00e3o tem conta, o convite fica 'pending' e \u00e9 convertido em EventMembership automaticamente no primeiro acesso (shared/eventInvites.linkPendingInvites, chamado pelo getOrCreatePerson). Se j\u00e1 tem conta, o v\u00ednculo \u00e9 criado na hora e o convite nasce 'accepted'. Escritas somente por backend (service role).",
   "properties": {
     "event_id": {
       "type": "string",
@@ -13,7 +13,7 @@
     },
     "invited_name": {
       "type": "string",
-      "description": "Nome informado pelo admin no convite"
+      "description": "Nome informado por quem convidou"
     },
     "target_role": {
       "type": "string",
@@ -21,14 +21,18 @@
         "manager",
         "team",
         "partner_rep",
-        "attendee"
+        "attendee",
+        "curator",
+        "reviewer"
       ],
       "default": "manager",
       "enumColors": [
         "blue",
         "purple",
         "pink",
-        "gray"
+        "gray",
+        "green",
+        "yellow"
       ],
       "description": "Papel concedido no evento quando o convite for aceito"
     },
@@ -45,7 +49,7 @@
         "green",
         "gray"
       ],
-      "description": "pending = aguardando a pessoa concluir o cadastro; accepted = v\u00ednculo criado; revoked = cancelado pelo admin"
+      "description": "pending = aguardando a pessoa concluir o cadastro; accepted = v\u00ednculo criado; revoked = cancelado"
     },
     "invite_sent_at": {
       "type": "string",
@@ -67,11 +71,11 @@
     },
     "invited_by_user_id": {
       "type": "string",
-      "description": "ID do admin que criou o convite"
+      "description": "ID do usu\u00e1rio que criou o convite"
     },
     "invited_by_name": {
       "type": "string",
-      "description": "Nome do admin que criou o convite"
+      "description": "Nome de quem criou o convite"
     },
     "is_deleted": {
       "type": "boolean",

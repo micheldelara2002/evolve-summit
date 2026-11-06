@@ -24,6 +24,7 @@ import AddPersonToEventDialog from "@/components/admin/pessoas/AddPersonToEventD
 import EditParticipantDataDialog from "@/components/admin/pessoas/EditParticipantDataDialog";
 import EditRolesDialog from "@/components/admin/pessoas/EditRolesDialog";
 import StaffDialog from "@/components/admin/pessoas/StaffDialog";
+import EventRolesDialog from "@/components/admin/pessoas/EventRolesDialog";
 
 export default function PessoasTab({
   eventId, participants, sessions = [], hasAccess, canManageStaff,
@@ -39,6 +40,7 @@ export default function PessoasTab({
 
   const [addDialog, setAddDialog] = useState(false);
   const [staffDialog, setStaffDialog] = useState(false);
+  const [rolesDialog, setRolesDialog] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [editDataDialog, setEditDataDialog] = useState(null);
   const [editRolesDialog, setEditRolesDialog] = useState(null);
@@ -225,6 +227,7 @@ export default function PessoasTab({
         onAdd={() => setAddDialog(true)}
         canManageStaff={canManageStaff}
         onManageStaff={() => setStaffDialog(true)}
+        onManageRoles={() => setRolesDialog(true)}
       />
 
       <PessoasTable
@@ -256,6 +259,14 @@ export default function PessoasTab({
           eventId={eventId}
           onClose={() => setStaffDialog(false)}
           onChanged={invalidate}
+        />
+      )}
+
+      {rolesDialog && (
+        <EventRolesDialog
+          eventId={eventId}
+          onClose={() => setRolesDialog(false)}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ["event-reviewers", eventId] })}
         />
       )}
 

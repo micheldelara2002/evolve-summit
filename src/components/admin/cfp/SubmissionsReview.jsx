@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, Clock, Ban, FileText } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { listReviewQueue, decideSubmission, submissionErrorMessage } from "@/lib/submissionApi";
 
 const STATUS_STYLE = {
   pending: "bg-warning/10 text-warning",
@@ -35,34 +36,29 @@ export default function SubmissionsReview({ eventId, hasAccess, user }) {
   const [notes, setNotes] = useState("");
   const [action, setAction] = useState(null);
 
-  const { data: calls = [] } = useQuery({
-    queryKey: ["cfps", eventId],
-    queryFn: async () => {
-      const response = await base44.functions.invoke("manageEventConfig", { action: "list", entityName: "CallForPapers", eventId });
-      return response.data?.records || response.records || [];
-    },
-  });
+  const { toast } = useToast();
 
-  const cfpIds = calls.map((c) => c.id);
-  const { data: submissions = [], isLoading } = useQuery({
-    queryKey: ["cfp-submissions", eventId, cfpIds.join(",")],
-    queryFn: async () => {
-      if (!cfpIds.length) return [];
-      const all = await base44.entities.Submission.filter({ event_id: eventId, is_deleted: false });
-      return all.filter((s) => cfpIds.includes(s.call_for_papers_id));
-    },
-    enabled: cfpIds.length > 0,
+  // Fila de curadoria vem do servidor (curator/manager do evento) — o SDK
+  // direto só devolve as submissões do próprio autor.
+  const { data: queue, isLoading } = useQuery({
+    queryKey: ["cfp-review-queue", eventId],
+    queryFn: () => listReviewQueue(eventId),
   });
+  const calls = queue?.cfps || [];
+  const submissions = queue?.submissions || [];
 
   const manageMutation = useMutation({
     mutationFn: ({ submission_id, action, review_notes }) =>
-      base44.functions.invoke("manageSubmission", { submission_id, action, review_notes }),
+      decideSubmission({ submissionId: submission_id, action, notes: review_notes }),
     onSuccess: () => {
-      qc.invalidateQueries(["cfp-submissions", eventId]);
-      qc.invalidateQueries(["sessions", eventId]);
+      qc.invalidateQueries({ queryKey: ["cfp-review-queue", eventId] });
+      qc.invalidateQueries({ queryKey: ["sessions", eventId] });
       setSelected(null);
       setNotes("");
       setAction(null);
+    },
+    onError: (err) => {
+      toast({ title: "Não foi possível concluir", description: submissionErrorMessage(err), variant: "destructive" });
     },
   });
 

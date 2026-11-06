@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { FileText, Crown } from "lucide-react";
+import { toast } from "sonner";
 import EmptyState from "@/components/ui/EmptyState";
 
 const STATUS_STYLE = {
@@ -38,15 +39,24 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
       return response.data?.records || response.records || [];
     },
   });
+  // Inscrições do evento vêm do servidor (a gestão lê todas; o autor só a própria).
   const { data: submissions = [], isLoading } = useQuery({
     queryKey: ["award-submissions", eventId],
-    queryFn: () => base44.entities.AwardSubmission.filter({ event_id: eventId, is_deleted: false }),
+    queryFn: async () => {
+      const res = await base44.functions.invoke("manageAward", { action: "listSubmissions", event_id: eventId });
+      return res.data?.submissions || res.submissions || [];
+    },
+    enabled: !!eventId,
   });
   const configMap = Object.fromEntries(configs.map((c) => [c.id, c]));
 
+  // Status é decisão da gestão — passa pelo servidor (o autor não altera status).
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }) => base44.entities.AwardSubmission.update(id, { status }),
+    mutationFn: ({ id, status }) =>
+      base44.functions.invoke("manageAward", { action: "setStatus", submission_id: id, status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["award-submissions", eventId] }),
+    onError: (err) =>
+      toast.error(err?.response?.data?.error || err?.message || "Não foi possível alterar o status."),
   });
   const promoteMutation = useMutation({
     mutationFn: ({ submission_id, status, new_role }) =>

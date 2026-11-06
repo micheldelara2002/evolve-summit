@@ -118,6 +118,12 @@ export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, 
       onSuccess();
       onClose();
       toast.success(t("events.saveSuccess"));
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.error ||
+        err?.message ||
+        "Não foi possível salvar os papéis."
+      );
     } finally {
       setSaving(false);
     }

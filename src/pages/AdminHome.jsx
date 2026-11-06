@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 import { fetchMyParticipants } from "@/lib/participantApi";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket, Inbox, CalendarPlus } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket, Inbox, CalendarPlus, Gavel } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -38,6 +38,14 @@ const PARTNER_CARD = {
   tone: "warning",
   href: "/partner-dashboard",
   label: "Painel do Parceiro",
+};
+
+const CURATOR_CARD = {
+  key: "curadoria",
+  icon: Gavel,
+  tone: "primary",
+  href: "/curation",
+  label: "Curadoria",
 };
 
 const REVIEWER_CARD = {
@@ -88,6 +96,7 @@ export default function AdminHome() {
         isSpeaker: mine.some((p) => p.role_in_event === "speaker") || memberships.some((m) => m.role === "speaker"),
         isPartnerRep: mine.some((p) => p.role_in_event === "partner_rep") || memberships.some((m) => m.role === "partner_rep"),
         isReviewer: memberships.some((m) => m.role === "reviewer"),
+        isCurator: memberships.some((m) => m.role === "curator"),
         isEventManager: memberships.some((m) => m.role === "manager" || m.role === "team"),
         hasSubmissions: mySubs.length > 0,
       };
@@ -105,6 +114,9 @@ export default function AdminHome() {
   }
   if (admin || participantRoles?.isReviewer) {
     if (!myAreaCards.find((c) => c.key === "painelAvaliador")) myAreaCards.push(REVIEWER_CARD);
+  }
+  if (participantRoles?.isCurator) {
+    if (!myAreaCards.find((c) => c.key === "curadoria")) myAreaCards.push(CURATOR_CARD);
   }
 
   // Enquanto resolve papéis (não-admin, não-partner_manager), mostra skeletons para evitar flash
