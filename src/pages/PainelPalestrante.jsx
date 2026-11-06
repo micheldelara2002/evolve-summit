@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchMyPerson } from "@/lib/personApi";
 import { fetchMyParticipants } from "@/lib/participantApi";
+import { listMySubmissions } from "@/lib/submissionApi";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -61,11 +62,8 @@ export default function PainelPalestrante() {
   // Submissões da pessoa (em todos os eventos) — visível mesmo antes de virar palestrante
   const { data: mySubmissions = [] } = useQuery({
     queryKey: ["my-submissions", user?.person_id],
-    queryFn: async () => {
-      if (!user?.person_id) return [];
-      return base44.entities.Submission.filter({ person_id: user.person_id, is_deleted: false });
-    },
-    enabled: !!user?.person_id,
+    queryFn: () => listMySubmissions(),
+    enabled: !!user?.id,
   });
 
   if (isLoading) {

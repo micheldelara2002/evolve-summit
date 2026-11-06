@@ -45,7 +45,10 @@ export default function AwardsList() {
 
   const { data: mySubmissions = [] } = useQuery({
     queryKey: ["my-award-submissions"],
-    queryFn: () => base44.entities.AwardSubmission.list("-created_date", 50),
+    queryFn: async () => {
+      const res = await base44.functions.invoke("manageAward", { action: "myCases" });
+      return res.data?.submissions || res.submissions || [];
+    },
   });
 
   return (

@@ -41,6 +41,12 @@ export async function saveSubmission({ cfpId, editId, title, summary, proposedTy
   return out.submission;
 }
 
+/** Propostas do próprio usuário (identidade resolvida no servidor). */
+export async function listMySubmissions() {
+  const out = await invoke({ action: "mine" });
+  return out.submissions || [];
+}
+
 export async function deleteSubmission(submissionId) {
   return invoke({ action: "delete", submission_id: submissionId });
 }

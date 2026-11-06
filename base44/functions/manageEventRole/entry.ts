@@ -136,6 +136,21 @@ export default async function(req: Request): Promise<Response> {
       const rows = await svc.entities.EventMembership.filter({ id: membershipId, event_id: eventId, role });
       if (!rows?.length) return Response.json({ error: 'Vínculo não encontrado neste evento.' }, { status: 404 });
       await svc.entities.EventMembership.update(membershipId, { is_active: false, is_deleted: true });
+
+      // Revogar o papel também tira a pessoa da banca: sem isso, quem voltasse a
+      // receber o papel reentraria silenciosamente nas premiações já designadas.
+      if (role === 'reviewer' && rows[0].user_id) {
+        const configs = await svc.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false });
+        for (const cfg of configs || []) {
+          let ids: string[] = [];
+          try { ids = JSON.parse(cfg.assigned_reviewer_ids || '[]'); } catch { ids = []; }
+          if (!Array.isArray(ids) || !ids.includes(rows[0].user_id)) continue;
+          await svc.entities.AwardConfig.update(cfg.id, {
+            assigned_reviewer_ids: JSON.stringify(ids.filter((id) => id !== rows[0].user_id)),
+          });
+        }
+      }
+
       return Response.json({ ok: true });
     }
 

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
-import { normalizeEmail } from "../../shared/identity.ts";
+import { normalizeEmail, resolveIdentity } from "../../shared/identity.ts";
 import { ensureSelfPerson } from "../../shared/selfPerson.ts";
 import { validateContent, validateAnswers } from "../../shared/submissionForm.ts";
 
@@ -95,6 +95,23 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, submission });
     }
 
+    // ── myCases: o candidato lê as próprias inscrições ───────────────────────
+    // Identidade canônica (person_ids verificados + e-mails normalizados):
+    // independe da caixa do e-mail gravado no snapshot.
+    if (action === 'myCases') {
+      const identity = await resolveIdentity(base44, user);
+      const or: any[] = [{ created_by_id: user.id }];
+      if (identity.personIds.length > 0) or.push({ person_id: { $in: identity.personIds } });
+      if (identity.emailNorm) or.push({ submitter_email: { $in: identity.emailVariants } });
+
+      const rows = await svc.entities.AwardSubmission.filter(
+        { is_deleted: false, $or: or },
+        '-created_date',
+        100,
+      );
+      return Response.json({ ok: true, submissions: rows || [] });
+    }
+
     // ── assignReviewers: admin define a banca avaliadora de uma premiação ────
     if (action === 'assignReviewers') {
       const { award_id, reviewer_user_ids } = body;
@@ -141,6 +158,11 @@ export default async function(req: Request): Promise<Response> {
       const configs = await svc.entities.AwardConfig.filter({ id: sub.award_id, is_deleted: false });
       const config = configs[0];
       if (!config) return Response.json({ error: 'Premiação não encontrada' }, { status: 404 });
+      // Integridade: a premiação e o case têm de ser do MESMO evento, senão a
+      // banca de um evento avaliaria um case de outro.
+      if (config.event_id !== sub.event_id) {
+        return Response.json({ error: 'Esta inscrição não pertence a esta premiação.' }, { status: 409 });
+      }
 
       // Avaliador precisa estar na banca E ter papel 'reviewer' ativo no evento.
       if (user.role !== 'admin') {
@@ -247,11 +269,21 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ ok: true, submissions: [], configs: {}, evaluations: {} });
       }
       const configIds = myConfigs.map((c) => c.id);
-      const allSubs = await svc.entities.AwardSubmission.filter({ is_deleted: false }, undefined, 1000);
-      const mine = allSubs.filter((s) => configIds.includes(s.award_id));
       const configMap = {};
       for (const c of myConfigs) configMap[c.id] = c;
-      const evals = await svc.entities.AwardEvaluation.filter({ reviewer_user_id: user.id, is_deleted: false }, undefined, 1000);
+      // Consultas dirigidas pela banca designada — não a tabela inteira.
+      const [mine, evals] = await Promise.all([
+        svc.entities.AwardSubmission.filter(
+          { award_id: { $in: configIds }, is_deleted: false },
+          '-created_date',
+          500,
+        ),
+        svc.entities.AwardEvaluation.filter(
+          { reviewer_user_id: user.id, award_id: { $in: configIds }, is_deleted: false },
+          undefined,
+          500,
+        ),
+      ]);
       const evalMap = {};
       for (const e of evals) evalMap[e.submission_id] = e;
       return Response.json({ ok: true, submissions: mine, configs: configMap, evaluations: evalMap });
@@ -301,15 +333,24 @@ export default async function(req: Request): Promise<Response> {
       // Liberar acesso exige CONTA: papel de evento mora na EventMembership do User.
       let targetUserId = '';
       if (new_role) {
-        const byPerson = await svc.entities.User.filter({ person_id: sub.person_id });
-        targetUserId = byPerson?.[0]?.id || '';
-        if (!targetUserId && sub.submitter_email) {
-          const byEmail = await svc.entities.User.filter({ email: normalizeEmail(sub.submitter_email) });
-          targetUserId = byEmail?.[0]?.id || '';
+        let target: any = null;
+        if (sub.person_id) {
+          const byPerson = await svc.entities.User.filter({ person_id: sub.person_id });
+          target = byPerson?.[0] || null;
         }
+        if (!target && sub.submitter_email) {
+          const byEmail = await svc.entities.User.filter({ email: normalizeEmail(sub.submitter_email) });
+          target = byEmail?.[0] || null;
+        }
+        targetUserId = target?.id || '';
         if (!targetUserId) {
           return Response.json({
             error: 'O candidato ainda não tem conta no app. Envie o convite de cadastro antes de liberar o acesso.',
+          }, { status: 409 });
+        }
+        if (target?.account_status === 'deleted') {
+          return Response.json({
+            error: 'A conta deste candidato foi excluída e não pode receber acesso ao evento.',
           }, { status: 409 });
         }
       }
@@ -365,6 +406,13 @@ export default async function(req: Request): Promise<Response> {
       if (!submission_id) return Response.json({ error: 'submission_id obrigatório' }, { status: 400 });
       if (!['pending', 'in_review', 'finalist', 'winner', 'rejected'].includes(status)) {
         return Response.json({ error: `Status inválido: ${status}` }, { status: 400 });
+      }
+      // "Vencedor" não é só um rótulo: conceder o prêmio libera acesso ao evento.
+      // Esse caminho é a promoção (que valida conta e concede o papel).
+      if (status === 'winner') {
+        return Response.json({
+          error: 'Use "Promover" para declarar o vencedor — é o caminho que concede o acesso ao evento.',
+        }, { status: 409 });
       }
       const subs = await svc.entities.AwardSubmission.filter({ id: submission_id, is_deleted: false });
       const sub = subs[0];

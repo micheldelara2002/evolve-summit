@@ -59,7 +59,7 @@ export default function AssignedSubmissions({ assignments, onEvaluated }) {
           open
           onClose={() => setEvaluating(null)}
           onSaved={() => { onEvaluated?.(); setEvaluating(null); }}
-          submission={evaluating.submission}
+          submission={{ ...evaluating.submission, existing: evaluating.existing }}
           config={evaluating.config}
         />
       )}

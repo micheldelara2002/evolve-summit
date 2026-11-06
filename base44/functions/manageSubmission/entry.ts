@@ -61,6 +61,31 @@ function withinWindow(cfp: any) {
   return true;
 }
 
+/**
+ * Claim atômico da decisão. A escrita condicional só casa enquanto a submissão
+ * ainda estiver no estado lido (o servidor serializa as escritas: o segundo
+ * pedido já não encontra `status`), e grava um token irrepetível em
+ * `reviewer_id`; a releitura confirma quem venceu. Dois curadores decidindo ao
+ * mesmo tempo nunca criam duas sessões nem dois participantes.
+ */
+async function claimDecision(svc: any, submission: any, targetStatus: string, userId: string) {
+  const token = `claim:${userId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  await svc.entities.Submission.updateMany(
+    { id: submission.id, is_deleted: false, status: submission.status },
+    { $set: { status: targetStatus, reviewer_id: token } },
+  );
+  const [fresh] = await svc.entities.Submission.filter({ id: submission.id });
+  return fresh?.reviewer_id === token ? token : null;
+}
+
+/** Devolve a submissão ao estado lido quando a decisão falha no meio. */
+async function releaseClaim(svc: any, submission: any) {
+  await svc.entities.Submission.update(submission.id, {
+    status: submission.status,
+    reviewer_id: submission.reviewer_id || '',
+  });
+}
+
 async function loadCfp(svc: any, cfpId: string) {
   if (!cfpId) return null;
   const rows = await svc.entities.CallForPapers.filter({ id: cfpId });
@@ -99,6 +124,11 @@ export default async function(req: Request): Promise<Response> {
       });
       let eventIds = [...new Set((memberships || []).map((m: any) => m.event_id).filter(Boolean))];
       if (requestedEventId) eventIds = [requestedEventId];
+      if (eventIds.length === 0 && user.role === 'admin' && !requestedEventId) {
+        // Admin sem vínculo de evento: a fila é o conjunto de chamadas existentes.
+        const allCfps = await svc.entities.CallForPapers.filter({ is_deleted: false }, '-created_date', 500);
+        eventIds = [...new Set((allCfps || []).map((c: any) => c.event_id).filter(Boolean))];
+      }
       if (eventIds.length === 0) {
         return Response.json({ events: [], cfps: [], submissions: [] });
       }
@@ -120,6 +150,23 @@ export default async function(req: Request): Promise<Response> {
           .filter((s: any) => cfpIds.has(s.call_for_papers_id))
           .map(toReviewRecord),
       });
+    }
+
+    // ── AUTOR: minhas propostas ───────────────────────────────────────────────
+    // A leitura do próprio autor não passa por RLS de e-mail (que depende de
+    // caixa idêntica): a identidade canônica decide o que é dele.
+    if (action === 'mine') {
+      const identity = await resolveIdentity(base44, user);
+      const or: any[] = [{ created_by_id: user.id }];
+      if (identity.personIds.length > 0) or.push({ person_id: { $in: identity.personIds } });
+      if (identity.emailNorm) or.push({ submitter_email: { $in: identity.emailVariants } });
+
+      const rows = await svc.entities.Submission.filter(
+        { is_deleted: false, $or: or },
+        '-created_date',
+        200,
+      );
+      return Response.json({ submissions: (rows || []).map(toReviewRecord) });
     }
 
     // ── AUTOR: criar / editar / excluir / reutilizar ──────────────────────────
@@ -181,7 +228,9 @@ export default async function(req: Request): Promise<Response> {
         if (targetCfp.is_active === false || !withinWindow(targetCfp)) {
           return Response.json({ error: 'A chamada de destino não está aberta.' }, { status: 409 });
         }
-        const answers = validateAnswers(targetCfp.form_config, JSON.parse(submission.custom_answers || '{}'));
+        let sourceAnswers: any = {};
+        try { sourceAnswers = JSON.parse(submission.custom_answers || '{}') || {}; } catch { sourceAnswers = {}; }
+        const answers = validateAnswers(targetCfp.form_config, sourceAnswers);
         if (!answers.ok) return Response.json({ error: answers.error }, { status: 400 });
         const self = await ensureSelfPerson(base44, user);
         if (!self.ok) return Response.json({ error: self.error }, { status: self.status });
@@ -243,10 +292,20 @@ export default async function(req: Request): Promise<Response> {
     const cfp = await loadCfp(svc, submission.call_for_papers_id);
     if (!cfp) return Response.json({ error: 'CallForPapers não encontrada' }, { status: 404 });
     const eventId = cfp.event_id;
+    if (submission.event_id && submission.event_id !== eventId) {
+      return Response.json({
+        error: 'Esta submissão está vinculada a outro evento e não pode ser decidida por esta chamada.',
+      }, { status: 409 });
+    }
 
     const subAuth = await verifyEventMembership(base44, user, eventId, REVIEW_ROLES);
     if (!subAuth.authorized) {
       return Response.json({ error: 'Forbidden — sem permissão de curadoria neste evento' }, { status: 403 });
+    }
+
+    // Duplo clique / nova tentativa em uma submissão já aprovada é idempotente.
+    if (action === 'approve' && submission.status === 'approved' && submission.session_id) {
+      return Response.json({ ok: true, message: 'Já aprovada', session_id: submission.session_id });
     }
 
     if (!allowed.includes(submission.status)) {
@@ -255,85 +314,99 @@ export default async function(req: Request): Promise<Response> {
       }, { status: 409 });
     }
 
+    const targetStatus =
+      action === 'approve' ? 'approved'
+        : action === 'reject' ? 'rejected'
+        : action === 'waitlist' ? 'waitlist'
+        : 'cancelled';
+
+    const token = await claimDecision(svc, submission, targetStatus, user.id);
+    if (!token) {
+      return Response.json({
+        error: 'Esta submissão acabou de ser movida por outra pessoa. Recarregue a fila.',
+      }, { status: 409 });
+    }
+
     const reviewer = {
       reviewer_id: user.id,
       reviewer_name: user.full_name || user.email,
     };
+    const notes = String(review_notes || '').slice(0, 2000);
 
-    if (action === 'approve') {
-      if (submission.status === 'approved' && submission.session_id) {
-        return Response.json({ ok: true, message: 'Já aprovada', session_id: submission.session_id });
-      }
-
-      let found = await svc.entities.Participant.filter({
-        event_id: eventId,
-        email: submission.submitter_email,
-        is_deleted: false,
-      });
-      let participant = found[0];
-      if (!participant && submission.person_id) {
-        found = await svc.entities.Participant.filter({
+    try {
+      if (action === 'approve') {
+        let found = await svc.entities.Participant.filter({
           event_id: eventId,
-          person_id: submission.person_id,
+          email: submission.submitter_email,
           is_deleted: false,
         });
-        participant = found[0];
-      }
-      if (!participant) {
-        participant = await svc.entities.Participant.create({
+        let participant = found[0];
+        if (!participant && submission.person_id) {
+          found = await svc.entities.Participant.filter({
+            event_id: eventId,
+            person_id: submission.person_id,
+            is_deleted: false,
+          });
+          participant = found[0];
+        }
+        if (!participant) {
+          participant = await svc.entities.Participant.create({
+            event_id: eventId,
+            full_name: submission.submitter_name,
+            email: submission.submitter_email,
+            person_id: submission.person_id,
+            role_in_event: 'speaker',
+            registration_status: 'registered',
+            created_day: new Date().toISOString().slice(0, 10),
+          });
+          await incUniqueParticipant(svc, eventId, participant.created_date);
+          await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
+        } else if (participant.role_in_event !== 'speaker') {
+          const oldRole = participant.role_in_event;
+          await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
+          await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
+        }
+
+        const session = await svc.entities.Session.create({
           event_id: eventId,
-          full_name: submission.submitter_name,
-          email: submission.submitter_email,
-          person_id: submission.person_id,
-          role_in_event: 'speaker',
-          registration_status: 'registered',
-          created_day: new Date().toISOString().slice(0, 10),
+          title: submission.title,
+          description: submission.summary,
+          speaker_id: participant.id,
+          speaker_name: submission.submitter_name,
+          session_type: submission.proposed_type || 'palestra',
+          submission_id: submission.id,
         });
-        await incUniqueParticipant(svc, eventId, participant.created_date);
-        await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
-      } else if (participant.role_in_event !== 'speaker') {
-        const oldRole = participant.role_in_event;
-        await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
-        await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
+
+        await svc.entities.Submission.update(submission.id, {
+          status: 'approved',
+          session_id: session.id,
+          participant_id: participant.id,
+          review_notes: notes,
+          ...reviewer,
+        });
+
+        return Response.json({ ok: true, session_id: session.id, participant_id: participant.id });
       }
 
-      const session = await svc.entities.Session.create({
-        event_id: eventId,
-        title: submission.title,
-        description: submission.summary,
-        speaker_id: participant.id,
-        speaker_name: submission.submitter_name,
-        session_type: submission.proposed_type || 'palestra',
-        submission_id: submission.id,
-      });
+      if (submission.session_id) {
+        const sessList = await svc.entities.Session.filter({ id: submission.session_id });
+        const existing = sessList[0];
+        if (existing && !existing.is_deleted) {
+          await svc.entities.Session.update(existing.id, { is_deleted: true });
+        }
+      }
 
       await svc.entities.Submission.update(submission.id, {
-        status: 'approved',
-        session_id: session.id,
-        participant_id: participant.id,
-        review_notes: review_notes || '',
+        status: targetStatus,
+        review_notes: notes,
         ...reviewer,
       });
 
-      return Response.json({ ok: true, session_id: session.id, participant_id: participant.id });
+      return Response.json({ ok: true, status: targetStatus });
+    } catch (error) {
+      await releaseClaim(svc, submission);
+      throw error;
     }
-
-    if (submission.session_id) {
-      const sessList = await svc.entities.Session.filter({ id: submission.session_id });
-      const existing = sessList[0];
-      if (existing && !existing.is_deleted) {
-        await svc.entities.Session.update(existing.id, { is_deleted: true });
-      }
-    }
-
-    const nextStatus = action === 'reject' ? 'rejected' : action === 'waitlist' ? 'waitlist' : 'cancelled';
-    await svc.entities.Submission.update(submission.id, {
-      status: nextStatus,
-      review_notes: review_notes || '',
-      ...reviewer,
-    });
-
-    return Response.json({ ok: true, status: nextStatus });
   } catch (error: any) {
     console.error('manageSubmission error:', error?.message);
     return Response.json({ error: error.message }, { status: 500 });

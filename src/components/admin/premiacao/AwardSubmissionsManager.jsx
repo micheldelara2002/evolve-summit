@@ -19,6 +19,8 @@ const STATUS_STYLE = {
 const STATUS_LABEL = {
   pending: "Pendente", in_review: "Em avaliação", finalist: "Finalista", winner: "Vencedor", rejected: "Rejeitado",
 };
+// "Vencedor" só pelo diálogo de promoção — é ele que concede o acesso ao evento.
+const SETTABLE_STATUSES = Object.entries(STATUS_LABEL).filter(([v]) => v !== "winner");
 const PROMOTE_ROLES = [
   { value: "winner", label: "Premiado (acesso ao evento)" },
   { value: "attendee", label: "Participante" },
@@ -63,8 +65,11 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
       base44.functions.invoke("manageAward", { action: "promoteWinner", submission_id, status, new_role }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["award-submissions", eventId] });
+      qc.invalidateQueries({ queryKey: ["award-results", eventId] });
       setPromoteFor(null);
     },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error || err?.message || "Não foi possível promover a inscrição."),
   });
 
   const filtered = statusFilter === "all" ? submissions : submissions.filter((s) => s.status === statusFilter);
@@ -126,7 +131,7 @@ export default function AwardSubmissionsManager({ eventId, hasAccess }) {
                     <Select value={s.status} onValueChange={(v) => statusMutation.mutate({ id: s.id, status: v })}>
                       <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {Object.entries(STATUS_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                        {SETTABLE_STATUSES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

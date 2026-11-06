@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { parseCriteria, parseScores, criteriaTotal } from "@/lib/awardUtils";
 
 export default function EvaluationForm({ open, onClose, onSaved, submission, config }) {
@@ -38,6 +39,10 @@ export default function EvaluationForm({ open, onClose, onSaved, submission, con
       });
       onSaved?.();
       onClose?.();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.error || err?.data?.error || err?.message || "Não foi possível enviar a avaliação.",
+      );
     } finally {
       setSaving(false);
     }

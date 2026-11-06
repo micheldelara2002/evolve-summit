@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Pencil, Copy, Trash2, FileText } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { deleteSubmission, reuseSubmission, submissionErrorMessage } from "@/lib/submissionApi";
+import { deleteSubmission, reuseSubmission, submissionErrorMessage, listMySubmissions } from "@/lib/submissionApi";
 
 const STATUS_LABEL = {
   pending: "Pendente",
@@ -47,11 +47,10 @@ export default function SubmissionsSection({ person }) {
   const { data: mySubmissions = [], isLoading } = useQuery({
     queryKey: ["my-submissions", personId],
     queryFn: async () => {
-      if (!personId) return [];
-      const all = await base44.entities.Submission.filter({ person_id: personId, is_deleted: false });
+      const all = await listMySubmissions();
       return all.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
     },
-    enabled: !!personId,
+    enabled: !!user?.id,
   });
 
   const { data: events = [] } = useQuery({

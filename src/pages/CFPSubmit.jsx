@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import { saveSubmission, submissionErrorMessage } from "@/lib/submissionApi";
+import { saveSubmission, submissionErrorMessage, listMySubmissions } from "@/lib/submissionApi";
 import { useToast } from "@/components/ui/use-toast";
 
 const SESSION_TYPES = [
@@ -72,8 +72,8 @@ export default function CFPSubmit() {
   const { data: existing } = useQuery({
     queryKey: ["submission-edit", editId],
     queryFn: async () => {
-      const list = await base44.entities.Submission.filter({ id: editId, is_deleted: false });
-      return list[0];
+      const mine = await listMySubmissions();
+      return mine.find((s) => s.id === editId);
     },
     enabled: !!editId,
   });
