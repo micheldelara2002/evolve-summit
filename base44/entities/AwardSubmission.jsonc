@@ -1,7 +1,7 @@
 {
   "name": "AwardSubmission",
   "type": "object",
-  "description": "Inscri\u00e7\u00e3o de um case em uma premia\u00e7\u00e3o, feita por um candidato (entrant). O candidato tem EventMembership role=entrant (sem acesso ao evento at\u00e9 ser promovido).",
+  "description": "Inscri\u00e7\u00e3o de um case em uma premia\u00e7\u00e3o, feita por um candidato (entrant). ESCRITA (2026-11-06): SDK direto travado para admin \u2014 a inscri\u00e7\u00e3o nasce por manageAward.submitCase (valida janela, formul\u00e1rio e identidade) e o status \u00e9 decidido pela gest\u00e3o em manageAward (promoteWinner/setStatus). O candidato n\u00e3o altera o pr\u00f3prio status. LEITURA: pr\u00f3prio autor (e-mail do snapshot ou created_by) e admin; a banca avalia via manageAward.",
   "properties": {
     "award_id": {
       "type": "string",
@@ -19,7 +19,8 @@
       "type": "string"
     },
     "submitter_email": {
-      "type": "string"
+      "type": "string",
+      "description": "E-mail do candidato (snapshot, normalizado)"
     },
     "title": {
       "type": "string",
@@ -42,7 +43,8 @@
         "winner",
         "rejected"
       ],
-      "default": "pending"
+      "default": "pending",
+      "description": "Andamento da inscri\u00e7\u00e3o \u2014 alterado apenas pela gest\u00e3o do evento (manageAward)"
     },
     "assigned_reviewer_ids": {
       "type": "string",
@@ -63,6 +65,9 @@
     "read": {
       "$or": [
         {
+          "data.submitter_email": "{{user.email}}"
+        },
+        {
           "created_by_id": "{{user.id}}"
         },
         {
@@ -73,31 +78,19 @@
       ]
     },
     "create": {
-      "created_by_id": "{{user.id}}"
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
-      "$or": [
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }
