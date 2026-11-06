@@ -341,6 +341,10 @@ export default async function(req) {
     }
 
     if (op === 'setReviewer') {
+      // Curador/avaliador: só admin ou o GERENTE concede/revoga (equipe não).
+      if (!(await isStaffManager(base44, user, eventId))) {
+        return Response.json({ error: 'Apenas o gerente do evento designa avaliadores.' }, { status: 403 });
+      }
       const personId = String(body.person_id || '');
       const enable = body.enable === true;
       const membershipId = String(body.membership_id || '');

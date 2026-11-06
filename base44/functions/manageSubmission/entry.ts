@@ -1,20 +1,74 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
-import { verifyEventMembership, EVENT_CURATOR_ROLES } from "../../shared/eventAuth.ts";
+import {
+  verifyEventMembership,
+  EVENT_CURATOR_ROLES,
+  EVENT_MANAGER_ROLES,
+} from "../../shared/eventAuth.ts";
+import { resolveIdentity, normalizeEmail } from "../../shared/identity.ts";
+import { ensureSelfPerson } from "../../shared/selfPerson.ts";
+import { validateContent, validateAnswers } from "../../shared/submissionForm.ts";
 import { incUniqueParticipant, incParticipantsByRole, moveParticipantsByRole } from "../../shared/businessMetrics.ts";
 
 /**
- * Gerencia o ciclo de vida de uma Submission (Call for Papers).
- * - approve: cria/reativa Participant (role speaker) + cria Session vinculada (vínculo bilateral).
- * - reject/waitlist/cancel: atualiza status e, se existir Session vinculada, a desativa (integridade bilateral).
+ * manageSubmission — porta única de escrita de Submission (Call for Papers).
  *
- * Regras de integridade:
- *  - Participant é reutilizado (busca por email ou person_id no evento) — sem duplicidade.
- *  - A Session carrega submission_id; ao cancelar/reprovar, a Session é soft-deletada.
- *  - Idempotente: aprovar uma submission já aprovada apenas retorna a session existente.
+ * AUTOR (só o próprio conteúdo):
+ *  - create / update / delete / clone: deriva a identidade do usuário autenticado,
+ *    valida autoria, janela da chamada e respostas do formulário ATUAL.
+ *    Grava APENAS título, resumo, tipo e respostas — status, autoria, avaliador,
+ *    sessão e participante NUNCA vêm do cliente.
  *
- * P0.2: Autorização event-scoped — admin global OU EventMembership{role:curator} no evento da CFP.
+ * CURADORIA (decisão):
+ *  - list: submissões + chamadas que o curador/gestor pode revisar.
+ *  - approve / reject / waitlist / cancel: transições válidas, autorizadas por
+ *    EventMembership{role:curator} (ou gestão do evento).
  */
+const REVIEW_ROLES = [...EVENT_CURATOR_ROLES, ...EVENT_MANAGER_ROLES];
+
+// Transições aceitas por decisão — qualquer outra é recusada.
+const TRANSITIONS: Record<string, string[]> = {
+  approve: ['pending', 'waitlist', 'rejected', 'cancelled'],
+  reject: ['pending', 'waitlist'],
+  waitlist: ['pending', 'rejected'],
+  cancel: ['approved'],
+};
+
+const REVIEW_FIELDS = [
+  'id', 'event_id', 'call_for_papers_id', 'person_id', 'submitter_name', 'submitter_email',
+  'status', 'title', 'summary', 'proposed_type', 'custom_answers', 'review_notes',
+  'session_id', 'participant_id', 'created_date', 'updated_date',
+];
+
+function toReviewRecord(submission: any) {
+  const out: Record<string, any> = {};
+  for (const key of REVIEW_FIELDS) if (key in submission) out[key] = submission[key];
+  return out;
+}
+
+function ownsSubmission(identity: any, submission: any, userId: string) {
+  if (!submission) return false;
+  if (submission.created_by_id && submission.created_by_id === userId) return true;
+  if (submission.person_id && identity.personIds.includes(submission.person_id)) return true;
+  const email = normalizeEmail(submission.submitter_email);
+  return !!email && email === identity.emailNorm;
+}
+
+function withinWindow(cfp: any) {
+  const now = new Date();
+  if (cfp?.start_date && new Date(cfp.start_date) > now) return false;
+  if (cfp?.end_date && new Date(cfp.end_date) < now) return false;
+  return true;
+}
+
+async function loadCfp(svc: any, cfpId: string) {
+  if (!cfpId) return null;
+  const rows = await svc.entities.CallForPapers.filter({ id: cfpId });
+  const cfp = rows?.[0];
+  if (!cfp || cfp.is_deleted) return null;
+  return cfp;
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -22,29 +76,183 @@ export default async function(req: Request): Promise<Response> {
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
 
-    const body = await req.json();
-    const { submission_id, action, review_notes } = body || {};
+    const body = (await req.json().catch(() => ({}))) || {};
+    const action = String(body.action || '');
+    const svc = base44.asServiceRole;
+
+    // ── CURADORIA: leitura ────────────────────────────────────────────────────
+    if (action === 'list') {
+      const requestedEventId = String(body.event_id || '');
+
+      if (requestedEventId) {
+        const auth = await verifyEventMembership(base44, user, requestedEventId, REVIEW_ROLES);
+        if (!auth.authorized) {
+          return Response.json({ error: 'Sem permissão de curadoria neste evento.' }, { status: 403 });
+        }
+      }
+
+      const memberships = await svc.entities.EventMembership.filter({
+        user_id: user.id,
+        is_active: true,
+        is_deleted: false,
+        role: { $in: REVIEW_ROLES },
+      });
+      let eventIds = [...new Set((memberships || []).map((m: any) => m.event_id).filter(Boolean))];
+      if (requestedEventId) eventIds = [requestedEventId];
+      if (eventIds.length === 0) {
+        return Response.json({ events: [], cfps: [], submissions: [] });
+      }
+
+      const [cfps, submissions, events] = await Promise.all([
+        svc.entities.CallForPapers.filter({ event_id: { $in: eventIds }, is_deleted: false }),
+        svc.entities.Submission.filter({ event_id: { $in: eventIds }, is_deleted: false }),
+        svc.entities.Event.filter({ id: { $in: eventIds } }),
+      ]);
+      const cfpIds = new Set((cfps || []).map((c: any) => c.id));
+
+      return Response.json({
+        events: (events || []).map((e: any) => ({ id: e.id, name: e.name, start_date: e.start_date, status: e.status })),
+        cfps: (cfps || []).map((c: any) => ({
+          id: c.id, event_id: c.event_id, title: c.title, description: c.description,
+          start_date: c.start_date, end_date: c.end_date, form_config: c.form_config, is_active: c.is_active,
+        })),
+        submissions: (submissions || [])
+          .filter((s: any) => cfpIds.has(s.call_for_papers_id))
+          .map(toReviewRecord),
+      });
+    }
+
+    // ── AUTOR: criar / editar / excluir / reutilizar ──────────────────────────
+    if (['create', 'update', 'delete', 'clone'].includes(action)) {
+      const identity = await resolveIdentity(base44, user);
+
+      if (action === 'create') {
+        const cfp = await loadCfp(svc, String(body.call_for_papers_id || ''));
+        if (!cfp) return Response.json({ error: 'Chamada não encontrada.' }, { status: 404 });
+        if (cfp.is_active === false) {
+          return Response.json({ error: 'Esta chamada está desativada.' }, { status: 409 });
+        }
+        if (!withinWindow(cfp)) {
+          return Response.json({ error: 'Esta chamada não está aberta para submissões.' }, { status: 409 });
+        }
+
+        const content = validateContent(body, { requireType: true });
+        if (!content.ok) return Response.json({ error: content.error }, { status: 400 });
+        const answers = validateAnswers(cfp.form_config, body.custom_answers);
+        if (!answers.ok) return Response.json({ error: answers.error }, { status: 400 });
+
+        const self = await ensureSelfPerson(base44, user);
+        if (!self.ok) return Response.json({ error: self.error }, { status: self.status });
+
+        const record = await svc.entities.Submission.create({
+          call_for_papers_id: cfp.id,
+          event_id: cfp.event_id,
+          person_id: self.personId,
+          submitter_name: self.personName,
+          submitter_email: self.email,
+          status: 'pending',
+          title: content.title,
+          summary: content.summary,
+          proposed_type: content.type,
+          custom_answers: JSON.stringify(answers.answers),
+        });
+        return Response.json({ submission: toReviewRecord(record) });
+      }
+
+      const submissionId = String(body.submission_id || '');
+      const rows = await svc.entities.Submission.filter({ id: submissionId, is_deleted: false });
+      const submission = rows?.[0];
+      if (!submission) return Response.json({ error: 'Submissão não encontrada.' }, { status: 404 });
+      if (!ownsSubmission(identity, submission, user.id)) {
+        return Response.json({ error: 'Esta submissão não é sua.' }, { status: 403 });
+      }
+
+      if (action === 'delete') {
+        if (submission.status !== 'pending') {
+          return Response.json({ error: 'Somente submissões pendentes podem ser excluídas.' }, { status: 409 });
+        }
+        await svc.entities.Submission.update(submission.id, { is_deleted: true });
+        return Response.json({ ok: true });
+      }
+
+      if (action === 'clone') {
+        const targetCfp = await loadCfp(svc, String(body.target_cfp_id || ''));
+        if (!targetCfp) return Response.json({ error: 'Chamada de destino não encontrada.' }, { status: 404 });
+        if (targetCfp.is_active === false || !withinWindow(targetCfp)) {
+          return Response.json({ error: 'A chamada de destino não está aberta.' }, { status: 409 });
+        }
+        const answers = validateAnswers(targetCfp.form_config, JSON.parse(submission.custom_answers || '{}'));
+        if (!answers.ok) return Response.json({ error: answers.error }, { status: 400 });
+        const self = await ensureSelfPerson(base44, user);
+        if (!self.ok) return Response.json({ error: self.error }, { status: self.status });
+
+        const record = await svc.entities.Submission.create({
+          call_for_papers_id: targetCfp.id,
+          event_id: targetCfp.event_id,
+          person_id: self.personId,
+          submitter_name: self.personName,
+          submitter_email: self.email,
+          status: 'pending',
+          title: submission.title,
+          summary: submission.summary,
+          proposed_type: submission.proposed_type || 'palestra',
+          custom_answers: JSON.stringify(answers.answers),
+          original_submission_id: submission.id,
+        });
+        return Response.json({ submission: toReviewRecord(record) });
+      }
+
+      // update
+      const cfp = await loadCfp(svc, submission.call_for_papers_id);
+      if (!cfp) return Response.json({ error: 'Chamada não encontrada.' }, { status: 404 });
+      if (cfp.is_active === false || !withinWindow(cfp)) {
+        return Response.json({ error: 'Esta chamada não está aberta para edições.' }, { status: 409 });
+      }
+      if (submission.status !== 'pending') {
+        return Response.json({ error: 'Somente submissões pendentes podem ser editadas.' }, { status: 409 });
+      }
+
+      const content = validateContent(body, { requireType: true });
+      if (!content.ok) return Response.json({ error: content.error }, { status: 400 });
+      const answers = validateAnswers(cfp.form_config, body.custom_answers);
+      if (!answers.ok) return Response.json({ error: answers.error }, { status: 400 });
+
+      const record = await svc.entities.Submission.update(submission.id, {
+        title: content.title,
+        summary: content.summary,
+        proposed_type: content.type,
+        custom_answers: JSON.stringify(answers.answers),
+      });
+      return Response.json({ submission: toReviewRecord(record) });
+    }
+
+    // ── CURADORIA: decisão ────────────────────────────────────────────────────
+    const { submission_id, review_notes } = body;
     if (!submission_id || !action) {
       return Response.json({ error: 'submission_id e action são obrigatórios' }, { status: 400 });
     }
-    if (!['approve', 'reject', 'waitlist', 'cancel'].includes(action)) {
+    const allowed = TRANSITIONS[action];
+    if (!allowed) {
       return Response.json({ error: 'action inválido' }, { status: 400 });
     }
 
-    const svc = base44.asServiceRole;
     const subs = await svc.entities.Submission.filter({ id: submission_id, is_deleted: false });
     const submission = subs[0];
     if (!submission) return Response.json({ error: 'Submission não encontrada' }, { status: 404 });
 
-    const cfpList = await svc.entities.CallForPapers.filter({ id: submission.call_for_papers_id });
-    const cfp = cfpList[0];
+    const cfp = await loadCfp(svc, submission.call_for_papers_id);
     if (!cfp) return Response.json({ error: 'CallForPapers não encontrada' }, { status: 404 });
     const eventId = cfp.event_id;
 
-    // P0.2: Event-scoped authorization — admin or event-scoped curator
-    const subAuth = await verifyEventMembership(base44, user, eventId, EVENT_CURATOR_ROLES);
+    const subAuth = await verifyEventMembership(base44, user, eventId, REVIEW_ROLES);
     if (!subAuth.authorized) {
       return Response.json({ error: 'Forbidden — sem permissão de curadoria neste evento' }, { status: 403 });
+    }
+
+    if (!allowed.includes(submission.status)) {
+      return Response.json({
+        error: `Não é possível executar "${action}" em uma submissão ${submission.status}.`,
+      }, { status: 409 });
     }
 
     const reviewer = {
@@ -53,12 +261,10 @@ export default async function(req: Request): Promise<Response> {
     };
 
     if (action === 'approve') {
-      // Idempotente
       if (submission.status === 'approved' && submission.session_id) {
         return Response.json({ ok: true, message: 'Já aprovada', session_id: submission.session_id });
       }
 
-      // Encontra ou cria Participant no evento (sem duplicidade)
       let found = await svc.entities.Participant.filter({
         event_id: eventId,
         email: submission.submitter_email,
@@ -83,17 +289,14 @@ export default async function(req: Request): Promise<Response> {
           registration_status: 'registered',
           created_day: new Date().toISOString().slice(0, 10),
         });
-        // P0.3 — mantém MetricBucket do dashboard (unique + participants_by_role)
         await incUniqueParticipant(svc, eventId, participant.created_date);
         await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
       } else if (participant.role_in_event !== 'speaker') {
         const oldRole = participant.role_in_event;
         await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
-        // P0.3 — move o bucket participants_by_role do papel antigo para speaker (unique não muda)
         await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
       }
 
-      // Cria Session vinculada à submission (status "aprovada mas a completar")
       const session = await svc.entities.Session.create({
         event_id: eventId,
         title: submission.title,
@@ -115,7 +318,6 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, session_id: session.id, participant_id: participant.id });
     }
 
-    // reject / waitlist / cancel — integridade bilateral
     if (submission.session_id) {
       const sessList = await svc.entities.Session.filter({ id: submission.session_id });
       const existing = sessList[0];
@@ -132,7 +334,8 @@ export default async function(req: Request): Promise<Response> {
     });
 
     return Response.json({ ok: true, status: nextStatus });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('manageSubmission error:', error?.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
