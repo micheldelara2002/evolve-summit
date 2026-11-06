@@ -2,12 +2,16 @@
  * Lista premiações abertas (em todos os eventos) + "Minhas inscrições".
  * Ponto de entrada para candidatos (entrants) submeterem cases.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Link } from "react-router-dom";
-import { Medal, Calendar, ArrowRight, Trophy } from "lucide-react";
+import { Medal, Calendar, ArrowRight, Trophy, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
 
 function fmtDate(d) {
   if (!d) return "";
@@ -23,6 +27,23 @@ const STATUS_STYLE = {
 };
 
 export default function AwardsList() {
+  const qc = useQueryClient();
+  // A-06: case pendente pode ser corrigido ou retirado pelo próprio candidato.
+  const [removing, setRemoving] = useState(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.functions.invoke("manageAward", { action: "deleteCase", submission_id: id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-award-submissions"] });
+      setRemoving(null);
+      toast.success("Case retirado.");
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || err?.data?.error || "Não foi possível retirar o case.");
+      setRemoving(null);
+    },
+  });
+
   const { data: openAwards = [], isLoading } = useQuery({
     queryKey: ["awards-open"],
     queryFn: async () => {
@@ -64,7 +85,21 @@ export default function AwardsList() {
                 <p className="font-medium truncate">{s.title}</p>
                 <p className="text-xs text-muted-foreground truncate">{eventMap[openAwards.find((a) => a.id === s.award_id)?.event_id]?.name || "Evento"}</p>
               </div>
-              <Badge className={`shrink-0 ${STATUS_STYLE[s.status] || ""}`}>{STATUS_LABEL[s.status] || s.status}</Badge>
+              <div className="flex items-center gap-1 shrink-0">
+                <Badge className={`${STATUS_STYLE[s.status] || ""}`}>{STATUS_LABEL[s.status] || s.status}</Badge>
+                {s.status === "pending" && (
+                  <>
+                    <Button asChild variant="ghost" size="icon" className="h-7 w-7" title="Editar case">
+                      <Link to={`/awards/${s.award_id}/submit?case=${s.id}`}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Retirar case" onClick={() => setRemoving(s)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -100,6 +135,15 @@ export default function AwardsList() {
           })
         )}
       </div>
+
+      <ConfirmDeleteDialog
+        open={!!removing}
+        onOpenChange={(v) => !v && setRemoving(null)}
+        title="Retirar case?"
+        description={removing ? `O case "${removing.title}" será retirado da premiação. Enquanto estiver pendente você pode inscrevê-lo novamente.` : ""}
+        confirmLabel="Retirar"
+        onConfirm={() => removing && deleteMutation.mutate(removing.id)}
+      />
     </div>
   );
 }

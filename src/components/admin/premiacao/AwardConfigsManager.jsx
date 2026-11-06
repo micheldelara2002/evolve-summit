@@ -104,6 +104,16 @@ export default function AwardConfigsManager({ eventId, hasAccess }) {
                     <Button variant="outline" size="sm" className="h-7" onClick={() => setBancaFor(c)}>Designar banca</Button>
                   )}
                 </div>
+                {c.is_active !== false && (parseCriteria(c.criteria_config).length === 0 || parseIds(c.assigned_reviewer_ids).length === 0) && (
+                  <div className="rounded-lg bg-warning/10 px-2.5 py-1.5 space-y-0.5">
+                    {parseCriteria(c.criteria_config).length === 0 && (
+                      <p className="text-[11px] text-warning">Sem critérios: a banca não consegue avaliar.</p>
+                    )}
+                    {parseIds(c.assigned_reviewer_ids).length === 0 && (
+                      <p className="text-[11px] text-warning">Sem banca: ninguém recebe os cases.</p>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
                     {parseFormConfig(c.form_config).length} campo(s) · {parseCriteria(c.criteria_config).length} critério(s)

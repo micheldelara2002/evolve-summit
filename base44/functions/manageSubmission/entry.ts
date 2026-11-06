@@ -61,6 +61,53 @@ function withinWindow(cfp: any) {
   return true;
 }
 
+function normalizeTitle(value: any) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * A-08 (2026-11-06) — duplo clique ou reenvio não abre duas propostas iguais.
+ * Só bloqueia enquanto existe uma proposta PENDENTE da mesma pessoa com o mesmo
+ * título na mesma chamada (recusada/cancelada não impede nova tentativa).
+ */
+async function findDuplicateSubmission(svc: any, { cfpId, personId, email, title }: any) {
+  const rows = await svc.entities.Submission.filter({ call_for_papers_id: cfpId, is_deleted: false });
+  const wanted = normalizeTitle(title);
+  const emailNorm = normalizeEmail(email);
+  return (rows || []).find((s: any) =>
+    s.status === 'pending' &&
+    (s.person_id === personId || normalizeEmail(s.submitter_email) === emailNorm) &&
+    normalizeTitle(s.title) === wanted,
+  );
+}
+
+/**
+ * A-02 (2026-11-06) — cancelar uma proposta aprovada devolve o palestrante ao
+ * papel anterior. Sem isso ele mantinha acesso de palestrante, aparecia nas
+ * listas e continuava contado nos papéis do evento.
+ *
+ * Só rebaixa quando NENHUM outro vínculo mantém a pessoa como palestrante (outra
+ * proposta aprovada ou outra sessão viva) — quem tem duas palestras não perde a
+ * segunda. Papéis de gestão (manager/team/partner_rep) nunca são tocados.
+ */
+async function revertSpeakerParticipant(svc: any, eventId: string, submission: any) {
+  const rows = await svc.entities.Participant.filter({ id: submission.participant_id, is_deleted: false });
+  const participant = rows?.[0];
+  if (!participant || participant.role_in_event !== 'speaker') return;
+
+  const [otherSubs, liveSessions] = await Promise.all([
+    svc.entities.Submission.filter({ participant_id: participant.id, status: 'approved', is_deleted: false }),
+    svc.entities.Session.filter({ speaker_id: participant.id, is_deleted: false }),
+  ]);
+  const stillSpeaker =
+    (otherSubs || []).some((s: any) => s.id !== submission.id) ||
+    (liveSessions || []).length > 0;
+  if (stillSpeaker) return;
+
+  await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
+  await moveParticipantsByRole(svc, eventId, 'speaker', 'attendee', participant.created_date);
+}
+
 /**
  * Claim atômico da decisão. A escrita condicional só casa enquanto a submissão
  * ainda estiver no estado lido (o servidor serializa as escritas: o segundo
@@ -191,6 +238,20 @@ export default async function(req: Request): Promise<Response> {
         const self = await ensureSelfPerson(base44, user);
         if (!self.ok) return Response.json({ error: self.error }, { status: self.status });
 
+        // A-08: duplo clique / reenvio não abre duas propostas iguais.
+        const duplicate = await findDuplicateSubmission(svc, {
+          cfpId: cfp.id,
+          personId: self.personId,
+          email: self.email,
+          title: content.title,
+        });
+        if (duplicate) {
+          return Response.json({
+            error: 'Você já tem uma proposta com este título nesta chamada.',
+            submission_id: duplicate.id,
+          }, { status: 409 });
+        }
+
         const record = await svc.entities.Submission.create({
           call_for_papers_id: cfp.id,
           event_id: cfp.event_id,
@@ -308,7 +369,12 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, message: 'Já aprovada', session_id: submission.session_id });
     }
 
-    if (!allowed.includes(submission.status)) {
+    // A-03 (2026-11-06): retomada. O claim grava "approved" antes de criar
+    // participante e sessão; se a execução morrer no meio, a proposta fica
+    // aprovada e sem sessão — e sem esta exceção ninguém consegue aprová-la de
+    // novo. "approved" sem session_id é exatamente esse estado: retoma daqui.
+    const isResume = action === 'approve' && submission.status === 'approved' && !submission.session_id;
+    if (!isResume && !allowed.includes(submission.status)) {
       return Response.json({
         error: `Não é possível executar "${action}" em uma submissão ${submission.status}.`,
       }, { status: 409 });
@@ -396,10 +462,17 @@ export default async function(req: Request): Promise<Response> {
         }
       }
 
+      // A-02: cancelar uma proposta aprovada também desfaz o palestrante.
+      const hadParticipant = !!submission.participant_id;
+      if (targetStatus === 'cancelled' && hadParticipant) {
+        await revertSpeakerParticipant(svc, eventId, submission);
+      }
+
       await svc.entities.Submission.update(submission.id, {
         status: targetStatus,
         review_notes: notes,
         ...reviewer,
+        ...(hadParticipant ? { participant_id: '' } : {}),
       });
 
       return Response.json({ ok: true, status: targetStatus });

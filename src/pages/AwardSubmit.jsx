@@ -3,9 +3,10 @@
  * - Renderiza campos fixos (título, resumo) + campos customizados do form_config.
  * - Chama manageAward.submitCase (que valida janela, cria Person, garante EventMembership{entrant}, cria AwardSubmission).
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,8 @@ export default function AwardSubmit() {
   const { awardId } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const caseId = searchParams.get("case") || "";
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
@@ -42,14 +45,33 @@ export default function AwardSubmit() {
     enabled: !!award?.event_id,
   });
 
+  // A-06: edição do próprio case pendente (?case=<id>).
+  const { data: myCases = [], isLoading: loadingCases } = useQuery({
+    queryKey: ["my-award-submissions"],
+    queryFn: async () => {
+      const res = await base44.functions.invoke("manageAward", { action: "myCases" });
+      return res.data?.submissions || res.submissions || [];
+    },
+    enabled: !!caseId,
+  });
+  const editingCase = caseId ? myCases.find((c) => c.id === caseId) : null;
+
   const fields = parseJSON(award?.form_config, []);
   const closed = award?.end_date && new Date(award.end_date) < new Date();
   const notOpen = award?.start_date && new Date(award.start_date) > new Date();
 
+  useEffect(() => {
+    if (!editingCase || title || summary) return;
+    setTitle(editingCase.title || "");
+    setSummary(editingCase.summary || "");
+    setAnswers(parseJSON(editingCase.custom_answers, {}));
+  }, [editingCase]);
+
   const submitMutation = useMutation({
     mutationFn: () =>
       base44.functions.invoke("manageAward", {
-        action: "submitCase",
+        action: editingCase ? "updateCase" : "submitCase",
+        submission_id: editingCase?.id,
         award_id: awardId,
         title: title.trim(),
         summary: summary.trim(),
@@ -60,14 +82,40 @@ export default function AwardSubmit() {
       qc.invalidateQueries({ queryKey: ["awards-open"] });
       navigate("/awards");
     },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || err?.data?.error || "Não foi possível salvar o case.");
+    },
   });
 
   const submit = () => {
-    if (!title.trim() || !summary.trim()) return;
+    if (!title.trim() || !summary.trim()) {
+      toast.error("Preencha o título e o resumo do case.");
+      return;
+    }
     const missing = fields.find((f) => f.required && (answers[f.label] === undefined || answers[f.label] === ""));
-    if (missing) return;
+    if (missing) {
+      toast.error(`Responda: ${missing.label}`);
+      return;
+    }
     submitMutation.mutate();
   };
+
+  if (caseId && loadingCases) {
+    return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
+  if (caseId && !editingCase) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/awards")}>
+          <ArrowLeft className="w-4 h-4" /> Voltar
+        </Button>
+        <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          Case não encontrado entre as suas inscrições.
+        </div>
+      </div>
+    );
+  }
 
   if (!award) {
     return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
@@ -80,6 +128,12 @@ export default function AwardSubmit() {
       </Button>
 
       <PageHeader icon={Send} title={award.title} subtitle={event?.name} tone="success" />
+
+      {editingCase && (
+        <div className="rounded-lg bg-primary/5 text-primary text-sm px-3 py-2">
+          Editando um case pendente. Após a avaliação começar não é mais possível alterar.
+        </div>
+      )}
 
       {closed && (
         <div className="rounded-lg bg-warning/10 text-warning text-sm px-3 py-2">Esta premiação encerrou. Não é mais possível inscrever.</div>
@@ -122,7 +176,7 @@ export default function AwardSubmit() {
 
         {!closed && !notOpen && (
           <Button onClick={submit} disabled={submitMutation.isPending} className="w-full gap-1">
-            {submitMutation.isPending ? "Enviando..." : "Inscrever case"}
+            {submitMutation.isPending ? "Salvando..." : editingCase ? "Salvar alterações" : "Inscrever case"}
           </Button>
         )}
       </div>

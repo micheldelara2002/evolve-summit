@@ -37,8 +37,13 @@ export default function AwardConfigFormDialog({ editing, onClose, onSubmit, savi
   const updateCriterion = (i, key, val) => setCriteria(criteria.map((c, idx) => idx === i ? { ...c, [key]: key === "label" ? val : Number(val) } : c));
   const removeCriterion = (i) => setCriteria(criteria.filter((_, idx) => idx !== i));
 
+  // A-01: premiação ATIVA sem critério não pode ser avaliada pela banca
+  // (o servidor recusa a nota). Salvar nesse estado deixa a premiação travada.
+  const validCriteria = criteria.filter((c) => String(c.label || "").trim());
+  const missingCriteria = isActive && validCriteria.length === 0;
+
   const submit = () => {
-    if (!title.trim() || !startDate || !endDate) return;
+    if (!title.trim() || !startDate || !endDate || missingCriteria) return;
     const cleanFields = fields.map((f) => ({
       label: f.label?.trim(),
       type: f.type,
@@ -112,6 +117,11 @@ export default function AwardConfigFormDialog({ editing, onClose, onSubmit, savi
               <Button variant="outline" size="sm" className="h-7 gap-1" onClick={addCriterion}><Plus className="w-3.5 h-3.5" /> Critério</Button>
             </div>
             <p className="text-xs text-muted-foreground">Usados pelo comitê de avaliação. O total é a soma de (nota × peso).</p>
+            {missingCriteria && (
+              <p className="text-xs text-destructive">
+                Defina ao menos um critério para ativar a premiação — sem critério a banca não consegue avaliar.
+              </p>
+            )}
             {criteria.map((c, i) => (
               <div key={c.id} className="flex items-end gap-2">
                 <div className="flex-1 space-y-1"><Label className="text-xs">Critério {i + 1}</Label><Input value={c.label} onChange={(e) => updateCriterion(i, "label", e.target.value)} placeholder="Ex: Criatividade" /></div>
@@ -124,7 +134,7 @@ export default function AwardConfigFormDialog({ editing, onClose, onSubmit, savi
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={submit} disabled={saving || !title.trim() || !startDate || !endDate}>{saving ? "Salvando..." : "Salvar"}</Button>
+          <Button onClick={submit} disabled={saving || !title.trim() || !startDate || !endDate || missingCriteria}>{saving ? "Salvando..." : "Salvar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

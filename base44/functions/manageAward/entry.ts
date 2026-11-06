@@ -9,6 +9,47 @@ import { validateContent, validateAnswers } from "../../shared/submissionForm.ts
 const PROMOTE_STATUSES = ['in_review', 'finalist', 'winner', 'rejected'];
 const PROMOTE_ROLES = ['winner', 'attendee', 'speaker'];
 
+function normalizeTitle(value: any) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * A-08 (2026-11-06) — duplo clique ou reenvio não abre dois cases iguais.
+ * Só bloqueia enquanto existe um case PENDENTE da mesma pessoa com o mesmo
+ * título na mesma premiação.
+ */
+async function findDuplicateCase(svc: any, awardId: string, personId: string, email: string, title: string) {
+  const rows = await svc.entities.AwardSubmission.filter({ award_id: awardId, is_deleted: false });
+  const wanted = normalizeTitle(title);
+  const emailNorm = normalizeEmail(email);
+  return (rows || []).find((s: any) =>
+    s.status === 'pending' &&
+    (s.person_id === personId || normalizeEmail(s.submitter_email) === emailNorm) &&
+    normalizeTitle(s.title) === wanted,
+  );
+}
+
+/**
+ * A-04 (2026-11-06) — trilha das decisões de premiação. Antes o case mudava de
+ * status sem autor, data ou registro: não era possível reconstruir quem decidiu.
+ * Best-effort: a decisão já fica no próprio case (decided_by e decided_at).
+ */
+async function writeAwardAudit(svc: any, { eventId, action, submissionId, userId, userName, details }: any) {
+  try {
+    await svc.entities.AuditLog.create({
+      event_id: eventId,
+      action,
+      entity_type: 'AwardSubmission',
+      entity_id: submissionId,
+      user_id: userId,
+      user_name: userName,
+      details: JSON.stringify(details || {}),
+    });
+  } catch (error: any) {
+    console.error('manageAward audit failed:', error?.message);
+  }
+}
+
 /**
  * manageAward — backend function do módulo de premiação (fluxo CFP-like).
  *
@@ -64,6 +105,15 @@ export default async function(req: Request): Promise<Response> {
       const personName = self.personName;
       const personEmail = self.email;
 
+      // A-08: duplo clique / reenvio não abre dois cases iguais.
+      const duplicate = await findDuplicateCase(svc, award_id, personId, personEmail, content.title);
+      if (duplicate) {
+        return Response.json({
+          error: 'Você já inscreveu este case nesta premiação.',
+          submission_id: duplicate.id,
+        }, { status: 409 });
+      }
+
       // garante EventMembership{entrant} (idempotente) — service role bypassa RLS create
       const existingM = await svc.entities.EventMembership.filter({
         event_id: config.event_id, person_id: personId, role: 'entrant', is_deleted: false,
@@ -110,6 +160,65 @@ export default async function(req: Request): Promise<Response> {
         100,
       );
       return Response.json({ ok: true, submissions: rows || [] });
+    }
+
+    // ── updateCase / deleteCase: o candidato corrige ou retira o próprio case ─
+    // A-06 (2026-11-06): espelha o CFP — enquanto o case está pendente e a
+    // janela aberta, o autor edita e exclui o próprio case (antes não havia
+    // caminho nenhum: um erro de digitação só era corrigível pela gestão).
+    if (action === 'updateCase' || action === 'deleteCase') {
+      const submissionId = String(body.submission_id || '');
+      if (!submissionId) return Response.json({ error: 'submission_id obrigatório' }, { status: 400 });
+
+      const rows = await svc.entities.AwardSubmission.filter({ id: submissionId, is_deleted: false });
+      const existing = rows[0];
+      if (!existing) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
+
+      // Posse por identidade canônica (mesma regra de myCases).
+      const identity = await resolveIdentity(base44, user);
+      const owns =
+        (existing.created_by_id && existing.created_by_id === user.id) ||
+        (existing.person_id && identity.personIds.includes(existing.person_id)) ||
+        (!!identity.emailNorm && normalizeEmail(existing.submitter_email) === identity.emailNorm);
+      if (!owns) return Response.json({ error: 'Esta inscrição não é sua.' }, { status: 403 });
+
+      if (action === 'deleteCase') {
+        if (existing.status !== 'pending') {
+          return Response.json({ error: 'Somente cases pendentes podem ser retirados.' }, { status: 409 });
+        }
+        await svc.entities.AwardSubmission.update(existing.id, { is_deleted: true });
+        return Response.json({ ok: true });
+      }
+
+      const configs = await svc.entities.AwardConfig.filter({ id: existing.award_id, is_deleted: false });
+      const config = configs[0];
+      if (!config) return Response.json({ error: 'Premiação não encontrada' }, { status: 404 });
+      if (config.event_id !== existing.event_id) {
+        return Response.json({ error: 'Esta inscrição não pertence a esta premiação.' }, { status: 409 });
+      }
+      if (!config.is_active) return Response.json({ error: 'Premiação inativa' }, { status: 400 });
+      const now = new Date();
+      if (config.start_date && new Date(config.start_date) > now) {
+        return Response.json({ error: 'As inscrições ainda não abriram.' }, { status: 409 });
+      }
+      if (config.end_date && new Date(config.end_date) < now) {
+        return Response.json({ error: 'As inscrições encerraram: não é mais possível editar.' }, { status: 409 });
+      }
+      if (existing.status !== 'pending') {
+        return Response.json({ error: 'Somente cases pendentes podem ser editados.' }, { status: 409 });
+      }
+
+      const content = validateContent(body);
+      if (!content.ok) return Response.json({ error: content.error }, { status: 400 });
+      const answers = validateAnswers(config.form_config, body.custom_answers);
+      if (!answers.ok) return Response.json({ error: answers.error }, { status: 400 });
+
+      await svc.entities.AwardSubmission.update(existing.id, {
+        title: content.title,
+        summary: content.summary,
+        custom_answers: JSON.stringify(answers.answers),
+      });
+      return Response.json({ ok: true });
     }
 
     // ── assignReviewers: admin define a banca avaliadora de uma premiação ────
@@ -297,16 +406,29 @@ export default async function(req: Request): Promise<Response> {
       const resultsAuth = await verifyEventMembership(base44, user, event_id, EVENT_MANAGER_ROLES);
       if (!resultsAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
       const evalQuery = { event_id, is_deleted: false };
-      if (award_id) evalQuery.award_id = award_id;
+      const subQuery: any = { event_id, is_deleted: false };
+      if (award_id) {
+        evalQuery.award_id = award_id;
+        // A-07 (2026-11-06): filtrar a premiação também nos CASES — antes as
+        // notas eram do prêmio mas o ranking misturava cases de todos os prêmios
+        // do evento.
+        subQuery.award_id = award_id;
+      }
       const evaluations = await svc.entities.AwardEvaluation.filter(evalQuery, undefined, 1000);
-      const subs = await svc.entities.AwardSubmission.filter({ event_id, is_deleted: false }, undefined, 1000);
+      const subs = await svc.entities.AwardSubmission.filter(subQuery, undefined, 1000);
       const bySub = {};
       for (const e of evaluations) (bySub[e.submission_id] = bySub[e.submission_id] || []).push(e);
       const results = subs.map((s) => {
         const evs = bySub[s.id] || [];
         const avg = evs.length ? evs.reduce((a, e) => a + (e.total_score || 0), 0) / evs.length : 0;
         return { submission: s, evaluations: evs, avg_score: Math.round(avg * 100) / 100, reviewers_count: evs.length };
-      }).sort((a, b) => b.avg_score - a.avg_score);
+      }).sort((a, b) => {
+        // A-07: quem ainda não tem nota não disputa posição com quem tem.
+        const aRated = a.reviewers_count > 0;
+        const bRated = b.reviewers_count > 0;
+        if (aRated !== bRated) return aRated ? -1 : 1;
+        return b.avg_score - a.avg_score;
+      });
       return Response.json({ ok: true, results });
     }
 
@@ -355,7 +477,23 @@ export default async function(req: Request): Promise<Response> {
         }
       }
 
-      await svc.entities.AwardSubmission.update(submission_id, { status });
+      const decidedAt = new Date().toISOString();
+      await svc.entities.AwardSubmission.update(submission_id, {
+        status,
+        decided_by_user_id: user.id,
+        decided_by_name: user.full_name || user.email,
+        decided_at: decidedAt,
+      });
+
+      // A-04 — toda decisão deixa autor, data e trilha.
+      await writeAwardAudit(svc, {
+        eventId: sub.event_id,
+        action: 'status_change',
+        submissionId: submission_id,
+        userId: user.id,
+        userName: user.full_name || user.email,
+        details: { status, previous_status: sub.status, new_role: new_role || '' },
+      });
 
       if (new_role) {
         const [sameRole, entrant] = await Promise.all([
@@ -385,6 +523,16 @@ export default async function(req: Request): Promise<Response> {
             is_active: true,
           });
         }
+
+        // A-04 — conceder o papel (acesso ao evento) também fica registrado.
+        await writeAwardAudit(svc, {
+          eventId: sub.event_id,
+          action: 'role_change',
+          submissionId: submission_id,
+          userId: user.id,
+          userName: user.full_name || user.email,
+          details: { role: new_role, person_id: sub.person_id, target_user_id: targetUserId },
+        });
       }
       return Response.json({ ok: true });
     }
@@ -419,7 +567,22 @@ export default async function(req: Request): Promise<Response> {
       if (!sub) return Response.json({ error: 'Inscrição não encontrada' }, { status: 404 });
       const statusAuth = await verifyEventMembership(base44, user, sub.event_id, EVENT_MANAGER_ROLES);
       if (!statusAuth.authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      await svc.entities.AwardSubmission.update(submission_id, { status });
+      const decidedAt = new Date().toISOString();
+      await svc.entities.AwardSubmission.update(submission_id, {
+        status,
+        decided_by_user_id: user.id,
+        decided_by_name: user.full_name || user.email,
+        decided_at: decidedAt,
+      });
+      // A-04 — autor, data e trilha em toda mudança de andamento.
+      await writeAwardAudit(svc, {
+        eventId: sub.event_id,
+        action: 'status_change',
+        submissionId: submission_id,
+        userId: user.id,
+        userName: user.full_name || user.email,
+        details: { status, previous_status: sub.status },
+      });
       return Response.json({ ok: true, status });
     }
 

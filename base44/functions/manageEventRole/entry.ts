@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership } from "../../shared/eventAuth.ts";
-import { grantEventRole } from "../../shared/eventInvites.ts";
+import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { normalizeEmail } from "../../shared/identity.ts";
 
 /**
@@ -123,35 +123,25 @@ export default async function(req: Request): Promise<Response> {
       const role = String(body.role || '');
       if (!ROLES.includes(role)) return Response.json({ error: 'Papel inválido.' }, { status: 400 });
 
-      if (body.invite_id) {
-        const invites = await svc.entities.EventInvite.filter({ id: String(body.invite_id), event_id: eventId });
-        const invite = invites?.[0];
-        if (!invite) return Response.json({ error: 'Convite não encontrado.' }, { status: 404 });
-        await svc.entities.EventInvite.update(invite.id, { status: 'revoked' });
+      // A-05: mesma porta usada por manageParticipant.setReviewer — revogar por
+      // qualquer tela inativa o vínculo e remove a pessoa da banca.
+      try {
+        await revokeEventRole(base44, {
+          eventId,
+          role,
+          membershipId: String(body.membership_id || ''),
+          inviteId: String(body.invite_id || ''),
+        });
         return Response.json({ ok: true });
-      }
-
-      const membershipId = String(body.membership_id || '');
-      if (!membershipId) return Response.json({ error: 'membership_id ausente.' }, { status: 400 });
-      const rows = await svc.entities.EventMembership.filter({ id: membershipId, event_id: eventId, role });
-      if (!rows?.length) return Response.json({ error: 'Vínculo não encontrado neste evento.' }, { status: 404 });
-      await svc.entities.EventMembership.update(membershipId, { is_active: false, is_deleted: true });
-
-      // Revogar o papel também tira a pessoa da banca: sem isso, quem voltasse a
-      // receber o papel reentraria silenciosamente nas premiações já designadas.
-      if (role === 'reviewer' && rows[0].user_id) {
-        const configs = await svc.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false });
-        for (const cfg of configs || []) {
-          let ids: string[] = [];
-          try { ids = JSON.parse(cfg.assigned_reviewer_ids || '[]'); } catch { ids = []; }
-          if (!Array.isArray(ids) || !ids.includes(rows[0].user_id)) continue;
-          await svc.entities.AwardConfig.update(cfg.id, {
-            assigned_reviewer_ids: JSON.stringify(ids.filter((id) => id !== rows[0].user_id)),
-          });
+      } catch (error: any) {
+        if (error?.message === 'missing_params') {
+          return Response.json({ error: 'membership_id ausente.' }, { status: 400 });
         }
+        if (error?.message === 'not_found') {
+          return Response.json({ error: 'Vínculo não encontrado neste evento.' }, { status: 404 });
+        }
+        throw error;
       }
-
-      return Response.json({ ok: true });
     }
 
     return Response.json({ error: 'Ação não suportada.' }, { status: 400 });

@@ -233,6 +233,56 @@ export async function grantEventRole(
 }
 
 /**
+ * Revoga um papel de evento (curador/avaliador) — ÚNICA implementação.
+ *
+ * A-05 (2026-11-06): manageEventRole e manageParticipant.setReviewer usavam
+ * caminhos diferentes; só este limpava a banca, então revogar pela tela Pessoas
+ * deixava a pessoa designada nas premiações. Revogar por qualquer tela passa
+ * agora por aqui, com a mesma regra e a mesma limpeza.
+ */
+export async function revokeEventRole(
+  client: any,
+  { eventId, role, membershipId, inviteId }: any,
+): Promise<{ ok: true }> {
+  const svc = svcOf(client);
+  if (!eventId || !role) throw new Error("missing_params");
+
+  if (inviteId) {
+    const invites = await svc.entities.EventInvite.filter({ id: String(inviteId), event_id: eventId });
+    const invite = invites?.[0];
+    if (!invite) throw new Error("not_found");
+    await svc.entities.EventInvite.update(invite.id, { status: "revoked" });
+    return { ok: true };
+  }
+
+  if (!membershipId) throw new Error("missing_params");
+  const rows = await svc.entities.EventMembership.filter({
+    id: String(membershipId),
+    event_id: eventId,
+    role,
+  });
+  if (!rows?.length) throw new Error("not_found");
+
+  await svc.entities.EventMembership.update(String(membershipId), { is_active: false, is_deleted: true });
+
+  // Revogar o papel também tira a pessoa da banca: sem isso, quem voltasse a
+  // receber o papel reentraria silenciosamente nas premiações já designadas.
+  if (role === "reviewer" && rows[0].user_id) {
+    const configs = await svc.entities.AwardConfig.filter({ event_id: eventId, is_deleted: false });
+    for (const cfg of configs || []) {
+      let ids: string[] = [];
+      try { ids = JSON.parse(cfg.assigned_reviewer_ids || "[]"); } catch { ids = []; }
+      if (!Array.isArray(ids) || !ids.includes(rows[0].user_id)) continue;
+      await svc.entities.AwardConfig.update(cfg.id, {
+        assigned_reviewer_ids: JSON.stringify(ids.filter((id) => id !== rows[0].user_id)),
+      });
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
  * Converte convites pendentes do e-mail em vínculos reais. Idempotente:
  * reexecutar não duplica membership nem reabre convite aceito.
  */

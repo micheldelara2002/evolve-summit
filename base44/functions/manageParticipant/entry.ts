@@ -9,7 +9,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
-import { grantEventRole } from "../../shared/eventInvites.ts";
+import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 // (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
@@ -348,32 +348,73 @@ export default async function(req) {
       const personId = String(body.person_id || '');
       const enable = body.enable === true;
       const membershipId = String(body.membership_id || '');
-      if (!personId) return Response.json({ error: 'person_id ausente.' }, { status: 400 });
-      if (enable) {
-        let userId = String(body.user_id || '');
-        if (!userId) userId = await resolveUserIdByEmail(base44, body.user_email);
-        if (membershipId) {
-          await base44.asServiceRole.entities.EventMembership.update(membershipId, {
-            is_deleted: false,
-            is_active: true,
-            user_id: userId,
-          });
-        } else {
-          await base44.asServiceRole.entities.EventMembership.create({
-            event_id: eventId,
-            person_id: personId,
-            person_name: String(body.person_name || ''),
-            user_id: userId,
-            user_email: String(body.user_email || ''),
-            role: 'reviewer',
-            is_active: true,
-          });
+
+      // A-05 (2026-11-06): porta única com manageEventRole. Antes esta rota
+      // criava o vínculo ATIVO mesmo sem conta (acesso vazio) e não limpava a
+      // banca na revogação. Agora: sem conta = convite pendente; revogar aqui
+      // também tira a pessoa das premiações.
+      if (!enable) {
+        if (!membershipId) return Response.json({ error: 'membership_id ausente para desativar avaliador.' }, { status: 400 });
+        try {
+          await revokeEventRole(base44, { eventId, role: 'reviewer', membershipId });
+          return Response.json({ ok: true });
+        } catch (error: any) {
+          if (error?.message === 'not_found') {
+            return Response.json({ error: 'Vínculo de avaliador não encontrado neste evento.' }, { status: 404 });
+          }
+          throw error;
         }
-        return Response.json({ ok: true });
       }
-      if (!membershipId) return Response.json({ error: 'membership_id ausente para desativar avaliador.' }, { status: 400 });
-      await base44.asServiceRole.entities.EventMembership.update(membershipId, { is_deleted: true });
-      return Response.json({ ok: true });
+
+      if (!personId) return Response.json({ error: 'person_id ausente.' }, { status: 400 });
+
+      let email = normalizeParticipantEmail(body.user_email || '');
+      if (!email) {
+        const persons = await base44.asServiceRole.entities.Person.filter({ id: personId });
+        email = normalizeParticipantEmail(persons?.[0]?.contact_email || '');
+      }
+      if (!email) {
+        const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: eventId, person_id: personId, is_deleted: false });
+        email = normalizeParticipantEmail(parts?.[0]?.email || '');
+      }
+      if (!email) {
+        return Response.json({ error: 'Informe o e-mail da pessoa para designá-la avaliadora.' }, { status: 400 });
+      }
+
+      // Vínculo já existente (mesmo desativado): reativa em vez de duplicar.
+      if (membershipId) {
+        const rows = await base44.asServiceRole.entities.EventMembership.filter({ id: membershipId, event_id: eventId, role: 'reviewer' });
+        if (!rows?.length) return Response.json({ error: 'Vínculo de avaliador não encontrado neste evento.' }, { status: 404 });
+        let userId = String(body.user_id || '');
+        if (!userId) userId = await resolveUserIdByEmail(base44, email);
+        await base44.asServiceRole.entities.EventMembership.update(membershipId, {
+          is_deleted: false,
+          is_active: true,
+          user_id: userId,
+          user_email: email,
+        });
+        return Response.json({ ok: true, status: userId ? 'linked' : 'invited' });
+      }
+
+      try {
+        const result: any = await grantEventRole(base44, {
+          eventId,
+          email,
+          displayName: String(body.person_name || ''),
+          role: 'reviewer',
+          actor: user,
+        });
+        return Response.json({ ok: true, status: result.status });
+      } catch (error: any) {
+        const map: Record<string, string> = {
+          event_not_found: 'Evento não encontrado.',
+          account_deleted: 'Esta conta foi excluída e não pode receber acesso.',
+          identity_ambiguous: 'Há mais de um cadastro de pessoa com este e-mail. Consolide o cadastro antes.',
+        };
+        const mapped = map[error?.message];
+        if (mapped) return Response.json({ error: mapped }, { status: 409 });
+        throw error;
+      }
     }
 
     if (op === 'findPersonsByDocument') {
