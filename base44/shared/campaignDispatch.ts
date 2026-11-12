@@ -3,8 +3,11 @@
 //   - dispatchNotificationCampaign (envio manual autenticado — permissão
 //     validada no momento do envio, com o usuário logado);
 //   - varredura de manutenção (expireStaleReservations) para campanhas
-//     'scheduled' vencidas e retomadas de disparos automáticos — permissão
-//     CONFIADA no agendamento (regra aprovada), sem revalidação de membership.
+//     'scheduled' vencidas e retomadas de disparos automáticos — o emissor é
+//     REVALIDADO no momento do disparo (verifyCampaignSenderAuthorization,
+//     Fase 2): permissão revogada ou conta excluída bloqueia o envio e grava
+//     'scheduled_dispatch_blocked' na trilha. (Correção de comentário obsoleto,
+//     Fase 3 — o código já revalidava.)
 //
 // SEMÂNTICAS (herdadas do dispatchNotificationCampaign original — ver header
 // histórico lá): recipient_user_id é SEMPRE User ID; entrega em 4 fases

@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { writeMandatoryAudit, recordPendingTrail, buildAuditKey } from "../../shared/auditTrail.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -113,6 +114,8 @@ export default async function(req: Request): Promise<Response> {
     // checagem acima. Re-query determinística (created_date + id) mantém um
     // sobrevivente e cancela as duplicatas — exatamente um certificado por
     // participante/tipo/sessão.
+    let finalCertificate = certificate;
+    let deduplicated = 0;
     const allCertificates = await base44.asServiceRole.entities.Certificate.filter(existingFilter);
     if (allCertificates.length > 1) {
       allCertificates.sort(deterministicCompare);
@@ -122,11 +125,50 @@ export default async function(req: Request): Promise<Response> {
         await base44.asServiceRole.entities.Certificate.bulkUpdate(
           duplicateIds.map((id: string) => ({ id, is_deleted: true }))
         );
-        return Response.json({ certificate: survivor, alreadyExisted: false, deduplicated: duplicateIds.length });
-      } catch {}
+        finalCertificate = survivor;
+        deduplicated = duplicateIds.length;
+      } catch (err: any) {
+        console.error('[issueCertificate] dedup falhou:', err?.message || err);
+      }
     }
 
-    return Response.json({ certificate, alreadyExisted: false });
+    // F3-09 (2026-11-12) — TRILHA da emissão: emitir certificado era a única
+    // operação crítica do evento sem registro de auditoria. Chave determinística
+    // (certificado_emitido|<id>) ⇒ reexecução não duplica. Falha de trilha NÃO
+    // silencia: o certificado já existe, então o caso vai para trilha PENDENTE
+    // (reconciliada por resolvePendingTrails) — nunca é descartado.
+    const auditEntry = {
+      action: 'create',
+      entity_type: 'Certificate',
+      entity_id: finalCertificate.id,
+      user_id: user.id,
+      user_name: user.full_name || user.email || '',
+      event_id: eventId,
+      audit_key: buildAuditKey('certificado_emitido', finalCertificate.id),
+      details: JSON.stringify({
+        tipo,
+        participant_id: participantId,
+        session_id: sessionId || '',
+        template: finalCertificate.template || 'classico',
+        deduplicated,
+      }),
+    };
+    try {
+      await writeMandatoryAudit(base44.asServiceRole, auditEntry);
+    } catch (err: any) {
+      const pendingId = await recordPendingTrail(base44.asServiceRole, {
+        ...auditEntry,
+        provider: 'base44',
+        failure_reason: err?.message || String(err),
+      });
+      console.error('[issueCertificate] trilha pendente:', pendingId || 'não registrada', err?.message || err);
+    }
+
+    return Response.json({
+      certificate: finalCertificate,
+      alreadyExisted: false,
+      ...(deduplicated ? { deduplicated } : {}),
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

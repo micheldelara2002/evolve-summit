@@ -2,6 +2,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { scanBatches } from "../../shared/completeScan.ts";
 import { resolveIdentity } from "../../shared/identity.ts";
+import {
+  DELETED_NAME,
+  DELETED_EMAIL_MARKER,
+  DELETED_DOCUMENT,
+  submissionAuthorAnon,
+  jobPostingAuthorAnon,
+} from "../../shared/anonymization.ts";
 
 // Account Deletion — self-service exclusão de conta do próprio usuário.
 //
@@ -31,11 +38,9 @@ import { resolveIdentity } from "../../shared/identity.ts";
 // somas de pontos, contadores ou ranking.
 
 const BATCH = 500;
-const DELETED_NAME = "Usuário Excluído";
-// Participant.email é `required` (string) no schema — null é rejeitado pela
-// validação. Usamos um marcador constante, NÃO derivado do email original,
-// claramente não identificável (não é email válido, não é PII).
-const DELETED_EMAIL_MARKER = "conta_excluida";
+// Marcadores de anonimização vêm de shared/anonymization.ts (fonte única):
+// Participant.email é `required` (string) no schema, então o marcador é uma
+// constante NÃO derivada do e-mail original (não é e-mail válido, não é PII).
 
 export default async function(req) {
   try {
@@ -70,6 +75,9 @@ export default async function(req) {
       recipients: 0,
       personDocuments: 0,
       auditLogs: 0,
+      submissions: 0,
+      awardSubmissions: 0,
+      jobPostings: 0,
     };
 
     // =========================================================================
@@ -301,7 +309,7 @@ export default async function(req) {
           await svc.entities.PersonDocument.bulkUpdate(
             batch.map((d) => ({
               id: d.id,
-              document_number: "DOCUMENTO_EXCLUIDO",
+              document_number: DELETED_DOCUMENT,
               is_primary: false,
               status: "inactive",
             }))
@@ -363,6 +371,41 @@ export default async function(req) {
         }
         if (!dryRun && updates.length > 0) await svc.entities.AuditLog.bulkUpdate(updates);
       }
+    }
+
+    // =========================================================================
+    // 9d. SUBMISSION / AWARDSUBMISSION / JOBPOSTING — F3-07 (2026-11-12):
+    // a autoria de proposta (CFP), de case (premiação) e de vaga guarda SNAPSHOT
+    // de nome e e-mail que sobrevivia à exclusão de conta. O CONTEÚDO permanece
+    // (histórico editorial, ranking, trilha de curadoria); a IDENTIDADE não.
+    // Anonimização idempotente: reexecutar reescreve o marcador.
+    // =========================================================================
+    {
+      const anonByQueries = async (entity, builder, queries, counterKey) => {
+        const seen = new Set();
+        for (const query of queries) {
+          for await (const batch of scanBatches(entity, query, { pageSize: BATCH })) {
+            const updates = [];
+            for (const row of batch) {
+              if (seen.has(row.id)) continue;
+              seen.add(row.id);
+              updates.push(builder(row.id));
+              counts[counterKey]++;
+            }
+            if (!dryRun && updates.length > 0) await entity.bulkUpdate(updates);
+          }
+        }
+      };
+      const byPerson = personIds.length > 0 ? [{ person_id: { $in: personIds } }] : [];
+      const byEmail = identity.emailNorm ? [{ submitter_email: { $in: identity.emailVariants } }] : [];
+      await anonByQueries(svc.entities.Submission, submissionAuthorAnon, [...byPerson, ...byEmail], 'submissions');
+      await anonByQueries(svc.entities.AwardSubmission, submissionAuthorAnon, [...byPerson, ...byEmail], 'awardSubmissions');
+      await anonByQueries(
+        svc.entities.JobPosting,
+        jobPostingAuthorAnon,
+        [...byPerson, ...(identity.emailNorm ? [{ contact_email: { $in: identity.emailVariants } }] : [])],
+        'jobPostings',
+      );
     }
 
     // =========================================================================

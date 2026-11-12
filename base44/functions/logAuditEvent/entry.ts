@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { extractClientIp } from "../../shared/commerceAudit.ts";
-import { canAccessEventData } from "../../shared/eventAuth.ts";
+import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -34,18 +34,20 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'entity_id inválido.' }, { status: 400 });
     }
 
-    // P1 — Validação de posse: entradas com event_id exigem vínculo do chamador
-    // com o evento (admin, membership ativa ou participante); sem event_id, apenas
-    // admin. Impede a falsificação da trilha de auditoria por usuários sem
-    // vínculo real com a entidade referenciada.
+    // F3-08 (2026-11-12) — Validação de ESCRITA da trilha: entradas com event_id
+    // exigem papéis de GESTÃO do evento (admin, manager ou team); sem event_id,
+    // apenas admin. Antes bastava ser participante do evento para gravar
+    // auditoria — um participante conseguia inserir registros de ações que não
+    // executou (status_change, role_change) na trilha do evento. Quem só
+    // participa não escreve auditoria; a leitura continua admin-only pela RLS.
     const eventId = typeof body.event_id === 'string' ? body.event_id.trim() : '';
     if (eventId) {
       if (!/^[0-9a-f]{24}$/i.test(eventId)) {
         return Response.json({ error: 'event_id inválido.' }, { status: 400 });
       }
-      const allowed = await canAccessEventData(base44, user, eventId);
-      if (!allowed) {
-        return Response.json({ error: 'Sem vínculo com o evento referenciado.' }, { status: 403 });
+      const gate = await verifyEventMembership(base44, user, eventId, EVENT_MANAGER_ROLES);
+      if (!gate.authorized) {
+        return Response.json({ error: 'Somente a gestão do evento pode registrar auditoria.' }, { status: 403 });
       }
     } else if (user.role !== 'admin') {
       return Response.json({ error: 'Sem permissão para registrar auditoria sem escopo de evento.' }, { status: 403 });
