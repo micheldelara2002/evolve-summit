@@ -2,7 +2,22 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { extractClientIp } from "../../shared/commerceAudit.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { recordClientAudit } from "../../shared/auditLogger.ts";
 
+// F3-08 (rodada de correção 2026-11-12) — LOGGER AUXILIAR de auditoria.
+//
+// Esta função NÃO registra operação crítica. A decisão sobre o que pode ser
+// gravado pelo cliente (ações permitidas, entidades críticas recusadas, escopo
+// do `entity_id` conferido no evento) vive em `shared/auditLogger.ts`, junto do
+// caminho único de escrita.
+//
+// Operações críticas são auditadas pelo backend que as executa:
+//   • role_change de participante/equipe → manageParticipant
+//   • emissão de certificado             → issueCertificate
+//   • pagamento, estorno, repasse, comércio → commerceAudit / writeMandatoryAudit
+//
+// Aqui ficam apenas: (1) guard de conta ativa, (2) gate de gestão do evento e
+// (3) a chamada do logger, que deriva autor/escopo do contexto autenticado.
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -10,37 +25,11 @@ export default async function(req: Request): Promise<Response> {
     if (!guard.ok) return Response.json({ error: guard.error }, { status: guard.status });
     const user = guard.user;
 
-    const body = await req.json();
-    const action = typeof body.action === 'string' ? body.action.trim() : '';
-    const entityType = typeof body.entity_type === 'string' ? body.entity_type.trim() : '';
-    const entityId = typeof body.entity_id === 'string' ? body.entity_id.trim() : '';
+    const body = await req.json().catch(() => ({}));
+    const eventId = typeof body?.event_id === 'string' ? body.event_id.trim() : '';
 
-    // Audit events are intentionally generic, but the server rejects malformed or
-    // oversized records so the log cannot be used as an arbitrary payload sink.
-    const allowedEntityTypes = new Set([
-      'Event', 'Participant', 'Session', 'Track', 'Room', 'Badge', 'ScoringRule',
-      'StoreItem', 'Partner', 'EventPartner', 'PartnerRepresentative', 'NotificationCampaign',
-      'Submission', 'CallForPapers', 'AwardSubmission', 'AwardEvaluation', 'Certificate',
-      'CertificateTemplate', 'MentorshipRequest', 'JobPosting', 'Lead', 'Person'
-    ]);
-    const allowedActions = new Set(['create', 'update', 'delete', 'soft_delete', 'status_change', 'role_change', 'publish', 'unpublish', 'send', 'approve', 'reject', 'waitlist', 'cancel', 'archive', 'restore']);
-    if (!action || action.length > 64 || !allowedActions.has(action)) {
-      return Response.json({ error: 'Ação de auditoria inválida.' }, { status: 400 });
-    }
-    if (!entityType || !allowedEntityTypes.has(entityType)) {
-      return Response.json({ error: 'Tipo de entidade de auditoria inválido.' }, { status: 400 });
-    }
-    if (entityId.length > 128) {
-      return Response.json({ error: 'entity_id inválido.' }, { status: 400 });
-    }
-
-    // F3-08 (2026-11-12) — Validação de ESCRITA da trilha: entradas com event_id
-    // exigem papéis de GESTÃO do evento (admin, manager ou team); sem event_id,
-    // apenas admin. Antes bastava ser participante do evento para gravar
-    // auditoria — um participante conseguia inserir registros de ações que não
-    // executou (status_change, role_change) na trilha do evento. Quem só
-    // participa não escreve auditoria; a leitura continua admin-only pela RLS.
-    const eventId = typeof body.event_id === 'string' ? body.event_id.trim() : '';
+    // Gate de escopo: admin OU gestão do evento (manager/team). Participante
+    // não escreve auditoria; a leitura continua admin-only pela RLS.
     if (eventId) {
       if (!/^[0-9a-f]{24}$/i.test(eventId)) {
         return Response.json({ error: 'event_id inválido.' }, { status: 400 });
@@ -53,27 +42,21 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'Sem permissão para registrar auditoria sem escopo de evento.' }, { status: 403 });
     }
 
-    // Extract client IP from standard proxy headers (shared helper)
-    const ip = extractClientIp(req);
-
-    await base44.asServiceRole.entities.AuditLog.create({
-      event_id: eventId,
-      action,
-      entity_type: entityType,
-      entity_id: entityId,
-      user_id: user.id,
-      user_name: user.full_name || user.email || "",
-      details: (() => {
-        const value = typeof body.details === "string" ? body.details : JSON.stringify(body.details || {});
-        return value.length > 10000 ? value.slice(0, 10000) : value;
-      })(),
-      ip_address: ip,
+    const result = await recordClientAudit(base44.asServiceRole, {
+      user,
+      eventId,
+      ip: extractClientIp(req),
+      body,
     });
 
-    return Response.json({ ok: true });
-  } catch (error) {
-    // Audit failures should not crash the calling flow — log and return error
-    console.error("logAuditEvent error:", error.message);
-    return Response.json({ ok: false, error: error.message }, { status: 500 });
+    if (!result.ok) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+
+    return Response.json({ ok: true, id: result.record?.id || '' });
+  } catch (error: any) {
+    // O logger é best-effort no cliente, mas a falha nunca é silenciosa aqui.
+    console.error("logAuditEvent error:", error?.message || error);
+    return Response.json({ ok: false, error: error?.message || String(error) }, { status: 500 });
   }
 }

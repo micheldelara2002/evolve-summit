@@ -285,7 +285,6 @@ export default function PessoasTab({
           pessoa={editRolesDialog}
           eventId={eventId}
           sessions={sessions}
-          user={user}
           onClose={() => setEditRolesDialog(null)}
           onSuccess={invalidate}
         />

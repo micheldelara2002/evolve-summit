@@ -6,8 +6,7 @@ import {
   DELETED_NAME,
   DELETED_EMAIL_MARKER,
   DELETED_DOCUMENT,
-  submissionAuthorAnon,
-  jobPostingAuthorAnon,
+  anonymizeAuthoredContent,
 } from "../../shared/anonymization.ts";
 
 // Account Deletion — self-service exclusão de conta do próprio usuário.
@@ -379,33 +378,19 @@ export default async function(req) {
     // de nome e e-mail que sobrevivia à exclusão de conta. O CONTEÚDO permanece
     // (histórico editorial, ranking, trilha de curadoria); a IDENTIDADE não.
     // Anonimização idempotente: reexecutar reescreve o marcador.
+    // Lógica movida para shared/anonymization.ts (anonymizeAuthoredContent)
+    // para ser testável no nível de integração — mesmo comportamento, lote a lote.
     // =========================================================================
     {
-      const anonByQueries = async (entity, builder, queries, counterKey) => {
-        const seen = new Set();
-        for (const query of queries) {
-          for await (const batch of scanBatches(entity, query, { pageSize: BATCH })) {
-            const updates = [];
-            for (const row of batch) {
-              if (seen.has(row.id)) continue;
-              seen.add(row.id);
-              updates.push(builder(row.id));
-              counts[counterKey]++;
-            }
-            if (!dryRun && updates.length > 0) await entity.bulkUpdate(updates);
-          }
-        }
-      };
-      const byPerson = personIds.length > 0 ? [{ person_id: { $in: personIds } }] : [];
-      const byEmail = identity.emailNorm ? [{ submitter_email: { $in: identity.emailVariants } }] : [];
-      await anonByQueries(svc.entities.Submission, submissionAuthorAnon, [...byPerson, ...byEmail], 'submissions');
-      await anonByQueries(svc.entities.AwardSubmission, submissionAuthorAnon, [...byPerson, ...byEmail], 'awardSubmissions');
-      await anonByQueries(
-        svc.entities.JobPosting,
-        jobPostingAuthorAnon,
-        [...byPerson, ...(identity.emailNorm ? [{ contact_email: { $in: identity.emailVariants } }] : [])],
-        'jobPostings',
-      );
+      const authored = await anonymizeAuthoredContent(svc, {
+        personIds,
+        emailVariants: identity.emailNorm ? identity.emailVariants : [],
+        dryRun,
+        pageSize: BATCH,
+      });
+      counts.submissions = authored.submissions;
+      counts.awardSubmissions = authored.awardSubmissions;
+      counts.jobPostings = authored.jobPostings;
     }
 
     // =========================================================================

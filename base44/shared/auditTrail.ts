@@ -175,6 +175,32 @@ export async function recordPendingTrail(
   return null;
 }
 
+// F3-09 (rodada de correção 2026-11-12) — pendência CONFIRMADA por leitura.
+//
+// `recordPendingTrail` devolve o id da tentativa de criação; uma resposta
+// otimista do SDK não prova persistência. Aqui a pendência só conta como
+// registrada se a LEITURA posterior encontrar o registro com status 'pending'.
+// Sem confirmação → null, e o chamador devolve falha explícita (nada é
+// declarado auditado sem evidência persistida).
+export async function recordPendingTrailVerified(
+  svc: any,
+  entry: Record<string, any>,
+): Promise<{ id: string } | null> {
+  const id = await recordPendingTrail(svc, entry);
+  if (!id) return null;
+  const key = `${String(entry.audit_key || "")}|pending`;
+  try {
+    const rows = await svc.entities.AuditLog.filter({ audit_key: key });
+    const confirmed = (Array.isArray(rows) ? rows : []).some(
+      (row: any) => String(row?.id) === String(id) && row?.status === "pending",
+    );
+    return confirmed ? { id } : null;
+  } catch (err: any) {
+    console.error("[recordPendingTrailVerified] leitura de confirmação falhou:", err?.message || err);
+    return null;
+  }
+}
+
 // Reconciliação: regrava a trilha original dos casos pendentes e registra o
 // desfecho. Idempotente — rodar de novo não duplica nem reescreve resolvidos.
 export async function resolvePendingTrails(

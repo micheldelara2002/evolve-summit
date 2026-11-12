@@ -17,7 +17,6 @@ import {
   setReviewerMembership,
 } from "@/lib/participantApi";
 import { moveParticipantRoleCounter } from "@/lib/businessCounters";
-import { logAudit } from "@/lib/audit";
 
 // 'Equipe' NÃO é atribuída aqui (2026-11-04): staff exige conta + Person e é
 // gerenciado no botão "Equipe do evento" (StaffDialog), exclusivo do gerente.
@@ -27,7 +26,7 @@ const ROLE_OPTIONS = [
   { value: "reviewer",  label: "Avaliador" },
 ];
 
-export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, onClose, onSuccess }) {
+export default function EditRolesDialog({ pessoa, eventId, sessions = [], onClose, onSuccess }) {
   const isPartnerRep = pessoa.role_in_event === "partner_rep";
   const isStaff = pessoa.role_in_event === "team";
 
@@ -89,8 +88,9 @@ export default function EditRolesDialog({ pessoa, eventId, sessions = [], user, 
         await updateParticipant(eventId, pessoa.id, { role_in_event: newRole });
         // P0.3 — move o bucket participants_by_role do papel antigo para o novo (unique não muda)
         await moveParticipantRoleCounter(eventId, pessoa.created_date, pessoa.role_in_event, newRole);
-        logAudit({ event_id: eventId, action: "role_change", entity_type: "Participant", entity_id: pessoa.id, user,
-          details: { field: "role_in_event", old_value: pessoa.role_in_event, new_value: newRole } });
+        // F3-08 — a trilha de role_change é gravada pelo backend (manageParticipant),
+        // a partir do contexto confiável da operação. O cliente não registra mais
+        // esse evento (o logger genérico recusa ações críticas).
       }
 
       // Avaliador — gerenciado via EventMembership (independente do role_in_event)

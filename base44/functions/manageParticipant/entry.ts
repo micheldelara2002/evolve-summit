@@ -3,8 +3,11 @@
 // (verifyEventMembership). Todas as escritas de Participant — e os acessos a
 // entidades de apoio travadas por RLS (Session read, EventMembership reviewer,
 // PersonDocument, Import) — passam por aqui com service role.
-// Contadores (maintainBusinessCounter) e auditoria (logAuditEvent) seguem no
-// frontend, best-effort como hoje; a função apenas grava o registro.
+// Contadores (maintainBusinessCounter) seguem no frontend, best-effort como hoje.
+// F3-08 (rodada de correção 2026-11-12): a auditoria de ROLE_CHANGE — operação
+// crítica que o cliente não pode mais registrar (shared/auditLogger) — passou a
+// ser gravada AQUI, a partir do contexto confiável da operação (autor
+// autenticado, evento do gate, participante alterado e valores old/new).
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from '../../shared/accountSecurity.ts';
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
@@ -29,6 +32,29 @@ const EVENT_STAFF_MANAGER_ROLES = ['manager'];
 async function isStaffManager(base44, user, eventId) {
   const { authorized } = await verifyEventMembership(base44, user, eventId, EVENT_STAFF_MANAGER_ROLES);
   return authorized;
+}
+
+// F3-08 — auditoria de operação crítica gerada no BACKEND. Autor, evento,
+// entidade e resultado vêm da operação executada, nunca do corpo da requisição.
+// Best-effort: falha de trilha não desfaz a operação, mas fica explícita no log
+// do servidor (a operação só conclui após a escrita do participante).
+async function auditRoleChange(svc, user, eventId, { entityType = 'Participant', entityId, details }) {
+  try {
+    await svc.entities.AuditLog.create({
+      event_id: eventId,
+      action: 'role_change',
+      entity_type: entityType,
+      entity_id: entityId || '',
+      user_id: user.id,
+      user_name: user.full_name || user.email || '',
+      details: JSON.stringify(details || {}),
+      ip_address: '',
+      mandatory: false,
+      status: 'recorded',
+    });
+  } catch (err: any) {
+    console.error('[manageParticipant] trilha de role_change não gravada:', err?.message || err);
+  }
 }
 
 function pickFields(data) {
@@ -292,6 +318,18 @@ export default async function(req) {
         }
       }
       const updated = await base44.asServiceRole.entities.Participant.update(participantId, data);
+      // F3-08 — papel alterado é auditado aqui (operação crítica).
+      if (changesRole) {
+        await auditRoleChange(base44.asServiceRole, user, eventId, {
+          entityId: participantId,
+          details: {
+            field: 'role_in_event',
+            old_value: current.role_in_event,
+            new_value: data.role_in_event,
+            participant_email: current.email || '',
+          },
+        });
+      }
       return Response.json({ participant: updated });
     }
 
@@ -508,8 +546,18 @@ export default async function(req) {
           actor: user,
         });
         if (result.status === 'linked') {
+          await auditRoleChange(base44.asServiceRole, user, eventId, {
+            entityType: 'EventMembership',
+            entityId: result.membership?.id || '',
+            details: { role: 'team', granted_to: email, outcome: 'linked' },
+          });
           return Response.json({ status: 'linked', membership: result.membership });
         }
+        await auditRoleChange(base44.asServiceRole, user, eventId, {
+          entityType: 'EventMembership',
+          entityId: '',
+          details: { role: 'team', granted_to: email, outcome: 'invited' },
+        });
         return Response.json({
           status: 'invited',
           invite: { invited: !!result.invited, error: result.inviteError || '' },
@@ -554,6 +602,16 @@ export default async function(req) {
       if (participant && participant.role_in_event === 'team') {
         await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
       }
+      await auditRoleChange(svc, user, eventId, {
+        entityType: 'EventMembership',
+        entityId: memberships?.[0]?.id || '',
+        details: {
+          role: 'team',
+          removed: (memberships || []).length,
+          participant_id: participant?.id || '',
+          participant_email: email || '',
+        },
+      });
       return Response.json({ ok: true, memberships_removed: (memberships || []).length });
     }
 

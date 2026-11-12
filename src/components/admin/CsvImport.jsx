@@ -260,7 +260,7 @@ export default function CsvImport({ eventId, existingParticipants = [], onComple
     logAudit({
       event_id: eventId,
       action: "import",
-      entity_type: "Participant",
+      entity_type: "Import",
       entity_id: importRecord.id,
       details: { novosCriados, existentesVinculados, jaVinculadosIgnorados, invalidos: invalidRows.length },
       user,

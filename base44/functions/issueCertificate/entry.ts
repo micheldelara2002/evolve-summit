@@ -2,7 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
-import { writeMandatoryAudit, recordPendingTrail, buildAuditKey } from "../../shared/auditTrail.ts";
+import { buildAuditKey } from "../../shared/auditTrail.ts";
+import { auditCertificateIssuance } from "../../shared/certificateAudit.ts";
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -154,23 +155,27 @@ export default async function(req: Request): Promise<Response> {
       }),
     };
     try {
-      await writeMandatoryAudit(base44.asServiceRole, auditEntry);
-    } catch (err: any) {
-      const pendingId = await recordPendingTrail(base44.asServiceRole, {
-        ...auditEntry,
-        provider: 'base44',
-        failure_reason: err?.message || String(err),
+      const auditOutcome = await auditCertificateIssuance(base44.asServiceRole, auditEntry);
+      return Response.json({
+        certificate: finalCertificate,
+        alreadyExisted: false,
+        audit_state: auditOutcome.state,
+        ...(deduplicated ? { deduplicated } : {}),
       });
-      console.error('[issueCertificate] trilha pendente:', pendingId || 'não registrada', err?.message || err);
+    } catch (err: any) {
+      // F3-09 — trilha principal E pendência falharam: não existe evidência
+      // persistida de auditoria. Falha EXPLÍCITA (503); o certificado já existe
+      // e a próxima tentativa cai na deduplicação, que regrava a trilha com a
+      // mesma chave (sem duplicar certificado nem registro).
+      console.error('[issueCertificate] auditoria indisponível:', err?.message || err);
+      return Response.json({
+        error: 'Certificado emitido, mas a trilha de auditoria não pôde ser registrada. Repita a emissão para concluir a auditoria.',
+        certificate: finalCertificate,
+        audit_state: 'unavailable',
+      }, { status: 503 });
     }
-
-    return Response.json({
-      certificate: finalCertificate,
-      alreadyExisted: false,
-      ...(deduplicated ? { deduplicated } : {}),
-    });
-  } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+  } catch (error: any) {
+    return Response.json({ error: error?.message || String(error) }, { status: 500 });
   }
 }
 
