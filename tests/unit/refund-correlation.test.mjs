@@ -188,3 +188,84 @@ test("P1.3 — ID gravado fora da listagem (incompleta) é inconclusivo, não 'a
   const a = achi([], request({ stripe_refund_id: "re_x" }));
   assert.equal(a.verdict, "inconclusive");
 });
+
+// ---------- P0.2 (patch final Fase 1) — metadata × stripe_refund_id ----------
+
+test("P0.2 — metadata e ID gravado na MESMA solicitação: aceito", () => {
+  const refunds = [refund("re_1", 4000, { metadata: { refund_request_id: REQ_A } })];
+  const a = achi(refunds, request({ stripe_refund_id: "re_1" }));
+  assert.equal(a.verdict, "matched");
+  assert.equal(a.refund.id, "re_1");
+});
+
+test("P0.2 — metadata em A e ID gravado em B sobre o MESMO estorno: inconclusivo", () => {
+  const refunds = [refund("re_1", 4000, { metadata: { refund_request_id: REQ_A } })];
+  const a = achi(refunds, request({ id: REQ_A, stripe_refund_id: null }), {
+    siblingRequests: [request({ id: REQ_B, stripe_refund_id: "re_1" })],
+  });
+  assert.equal(a.verdict, "inconclusive");
+  assert.match(a.reason, /diferentes/i);
+});
+
+test("P0.2 — ID gravado em A e metadata em B: inconclusivo", () => {
+  const refunds = [refund("re_1", 4000, { metadata: { refund_request_id: REQ_B } })];
+  const a = achi(refunds, request({ id: REQ_A, stripe_refund_id: "re_1" }), {
+    siblingRequests: [request({ id: REQ_B, stripe_refund_id: null })],
+  });
+  assert.equal(a.verdict, "inconclusive");
+});
+
+test("P0.2 — nenhum identificador confiável: não associa", () => {
+  const a = achi([refund("re_1", 4000)], request());
+  assert.equal(a.verdict, "inconclusive");
+});
+
+test("P0.2 — webhook: metadata em A e ID gravado em B não associa (nenhum ingresso é alterado)", () => {
+  const out = associateRefundsToRequests({
+    refunds: [refund("re_1", 4000, { metadata: { refund_request_id: REQ_A } })],
+    requests: [request({ id: REQ_A, stripe_refund_id: null }), request({ id: REQ_B, stripe_refund_id: "re_1" })],
+    paymentIntentId: PI,
+    currency: "BRL",
+    complete: true,
+  });
+  assert.equal(out.matched, null, "sem associação o webhook não cancela ingresso/participante/item");
+  assert.equal(out.ambiguous, true);
+});
+
+test("P0.2 — webhook: ID gravado em A e metadata em B não associa", () => {
+  const out = associateRefundsToRequests({
+    refunds: [refund("re_1", 4000, { metadata: { refund_request_id: REQ_B } })],
+    requests: [request({ id: REQ_A, stripe_refund_id: "re_1" }), request({ id: REQ_B, stripe_refund_id: null })],
+    paymentIntentId: PI,
+    currency: "BRL",
+    complete: true,
+  });
+  assert.equal(out.matched, null);
+  assert.equal(out.ambiguous, true);
+});
+
+test("P0.2 — webhook: estorno reivindicado por DUAS solicitações não associa", () => {
+  const out = associateRefundsToRequests({
+    refunds: [refund("re_1", 4000)],
+    requests: [request({ id: REQ_A, stripe_refund_id: "re_1" }), request({ id: REQ_B, stripe_refund_id: "re_1" })],
+    paymentIntentId: PI,
+    currency: "BRL",
+    complete: true,
+  });
+  assert.equal(out.matched, null);
+});
+
+test("P0.2 — apenas um dos identificadores existe: casos válidos preservados", () => {
+  const byMeta = achi([refund("re_1", 4000, { metadata: { refund_request_id: REQ_A } })], request());
+  assert.equal(byMeta.verdict, "matched");
+  const byStoredId = achi([refund("re_1", 4000)], request({ stripe_refund_id: "re_1" }));
+  assert.equal(byStoredId.verdict, "matched");
+  const out = associateRefundsToRequests({
+    refunds: [refund("re_1", 4000)],
+    requests: [request({ id: REQ_A, stripe_refund_id: "re_1" })],
+    paymentIntentId: PI,
+    currency: "BRL",
+    complete: true,
+  });
+  assert.equal(out.matched?.id, REQ_A);
+});

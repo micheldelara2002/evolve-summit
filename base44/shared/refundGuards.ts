@@ -130,15 +130,55 @@ const sameCurrency = (refund: any, currency?: string): boolean => {
   return !a || !b || a === b;
 };
 
+// P0.2 (patch final Fase 1) — DONO DE UM ESTORNO com os DOIS vínculos.
+//
+// Metadata do Refund e `stripe_refund_id` persistido são conferidos
+// SIMULTANEAMENTE, considerando todas as solicitações do pagamento. Se ambos
+// existirem e apontarem para solicitações diferentes, o resultado é CONFLITO —
+// nunca se escolhe uma por prioridade, ordem ou conveniência.
+type RefundOwnerResolution = { request: any | null; conflict: boolean; reason: string };
+
+function resolveRefundOwner(refund: any, byId: Map<string, any>, requests: any[]): RefundOwnerResolution {
+  const metaId = refundMetaRequestId(refund);
+  const metaReq = metaId ? byId.get(metaId) || null : null;
+  const storedOwners = requests.filter(
+    (r: any) => r && r.stripe_refund_id && String(r.stripe_refund_id) === String(refund.id),
+  );
+
+  if (metaId && !metaReq) {
+    return { request: null, conflict: true, reason: "Estorno declara solicitação inexistente neste pagamento." };
+  }
+  if (storedOwners.length > 1) {
+    return { request: null, conflict: true, reason: "Estorno reivindicado por mais de uma solicitação." };
+  }
+  const storedReq = storedOwners[0] || null;
+  if (metaReq && storedReq && String(metaReq.id) !== String(storedReq.id)) {
+    return {
+      request: null, conflict: true,
+      reason: "Metadata e identificador gravado apontam para solicitações diferentes.",
+    };
+  }
+  const owner = metaReq || storedReq;
+  if (!owner) return { request: null, conflict: false, reason: "" };
+  // Vínculo da própria solicitação, se existir, tem de ser ESTE estorno.
+  if (owner.stripe_refund_id && String(owner.stripe_refund_id) !== String(refund.id)) {
+    return { request: null, conflict: true, reason: "Solicitação vinculada a outro estorno." };
+  }
+  return { request: owner, conflict: false, reason: "" };
+}
+
 // Decide se ESTA solicitação tem (ou não) um Refund correspondente no Stripe.
 // `complete` = false quando a listagem foi truncada (paginação incompleta):
 // sem a lista inteira não é possível afirmar ausência — resultado inconclusivo.
+// `siblingRequests` = demais solicitações do MESMO pagamento: entram na decisão
+// para que um vínculo divergente entre elas seja detectado como conflito.
 export function associateRefundToRequest(input: {
   refunds: any[];
   request: any;
   paymentIntentId: string;
   currency?: string;
   complete?: boolean;
+  siblingRequests?: any[];
 }): RefundAssociation {
   const request = input.request;
   if (!request?.id) return { verdict: "inconclusive", reason: "Solicitação sem identidade." };
@@ -149,7 +189,19 @@ export function associateRefundToRequest(input: {
   // já vem filtrada por intent, mas o vínculo é conferido aqui também).
   const known = all.filter((r: any) => !r.payment_intent || !intent || String(r.payment_intent) === intent);
 
-  const check = (refund: any): RefundAssociation => {
+  // Pool de vínculos do pagamento: a solicitação em análise é sempre a fonte de
+  // verdade do seu próprio estado (o snapshot passado pode estar defasado).
+  const siblings = (Array.isArray(input.siblingRequests) ? input.siblingRequests : []).filter((r: any) => r && r.id);
+  const byId = new Map<string, any>(siblings.map((r: any) => [String(r.id), r]));
+  byId.set(String(request.id), request);
+  const pool = [...byId.values()];
+
+  const decide = (refund: any): RefundAssociation => {
+    const owner = resolveRefundOwner(refund, byId, pool);
+    if (owner.conflict) return { verdict: "inconclusive", reason: owner.reason };
+    if (!owner.request || String(owner.request.id) !== String(request.id)) {
+      return { verdict: "inconclusive", reason: "Estorno pertence a outra solicitação." };
+    }
     if (refund.payment_intent && intent && String(refund.payment_intent) !== intent) {
       return { verdict: "inconclusive", reason: "Estorno pertence a outro PaymentIntent." };
     }
@@ -162,14 +214,8 @@ export function associateRefundToRequest(input: {
   // (1) Vínculo definitivo já gravado localmente.
   const storedId = request.stripe_refund_id ? String(request.stripe_refund_id) : "";
   if (storedId) {
-    const byId = known.find((r: any) => String(r.id) === storedId);
-    if (byId) {
-      const meta = refundMetaRequestId(byId);
-      if (meta && meta !== String(request.id)) {
-        return { verdict: "inconclusive", reason: "Estorno gravado pertence a outra solicitação." };
-      }
-      return check(byId);
-    }
+    const byStored = known.find((r: any) => String(r.id) === storedId);
+    if (byStored) return decide(byStored);
     // Gravado mas não encontrado: listagem incompleta/divergente ⇒ não decide
     // (nunca criar outro em cima de um resultado inconclusivo).
     return { verdict: "inconclusive", reason: "Estorno gravado não encontrado no Stripe." };
@@ -177,13 +223,16 @@ export function associateRefundToRequest(input: {
 
   // (2) Identidade declarada pelo Stripe (metadata gravada na criação).
   const byMeta = known.filter((r: any) => refundMetaRequestId(r) === String(request.id));
-  if (byMeta.length === 1) return check(byMeta[0]);
+  if (byMeta.length === 1) return decide(byMeta[0]);
   if (byMeta.length > 1) {
     return { verdict: "inconclusive", reason: "Mais de um estorno declara esta solicitação." };
   }
 
-  // (3) Estorno sem identidade de solicitação: proibido associar por valor.
-  const unattributed = known.filter((r: any) => !refundMetaRequestId(r));
+  // (3) Estorno sem NENHUM vínculo: proibido associar por valor.
+  const unattributed = known.filter(
+    (r: any) => !refundMetaRequestId(r)
+      && !pool.some((x: any) => x.stripe_refund_id && String(x.stripe_refund_id) === String(r.id)),
+  );
   if (unattributed.length > 0) {
     return { verdict: "inconclusive", reason: "Existe estorno no Stripe sem identidade de solicitação." };
   }
@@ -195,41 +244,67 @@ export function associateRefundToRequest(input: {
 
 // Correlação usada pelo WEBHOOK (charge.refunded): descobre A QUAL solicitação
 // pertencem os estornos do charge. Sem identidade única ⇒ matched = null.
+//
+// P1.1 (patch final Fase 1) — `complete: false` (lista truncada, `has_more=true`
+// ou consulta que falhou) NUNCA produz associação: a única correspondência só
+// pode ser afirmada sobre a lista INTEIRA. O webhook usa isso para não tocar
+// ingressos/participantes/itens.
 export function associateRefundsToRequests(input: {
   refunds: any[];
   requests: any[];
   paymentIntentId: string;
   currency?: string;
-}): { matched: any | null; refund: any | null; reason: string; ambiguous: boolean } {
+  complete?: boolean;
+}): { matched: any | null; refund: any | null; reason: string; ambiguous: boolean; incomplete: boolean } {
   const requests = Array.isArray(input.requests) ? input.requests.filter((r: any) => r && r.id) : [];
-  if (requests.length === 0) return { matched: null, refund: null, reason: "Pagamento sem solicitação de estorno.", ambiguous: false };
+  if (input.complete === false) {
+    return {
+      matched: null, refund: null,
+      reason: "Listagem de estornos incompleta — associação não confirmada.",
+      ambiguous: false, incomplete: true,
+    };
+  }
+  if (requests.length === 0) {
+    return { matched: null, refund: null, reason: "Pagamento sem solicitação de estorno.", ambiguous: false, incomplete: false };
+  }
   const intent = input.paymentIntentId == null ? "" : String(input.paymentIntentId);
   const refunds = (Array.isArray(input.refunds) ? input.refunds : []).filter((r: any) => r && r.id)
     .filter((r: any) => !r.payment_intent || !intent || String(r.payment_intent) === intent);
 
   const byId = new Map<string, any>(requests.map((r: any) => [String(r.id), r]));
   const candidates = new Map<string, { request: any; refund: any }>();
+  let conflict = "";
   for (const refund of refunds) {
-    const meta = refundMetaRequestId(refund);
-    let req = meta ? byId.get(meta) || null : null;
-    if (!req) req = requests.find((r: any) => r.stripe_refund_id && String(r.stripe_refund_id) === String(refund.id)) || null;
-    if (!req) continue;
+    // P0.2 — metadata × `stripe_refund_id` das solicitações deste pagamento.
+    const owner = resolveRefundOwner(refund, byId, requests);
+    if (owner.conflict) {
+      conflict = conflict || owner.reason;
+      continue;
+    }
+    if (!owner.request) continue;
     if (!sameCurrency(refund, input.currency)) continue;
-    if (!candidates.has(String(req.id))) candidates.set(String(req.id), { request: req, refund });
+    if (!candidates.has(String(owner.request.id))) {
+      candidates.set(String(owner.request.id), { request: owner.request, refund });
+    }
   }
 
+  // Conflito em QUALQUER estorno do pagamento impede a associação: escolher a
+  // "melhor" candidata seria decidir por conveniência.
+  if (conflict) {
+    return { matched: null, refund: null, reason: conflict, ambiguous: true, incomplete: false };
+  }
   if (candidates.size === 1) {
     const only = [...candidates.values()][0];
-    return { matched: only.request, refund: only.refund, reason: "", ambiguous: false };
+    return { matched: only.request, refund: only.refund, reason: "", ambiguous: false, incomplete: false };
   }
   if (candidates.size > 1) {
     return {
       matched: null, refund: null,
       reason: "Mais de uma solicitação corresponde a estornos deste pagamento.",
-      ambiguous: true,
+      ambiguous: true, incomplete: false,
     };
   }
-  return { matched: null, refund: null, reason: "Nenhum estorno com identidade de solicitação.", ambiguous: false };
+  return { matched: null, refund: null, reason: "Nenhum estorno com identidade de solicitação.", ambiguous: false, incomplete: false };
 }
 
 // Valor: nunca acima do pago e do que o Stripe ainda não devolveu. O saldo é

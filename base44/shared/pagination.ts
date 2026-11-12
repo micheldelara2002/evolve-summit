@@ -25,7 +25,12 @@ export async function collectPages<T>(
     pages++;
     const batch = Array.isArray(result?.items) ? result.items : [];
     items.push(...batch);
-    if (!result?.hasMore || batch.length === 0) return { items, complete: true, pages };
+    if (!result?.hasMore) return { items, complete: true, pages };
+    // P1.2 (patch final Fase 1) — página VAZIA com has_more=true NÃO é o fim da
+    // lista: a API afirma que há mais itens e nenhum cursor pode ser derivado.
+    // Declarar completa aqui permitiria concluir "não existe" sobre uma listagem
+    // comprovadamente truncada (e, no estorno, criar um Refund duplicado).
+    if (batch.length === 0) return { items, complete: false, pages };
     if (page === maxPages - 1) return { items, complete: false, pages };
     cursor = String((batch[batch.length - 1] as any)?.id || "");
     if (!cursor) return { items, complete: false, pages };

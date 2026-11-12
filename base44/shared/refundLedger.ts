@@ -43,29 +43,75 @@ export function availableRefundCents(payment: any): number {
   return Math.max(0, paidCents(payment) - committedCents(payment));
 }
 
+// Ledger pronto = os três contadores existem, são numéricos e o invariante do
+// modelo se sustenta (comprometido = confirmado + reservado). Um registro sem
+// `refund_committed_cents` NÃO está pronto: `$inc` criaria o campo e o teto
+// passaria a contar só a nova reserva, ignorando o já confirmado.
+export function isLedgerReady(payment: any): boolean {
+  if (!payment?.id) return false;
+  const numeric = (v: any) => v != null && Number.isFinite(Number(v));
+  if (!numeric(payment.refunded_cents) || !numeric(payment.refund_committed_cents)) return false;
+  const confirmed = Math.round(Number(payment.refunded_cents));
+  const reserved = Math.round(Number(payment.refund_reserved_cents ?? 0));
+  const committed = Math.round(Number(payment.refund_committed_cents));
+  if (confirmed < 0 || reserved < 0 || committed < 0) return false;
+  return committed === confirmed + reserved;
+}
+
+export type LedgerState = { ready: boolean; payment: any; reason: string };
+
 // Normalização única de pagamentos legados: sem `refunded_cents`, o confirmado
 // é o `refunded_amount` existente (que até a Fase 1 misturava reserva e
 // confirmado — com zero solicitações pendentes, o valor gravado é confirmado).
-async function ensureLedger(svc: any, payment: any): Promise<any> {
-  if (!payment?.id) return payment;
-  if (payment.refunded_cents != null && payment.refund_committed_cents != null) return payment;
+//
+// P0.1 (patch final Fase 1) — FALHA SEGURA: a normalização só é considerada
+// concluída quando a escrita é confirmada E o estado persistido é relido e
+// validado. Falha de escrita, campo ainda ausente ou contadores inconsistentes
+// ⇒ `ready: false` e o chamador NÃO reserva nem confirma nada. Nenhuma
+// atualização em massa: só o pagamento em uso, e só quando o contador falta
+// (ausente ou nulo). Estado já normalizado é preservado sem reescrita.
+async function ensureLedger(svc: any, payment: any): Promise<LedgerState> {
+  if (!payment?.id) return { ready: false, payment: null, reason: "Pagamento inexistente." };
+  if (isLedgerReady(payment)) return { ready: true, payment, reason: "" };
+
+  const numeric = (v: any) => v != null && Number.isFinite(Number(v));
+  // Contadores presentes mas inconsistentes: não é caso de migração — reescrever
+  // mascararia o problema. O estado duvidoso recusa novas reservas.
+  if (numeric(payment.refunded_cents) && numeric(payment.refund_committed_cents)) {
+    return { ready: false, payment, reason: "Ledger de estorno inconsistente para este pagamento." };
+  }
+
   const confirmed = cents(payment.refunded_amount);
+  const reserved = Math.round(Number(payment.refund_reserved_cents) || 0);
+  let writeError = "";
   try {
     await svc.entities.Payment.updateMany(
-      { id: payment.id, refunded_cents: { $exists: false } },
+      // Ausente ou nulo: nos dois casos o contador nunca foi normalizado.
+      { id: payment.id, $or: [{ refunded_cents: { $exists: false } }, { refunded_cents: null }] },
       {
         $set: {
           refunded_cents: confirmed,
-          refund_reserved_cents: Math.round(Number(payment.refund_reserved_cents) || 0),
-          refund_committed_cents: confirmed + Math.round(Number(payment.refund_reserved_cents) || 0),
+          refund_reserved_cents: reserved,
+          refund_committed_cents: confirmed + reserved,
         },
       }
     );
   } catch (err: any) {
-    console.error("[refundLedger] normalização do ledger falhou:", err?.message || err);
+    writeError = err?.message || String(err);
+    console.error("[refundLedger] normalização do ledger falhou:", writeError);
   }
-  const fresh = (await svc.entities.Payment.filter({ id: payment.id }))[0];
-  return fresh || payment;
+
+  // A leitura de volta é a autoridade: escrita "bem-sucedida" sem estado
+  // persistido válido não conclui a normalização.
+  const fresh = (await svc.entities.Payment.filter({ id: payment.id }))[0] || null;
+  if (fresh && isLedgerReady(fresh)) return { ready: true, payment: fresh, reason: "" };
+  return {
+    ready: false,
+    payment: fresh || payment,
+    reason: writeError
+      ? "Falha ao normalizar o ledger de estorno — nova reserva bloqueada."
+      : "Ledger de estorno não confirmado após a normalização — nova reserva bloqueada.",
+  };
 }
 
 // CLAIM da reserva: reserva `amountCents` para `requestId` SOMENTE se
@@ -83,17 +129,22 @@ export async function claimRefundReservation(
   if (!requestId) return { ok: false, reason: "Solicitação sem identidade para reservar valor." };
   if (amount <= 0) return { ok: false, reason: "Valor de reserva inválido." };
 
-  const fresh = await ensureLedger(svc, payment);
+  // P0.1 — ledger não normalizado/confirmado ⇒ NENHUMA escrita de reserva é
+  // tentada (nem contador, nem token).
+  const ledger = await ensureLedger(svc, payment);
+  if (!ledger.ready) {
+    return { ok: false, reason: ledger.reason || "Ledger de estorno indisponível para reservar." };
+  }
+  const fresh = ledger.payment;
   const cap = paidCents(fresh) - amount;
 
+  // O teto só é comparável com o contador PRESENTE: aceitar ausência permitiria
+  // `$inc` criar o campo e reservar acima do já confirmado.
   const claim = await svc.entities.Payment.updateMany(
     {
       id: fresh.id,
       refund_reservation_ids: { $ne: requestId },
-      $or: [
-        { refund_committed_cents: { $lte: cap } },
-        { refund_committed_cents: { $exists: false } },
-      ],
+      refund_committed_cents: { $lte: cap },
     },
     {
       $inc: { refund_committed_cents: amount, refund_reserved_cents: amount },
@@ -158,7 +209,14 @@ export async function applyConfirmedRefundCents(
   const releaseRequestId = opts?.releaseRequestId || "";
   const releaseAmount = releaseRequestId ? Math.round(Number(opts?.releaseCents) || 0) : 0;
 
-  let current = await ensureLedger(svc, payment);
+  // P0.1 — sem ledger confirmado não há confirmação de valor (o CAS abaixo
+  // exigiria `refunded_cents` presente). Falha segura: nada é escrito e o caso
+  // é tratado como não concluído pelo chamador.
+  const ledger = await ensureLedger(svc, payment);
+  if (!ledger.ready) {
+    return { ok: false, cents: 0, applied: false, reason: ledger.reason || "Ledger de estorno indisponível para confirmar." };
+  }
+  const current = ledger.payment;
   let prev = confirmedCents(current);
   // Sem delta E sem reserva para consumir: evento duplicado/fora de ordem —
   // nada a fazer. Com reserva pendente, o token AINDA é consumido abaixo (a

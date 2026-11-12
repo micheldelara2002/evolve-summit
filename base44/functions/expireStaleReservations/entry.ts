@@ -400,6 +400,9 @@ export default async function(req: Request): Promise<Response> {
     // autorizada, relações inconsistentes, estorno diferente em andamento no
     // mesmo pagamento). Ficam visíveis no resumo da rodada.
     let refundsBlocked = 0;
+    // P0.2 — vínculos de todas as solicitações por pagamento (cache da rodada):
+    // metadata × `stripe_refund_id` divergentes são conflito, não prioridade.
+    const paymentRequestsCache = new Map<string, any[]>();
     try {
       const refundCutoff = Date.now() - 15 * 60 * 1000;
       const pendingReqs = await svc.entities.RefundRequest.filter({ status: 'pending', is_deleted: false });
@@ -550,12 +553,22 @@ export default async function(req: Request): Promise<Response> {
 
           // (5) CORRELAÇÃO INEQUÍVOCA (P0.1): identidade = vínculo já gravado ou
           // metadata do próprio Refund. Nunca valor, data ou posição na lista.
+          // P0.2 (patch final Fase 1) — os demais vínculos do MESMO pagamento
+          // entram na decisão: metadata e `stripe_refund_id` de solicitações
+          // diferentes sobre o mesmo estorno é CONFLITO (inconclusivo). Uma
+          // consulta por pagamento é suficiente e fica em cache na rodada.
+          let siblings = paymentRequestsCache.get(pay.id);
+          if (!siblings) {
+            siblings = await svc.entities.RefundRequest.filter({ payment_id: pay.id, is_deleted: false });
+            paymentRequestsCache.set(pay.id, siblings);
+          }
           const association = associateRefundToRequest({
             refunds: stripeRefunds,
             request: req,
             paymentIntentId: pay.intent_id,
             currency: pay.currency,
             complete: refundListing.complete,
+            siblingRequests: siblings,
           });
 
           if (association.verdict === "matched") {

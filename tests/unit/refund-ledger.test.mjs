@@ -16,6 +16,7 @@ import {
   claimRefundReservation,
   committedCents,
   confirmedCents,
+  isLedgerReady,
   releaseRefundReservation,
   reservedCents,
 } from "../../base44/shared/refundLedger.ts";
@@ -283,6 +284,85 @@ test("pagamento legado (só refunded_amount) é normalizado no primeiro uso", as
   assert.equal(claim.ok, true);
   const pay = db.payment("pay_1");
   assert.equal(confirmedCents(pay), 2500, "confirmado herdado do registro existente");
+  assert.equal(reservedCents(pay), 5000);
+  assert.equal(committedCents(pay), 7500);
+
+  // P0.1 — o MESMO pagamento volta a operar normalmente depois de normalizado.
+  assert.equal(isLedgerReady(pay), true);
+  const next = await claimRefundReservation(db.svc, snapshot, REQ_B, 2000);
+  assert.equal(next.ok, true);
+  assert.equal(committedCents(db.payment("pay_1")), 9500);
+});
+
+// ---------- P0.1 (patch final Fase 1) — falha segura na normalização ----------
+
+test("P0.1 — falha de escrita na normalização bloqueia a reserva sem tocar contadores", async () => {
+  const legacy = basePayment({ refunded_amount: 25, amount: 100 });
+  const db = createFakeDb({ payments: [legacy] });
+  const calls = [];
+  db.svc.entities.Payment.updateMany = async (q, u) => {
+    calls.push({ q, u });
+    throw new Error("escrita indisponível");
+  };
+
+  const claim = await claimRefundReservation(db.svc, { ...legacy }, REQ_A, 5000);
+  assert.equal(claim.ok, false, "sem ledger normalizado não há reserva");
+  assert.match(claim.reason, /ledger/i);
+  assert.equal(calls.length, 1, "apenas a tentativa de normalização — nenhuma escrita de reserva");
+
+  const pay = db.payment("pay_1");
+  assert.equal(pay.refund_committed_cents, undefined, "contador de teto não foi criado");
+  assert.equal(pay.refund_reserved_cents, undefined, "reservado não foi criado");
+  assert.deepEqual(pay.refund_reservation_ids, undefined, "nenhum token de propriedade");
+});
+
+test("P0.1 — escrita aceita mas não persistida também bloqueia a reserva (leitura de volta inválida)", async () => {
+  const db = createFakeDb({ payments: [basePayment()] });
+  db.svc.entities.Payment.updateMany = async () => ({ updated: 1 }); // 'sucesso' sem efeito
+  const claim = await claimRefundReservation(db.svc, basePayment(), REQ_A, 5000);
+  assert.equal(claim.ok, false);
+  assert.match(claim.reason, /não confirmado/i);
+  assert.equal(db.payment("pay_1").refund_committed_cents, undefined);
+});
+
+test("P0.1 — contador de teto AUSENTE não é condição válida para reservar (não se assume zero)", async () => {
+  // refunded_cents presente, refund_committed_cents ausente: a normalização não
+  // casa (o campo já existe) e o gate sem contador permanece fechado.
+  const partial = basePayment({ refunded_amount: 25, refunded_cents: 2500 });
+  const db = createFakeDb({ payments: [partial] });
+  const claim = await claimRefundReservation(db.svc, { ...partial }, REQ_A, 5000);
+  assert.equal(claim.ok, false);
+  assert.equal(db.payment("pay_1").refund_committed_cents, undefined);
+  assert.deepEqual(db.payment("pay_1").refund_reservation_ids, undefined);
+});
+
+test("P0.1 — contadores inconsistentes recusam a reserva sem reescrever o registro", async () => {
+  const broken = basePayment({ refunded_cents: 2500, refund_reserved_cents: 0, refund_committed_cents: 900 });
+  const db = createFakeDb({ payments: [broken] });
+  const writes = [];
+  const original = db.svc.entities.Payment.updateMany.bind(db.svc.entities.Payment);
+  db.svc.entities.Payment.updateMany = async (q, u) => { writes.push({ q, u }); return original(q, u); };
+
+  const claim = await claimRefundReservation(db.svc, { ...broken }, REQ_A, 1000);
+  assert.equal(claim.ok, false);
+  assert.match(claim.reason, /inconsistente/i);
+  assert.equal(writes.length, 0, "estado duvidoso não é 'corrigido' por conveniência");
+  assert.equal(db.payment("pay_1").refund_committed_cents, 900);
+});
+
+test("P0.1 — legado com campos NULOS normaliza com leitura de volta válida e volta a reservar", async () => {
+  const legacy = basePayment({
+    refunded_amount: 25,
+    refunded_cents: null,
+    refund_reserved_cents: null,
+    refund_committed_cents: null,
+  });
+  const db = createFakeDb({ payments: [legacy] });
+  const claim = await claimRefundReservation(db.svc, { ...legacy }, REQ_A, 5000);
+  assert.equal(claim.ok, true);
+  const pay = db.payment("pay_1");
+  assert.equal(isLedgerReady(pay), true);
+  assert.equal(confirmedCents(pay), 2500, "confirmado herdado (nunca zero por omissão)");
   assert.equal(reservedCents(pay), 5000);
   assert.equal(committedCents(pay), 7500);
 });

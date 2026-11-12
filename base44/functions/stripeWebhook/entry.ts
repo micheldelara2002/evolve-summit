@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { secrets } from "base44:runtime";
-import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
+import { constructStripeEvent, listRefundsForIntent } from "../../shared/stripeClient.ts";
 import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund, applyUnassociatedRefundAmount } from "../../shared/commerceFulfillment.ts";
 import { associateRefundsToRequests } from "../../shared/refundGuards.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
@@ -199,12 +199,29 @@ export default async function(req: Request): Promise<Response> {
       // gravado ou `metadata.refund_request_id` do próprio Refund. A
       // "solicitação mais recente" (corrida webhook × gravação do ID) foi
       // REMOVIDA — ela podia associar o estorno à solicitação errada.
-      let refundObjects: any[] = ((charge.refunds && charge.refunds.data) || []).filter((r: any) => r && r.id);
-      if (refundObjects.length === 0) {
+      // ===== P1.1 (patch final Fase 1) — LISTA DE ESTORNOS COMPLETA =====
+      // O evento pode trazer a lista de estornos TRUNCADA (`has_more=true`) ou
+      // sem os estornos expandidos. A única correspondência só pode ser afirmada
+      // sobre a lista INTEIRA: quando o evento não prova a completude, a listagem
+      // é refeita com PAGINAÇÃO real (listRefundsForIntent). Lista comprovadamente
+      // completa não gera chamada extra.
+      const eventRefunds: any[] = ((charge.refunds && charge.refunds.data) || []).filter((r: any) => r && r.id);
+      const eventHasMore = charge.refunds?.has_more === true;
+      let refundObjects: any[] = eventRefunds;
+      let listComplete = !eventHasMore && eventRefunds.length > 0;
+      if (!listComplete) {
         try {
-          const fullCharge = await retrieveChargeWithRefunds(charge.id);
-          refundObjects = ((fullCharge.refunds && fullCharge.refunds.data) || []).filter((r: any) => r && r.id);
+          const listing = await listRefundsForIntent(piId);
+          refundObjects = listing.refunds.filter((r: any) => r && r.id);
+          listComplete = listing.complete;
+          console.log(
+            '[stripeWebhook] estornos consultados: paginas=%d encontrados=%d completo=%s',
+            listing.pages, refundObjects.length, listComplete,
+          );
         } catch (expErr: any) {
+          // Consulta falhou: a lista do evento (se houver) é PARCIAL — nenhum
+          // vínculo pode ser afirmado com ela.
+          listComplete = false;
           console.error('[stripeWebhook] charge refunds lookup failed:', expErr?.message || expErr);
         }
       }
@@ -214,6 +231,7 @@ export default async function(req: Request): Promise<Response> {
         requests: reqs,
         paymentIntentId: piId,
         currency: payment.currency || charge.currency,
+        complete: listComplete,
       });
       const matched = association.matched;
       // Processa o estorno com a lógica comum ao webhook e ao reconciler do
@@ -290,6 +308,7 @@ export default async function(req: Request): Promise<Response> {
             type: "estorno_sem_associacao",
             motivo: association.reason,
             ambiguo: association.ambiguous,
+            lista_completa: listComplete,
             payment_id: payment.id,
             order_id: order.id,
             intent_id: piId,
