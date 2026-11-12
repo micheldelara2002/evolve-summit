@@ -16,6 +16,41 @@
 
 import { resolveIdentity, findMyParticipants } from "./identity.ts";
 
+/**
+ * Integridade de referência de uma Session (Fase 3, 3.1).
+ *
+ * `track_id`, `room_id` e `speaker_id` são IDs de OUTRAS entidades e chegam do
+ * cliente na escrita. Sem checagem, um gestor do evento A pode gravar na sua
+ * Session a trilha/sala/palestrante do evento B — referência cruzada entre
+ * eventos (vazamento de nome de palestrante de outro evento e agenda
+ * inconsistente). A escrita só é aceita quando o registro referenciado pertence
+ * ao MESMO evento; campos ausentes não são validados (update parcial).
+ *
+ * Nunca confia no cliente: cada referência informada é reconferida no banco.
+ */
+export async function validateSessionReferences(
+  svc: any,
+  eventId: string,
+  data: any = {},
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!eventId) return { ok: false, reason: 'eventId é obrigatório.' };
+  const checks: Array<[string, string, string]> = [
+    ['track_id', 'Track', 'Trilha'],
+    ['room_id', 'Room', 'Sala'],
+    ['speaker_id', 'Participant', 'Palestrante'],
+  ];
+  for (const [field, entityName, label] of checks) {
+    const value = data?.[field];
+    if (!value) continue;
+    if (typeof value !== 'string') return { ok: false, reason: `${label} inválido(a).` };
+    const rows = await svc.entities[entityName].filter({ id: value, event_id: eventId, is_deleted: false });
+    if (!rows?.length) {
+      return { ok: false, reason: `${label} informado(a) não pertence a este evento.` };
+    }
+  }
+  return { ok: true };
+}
+
 /** person_id canônico do chamador (requer identidade única; null se ambígua/ausente). */
 export async function resolveCallerPerson(svc: any, user: any): Promise<string | null> {
   const identity = await resolveIdentity(svc, user);

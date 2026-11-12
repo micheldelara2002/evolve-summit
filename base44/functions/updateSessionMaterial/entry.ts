@@ -59,17 +59,23 @@ export default async function(req: Request): Promise<Response> {
     // e consulta direcionada (sem varrer os participantes do evento).
     const identity = await resolveIdentity(base44, user);
     const myParticipants = await findMyParticipants(base44, identity, eventId);
-    const callerParticipant = myParticipants.find((p) => p.role_in_event === 'speaker');
+    const speakerParticipants = myParticipants.filter((p) => p.role_in_event === 'speaker');
 
-    if (!callerParticipant) {
+    if (!speakerParticipants.length) {
       return Response.json(
         { error: 'Somente o palestrante da sessão pode alterar o material.' },
         { status: 403 }
       );
     }
 
-    // Posse: a sessão deve pertencer a este palestrante.
-    if (session.speaker_id !== callerParticipant.id) {
+    // Posse: a sessão deve pertencer a UM dos registros de palestrante do
+    // próprio chamador. Fase 3 (3.1) — a comparação é feita contra o
+    // `speaker_id` da sessão (e não contra "o primeiro" registro do usuário):
+    // com mais de um registro de palestrante no evento, o palestrante dono da
+    // sessão continua autorizado e quem não é dono continua negado.
+    const callerParticipant = speakerParticipants.find((p) => p.id === session.speaker_id);
+
+    if (!callerParticipant) {
       return Response.json(
         { error: 'Você não é o palestrante desta sessão.' },
         { status: 403 }

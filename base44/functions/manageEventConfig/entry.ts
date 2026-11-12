@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, verifyAnyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
 import { resolveIdentity, findMyParticipants } from "../../shared/identity.ts";
+import { validateSessionReferences } from "../../shared/sessionAuth.ts";
 
 const ALLOWED_ENTITIES = new Set([
   'Badge',
@@ -142,6 +143,13 @@ export default async function(req: Request): Promise<Response> {
     if (action === 'create') {
       const clean = sanitizeRecord(entityName, data);
       clean.event_id = eventId;
+      // Fase 3 (3.1) — referências (trilha/sala/palestrante) precisam ser DESTE
+      // evento: sem isso, a Session do evento A poderia apontar para registros
+      // do evento B, criando vínculo cruzado entre eventos.
+      if (entityName === 'Session') {
+        const refs = await validateSessionReferences(svc, eventId, clean);
+        if (!refs.ok) return Response.json({ error: refs.reason }, { status: 400 });
+      }
       const record = await svc.entities[entityName].create(clean);
       return Response.json({ record });
     }
@@ -158,6 +166,10 @@ export default async function(req: Request): Promise<Response> {
 
       const clean = sanitizeRecord(entityName, data);
       delete clean.is_deleted;
+      if (entityName === 'Session') {
+        const refs = await validateSessionReferences(svc, eventId, clean);
+        if (!refs.ok) return Response.json({ error: refs.reason }, { status: 400 });
+      }
       const record = await svc.entities[entityName].update(id, clean);
       return Response.json({ record });
     }
