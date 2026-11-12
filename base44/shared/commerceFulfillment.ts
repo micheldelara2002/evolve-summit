@@ -17,6 +17,7 @@ import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decP
 import { retrieveChargeWithBalance } from "./stripeClient.ts";
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { deterministicCompare } from "./deterministicSurvivor.ts";
+import { applyConfirmedRefundCents } from "./refundLedger.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
@@ -436,7 +437,11 @@ export async function applyConfirmedStripeRefund(
     && Array.isArray(matched.order_item_ids) && matched.order_item_ids.length > 0
     ? matched.order_item_ids
     : undefined;
-  const outcome = await processRefundSuccess(svc, payment, order, refundAmountBRL, isPartial, orderItemIds, matched?.id);
+  const outcome = await processRefundSuccess(
+    svc, payment, order, refundAmountBRL, isPartial, orderItemIds, matched?.id,
+    // P1.1 — a confirmação consome a reserva DESTA solicitação na mesma escrita.
+    Math.round((Number(matched?.amount_requested) || 0) * 100),
+  );
 
   if (outcome.usedSkipped > 0) {
     // Estorno sobre ingresso já utilizado (P3): o dinheiro voltou (Stripe é
@@ -487,11 +492,35 @@ export async function applyConfirmedStripeRefund(
   } catch (reqErr: any) {
     console.error("[applyConfirmedStripeRefund] refund request confirm failed:", reqErr?.message || reqErr);
   }
+
   return { usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL };
 }
 
+// P0.2 (patch Fase 1) — CONFIRMAÇÃO FINANCEIRA SEM ASSOCIAÇÃO.
+// O dinheiro voltou no Stripe, mas não há como provar a QUAL solicitação o
+// estorno pertence. Aqui SÓ o lado financeiro é reconciliado (valor confirmado
+// cumulativo + status do pagamento). Ingressos, participantes e itens de pedido
+// NÃO são tocados: cancelar por aproximação poderia consumir os ingressos
+// errados. A associação pendente fica registrada para reconciliação.
+export async function applyUnassociatedRefundAmount(
+  svc: any,
+  payment: any,
+  cumulativeRefundedCents: number,
+  chargeAmountCents: number,
+): Promise<{ isPartial: boolean; refundAmountBRL: number; applied: boolean }> {
+  const cumulative = Math.max(0, Math.round(Number(cumulativeRefundedCents) || 0));
+  const applied = await applyConfirmedRefundCents(svc, payment, cumulative);
+  const isPartial = cumulative < Math.max(0, Math.round(Number(chargeAmountCents) || 0));
+  try {
+    await svc.entities.Payment.update(payment.id, { status: isPartial ? "partially_refunded" : "refunded" });
+  } catch (err: any) {
+    console.error("[applyUnassociatedRefundAmount] payment status update failed:", err?.message || err);
+  }
+  return { isPartial, refundAmountBRL: cumulative / 100, applied: applied.ok && applied.applied };
+}
+
 // Process a successful refund: cancel participants + tickets + counters (MetricBucket).
-export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string): Promise<{ usedSkipped: number }> {
+export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string, reservationCents?: number): Promise<{ usedSkipped: number }> {
   let usedSkipped = 0;
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
@@ -523,14 +552,16 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
     await svc.entities.SalesLot.updateMany({ id: ticket.lot_id }, { $inc: { quantity_sold: -1 } });
   }
 
-  // refundAmountBRL é o valor CUMULATIVO e autoritativo do Stripe
-  // (charge.amount_refunded/100) — atribuído, nunca somado: eventos repetidos
-  // do webhook/retries sempre convergem para o mesmo valor (idempotente).
+  // P1.1 (patch Fase 1) — valor CONFIRMADO e valor RESERVADO são contadores
+  // distintos: aqui só o confirmado é aplicado (cumulativo e autoritativo do
+  // Stripe, monotônico), pelo ledger. Uma confirmação nunca apaga a reserva de
+  // outra solicitação e um evento fora de ordem não reduz o já devolvido.
   const newStatus = isPartial ? "partially_refunded" : "refunded";
-  await svc.entities.Payment.update(payment.id, {
-    status: newStatus,
-    refunded_amount: refundAmountBRL,
+  await applyConfirmedRefundCents(svc, payment, Math.round((Number(refundAmountBRL) || 0) * 100), {
+    releaseRequestId: refundRequestId,
+    releaseCents: reservationCents,
   });
+  await svc.entities.Payment.update(payment.id, { status: newStatus });
   await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
 
   // P2 — Estorno integral devolve o uso do cupom ao invés contabilizado

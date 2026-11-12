@@ -1,7 +1,7 @@
 {
   "name": "Payment",
   "type": "object",
-  "description": "Registro de transa\u00e7\u00e3o de pagamento (Stripe). status: pending, succeeded, failed, expired, refunded, partially_refunded. fulfillment marcado idempotentemente (claim em estado intermedi\u00e1rio 'fulfilling' durante a emiss\u00e3o \u2014 crash no meio deixa recuper\u00e1vel, nunca 'fulfilled' com emiss\u00e3o pela metade). Nunca escrito diretamente pelo cliente \u2014 apenas via backend functions (service role).",
+  "description": "Registro de transa\u00e7\u00e3o de pagamento (Stripe). status: pending, succeeded, failed, expired, refunded, partially_refunded. fulfillment marcado idempotentemente (claim em estado intermedi\u00e1rio 'fulfilling' durante a emiss\u00e3o \u2014 crash no meio deixa recuper\u00e1vel, nunca 'fulfilled' com emiss\u00e3o pela metade). Nunca escrito diretamente pelo cliente \u2014 apenas via backend functions (service role). ESTORNO (patch Fase 1, 2026-11-12): valor CONFIRMADO (refunded_cents/refunded_amount) e valor RESERVADO (refund_reserved_cents) s\u00e3o contadores separados; refund_committed_cents = confirmado + reservado \u00e9 o \u00fanico port\u00e3o do teto de estorno e refund_reservation_ids s\u00e3o os tokens de propriedade de cada reserva (uma solicita\u00e7\u00e3o nunca libera a reserva de outra).",
   "properties": {
     "order_id": {
       "type": "string",
@@ -62,7 +62,29 @@
     "refunded_amount": {
       "type": "number",
       "default": 0,
-      "description": "Total estornado em BRL. Valor cumulativo autoritativo do Stripe (assign no webhook charge.refunded); no requestRefund \u00e9 PR\u00c9-RESERVADO atomicamente (CAS $lte + $inc) para o teto de estorno \u2014 dois estornos concorrentes n\u00e3o ultrapassam o pago (anti-TOCTOU)."
+      "description": "Valor CONFIRMADO como estornado em BRL (espelho de refunded_cents). Escrito exclusivamente pelos caminhos de confirma\u00e7\u00e3o (webhook charge.refunded / reconciliador) a partir do valor cumulativo autoritativo do Stripe (charge.amount_refunded). N\u00c3O inclui reservas pendentes \u2014 reservas vivem em refund_reserved_cents (P1.1, patch Fase 1)."
+    },
+    "refunded_cents": {
+      "type": "number",
+      "default": 0,
+      "description": "P1.1 (patch Fase 1) \u2014 Valor CONFIRMADO em centavos. Contador inteiro e monot\u00f4nico (evento duplicado ou fora de ordem nunca reduz). Escrita por applyConfirmedRefundCents (CAS exato sobre o valor anterior: exatamente um confirmer aplica o delta)."
+    },
+    "refund_reserved_cents": {
+      "type": "number",
+      "default": 0,
+      "description": "P1.1 \u2014 Soma das reservas de solicita\u00e7\u00f5es PENDENTES em centavos (dinheiro ainda n\u00e3o devolvido, mas comprometido). Incrementado no claim at\u00f4mico e decrementado apenas pela libera\u00e7\u00e3o vinculada ao token da pr\u00f3pria solicita\u00e7\u00e3o."
+    },
+    "refund_committed_cents": {
+      "type": "number",
+      "default": 0,
+      "description": "P1.1 \u2014 PORT\u00c3O DO TETO: confirmado + reservado (centavos). Uma nova reserva s\u00f3 entra se committed + valor n\u00e3o ultrapassar o pago \u2014 checagem e incremento na MESMA escrita at\u00f4mica (sem leitura-seguida-de-escrita). Nunca \u00e9 reduzido abaixo do confirmado."
+    },
+    "refund_reservation_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "P1.2 \u2014 Tokens de propriedade das reservas de estorno: ID da RefundRequest dona de cada reserva viva. A libera\u00e7\u00e3o faz CAS por este token na MESMA escrita do decremento \u2014 uma solicita\u00e7\u00e3o n\u00e3o libera a reserva de outra, a mesma reserva n\u00e3o \u00e9 liberada duas vezes e reexecu\u00e7\u00f5es convergem para o mesmo estado."
     },
     "fulfillment_status": {
       "type": "string",
@@ -96,7 +118,7 @@
     "stripe_fee_amount": {
       "type": "number",
       "default": 0,
-      "description": "Taxa do Stripe debitada nesta venda (BRL, do balance_transaction do charge), capturada no webhook E nos caminhos de polling/retry (captureStripeFee) para c\u00e1lculo do l\u00edil\u00edquido do organizador. Vendas legadas anteriores \u00e0 captura exibem 0."
+      "description": "Taxa do Stripe debitada nesta venda (BRL, do balance_transaction do charge), capturada no webhook E nos caminhos de polling/retry (captureStripeFee) para c\u00e1lculo do l\u00edquido do organizador. Vendas legadas anteriores \u00e0 captura exibem 0."
     },
     "is_deleted": {
       "type": "boolean",

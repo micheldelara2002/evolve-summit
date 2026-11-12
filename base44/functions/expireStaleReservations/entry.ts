@@ -3,7 +3,8 @@ import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund, listRefundsForIntent } from "../../shared/stripeClient.ts";
 import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund, lockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
-import { evaluateLockOwnership, isTrustedRefundRequest, resolveRefundAmountCents, validateRefundRelations } from "../../shared/refundGuards.ts";
+import { associateRefundToRequest, evaluateLockOwnership, isTrustedRefundRequest, resolveRefundAmountCents, validateRefundRelations } from "../../shared/refundGuards.ts";
+import { releaseRefundReservation } from "../../shared/refundLedger.ts";
 import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
 import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
@@ -456,13 +457,11 @@ export default async function(req: Request): Promise<Response> {
               await svc.entities.RefundRequest.update(req.id, { status: "failed", rejection_reason: why });
             } catch {}
             const reservedBRL = Number(req.amount_requested) || 0;
-            if (pay && reservedBRL > 0) {
-              try {
-                await svc.entities.Payment.updateMany(
-                  { id: pay.id, refunded_amount: { $gte: reservedBRL } },
-                  { $inc: { refunded_amount: -reservedBRL } },
-                );
-              } catch {}
+            const reservedCents = Math.round(reservedBRL * 100);
+            // P1.2 — liberação POR IDENTIDADE: só a reserva desta solicitação
+            // (token), uma única vez, e nunca o valor confirmado de outra.
+            if (pay && pay.id && reservedCents > 0) {
+              await releaseRefundReservation(svc, pay.id, req.id, reservedCents);
             }
             if (ord) {
               await unlockTicketsForRefund(
@@ -529,57 +528,101 @@ export default async function(req: Request): Promise<Response> {
           const reqAmountCents = Math.round((Number(req.amount_requested) || 0) * 100);
           const paidCents = Number(pay.amount_cents) || Math.round((Number(pay.amount) || 0) * 100);
 
-          // (4) O estorno já existe no Stripe? Consulta ANTES de criar. Erro de
-          // consulta = resultado indeterminado → não decide nada nesta rodada.
-          let stripeRefunds: any[] = [];
+          // (4) O estorno já existe no Stripe? Consulta ANTES de criar, com
+          // PAGINAÇÃO completa (P1.3). Erro de consulta ou listagem truncada =
+          // resultado INDETERMINADO → não decide nada nesta rodada (nunca cria).
+          let refundListing;
           try {
-            stripeRefunds = await listRefundsForIntent(pay.intent_id);
+            refundListing = await listRefundsForIntent(pay.intent_id);
           } catch (lookupErr: any) {
             console.error('[expireStaleReservations] stripe refund lookup failed:', req.id, lookupErr?.message || lookupErr);
             continue;
           }
-          const liveRefunds = stripeRefunds
-            .filter((r: any) => r.status === "succeeded" || r.status === "pending")
-            .sort((a: any, b: any) => (Number(b.created) || 0) - (Number(a.created) || 0));
-          const stripeRefundedCents = liveRefunds
-            .filter((r: any) => r.status === "succeeded")
+          const stripeRefunds = refundListing.refunds;
+          console.log(
+            '[expireStaleReservations] consulta de estornos: solicitacao=%s paginas=%d encontrados=%d lista_completa=%s',
+            req.id, refundListing.pages, stripeRefunds.length, refundListing.complete,
+          );
+          const stripeRefundedCents = stripeRefunds
+            .filter((r: any) => r.status === "succeeded"
+              && (!r.payment_intent || !pay.intent_id || String(r.payment_intent) === String(pay.intent_id)))
             .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
 
-          // (5) Já existe estorno utilizável: RECONCILIA (vincula o ID), nunca
-          // cria outro. Estorno de valor diferente em andamento no mesmo
-          // pagamento → não concorre com ele.
-          if (liveRefunds.length > 0) {
-            const link = liveRefunds.find((r: any) => Math.abs((Number(r.amount) || 0) - reqAmountCents) <= 1);
-            if (link) {
-              try { await svc.entities.RefundRequest.update(req.id, { stripe_refund_id: link.id }); } catch {}
-              try {
-                await writeMandatoryAudit(svc, {
-                  action: "update",
-                  entity_type: "RefundRequest",
-                  entity_id: req.id,
-                  user_id: "system",
-                  user_name: "Manutenção automática",
-                  event_id: ord.event_id,
-                  audit_key: buildAuditKey("estorno_vinculado", req.id),
-                  provider: "stripe",
-                  external_reference: link.id,
-                  amount: (Number(link.amount) || 0) / 100,
-                  details: JSON.stringify({
-                    type: "estorno_vinculado",
-                    stripe_refund_id: link.id,
-                    status_stripe: link.status,
-                    payment_id: pay.id,
-                    order_id: ord.id,
-                    motivo: "Estorno já existia no Stripe — vinculado sem novo disparo.",
-                  }),
-                });
-              } catch {}
-              refundsReconciled++;
-            } else {
-              refundsBlocked++;
-            }
+          // (5) CORRELAÇÃO INEQUÍVOCA (P0.1): identidade = vínculo já gravado ou
+          // metadata do próprio Refund. Nunca valor, data ou posição na lista.
+          const association = associateRefundToRequest({
+            refunds: stripeRefunds,
+            request: req,
+            paymentIntentId: pay.intent_id,
+            currency: pay.currency,
+            complete: refundListing.complete,
+          });
+
+          if (association.verdict === "matched") {
+            const link = association.refund;
+            // Vincula o ID (idempotente) e registra — o estorno existente é
+            // reconciliado na próxima varredura/fluxo de confirmação.
+            try { await svc.entities.RefundRequest.update(req.id, { stripe_refund_id: link.id }); } catch {}
+            try {
+              await writeMandatoryAudit(svc, {
+                action: "update",
+                entity_type: "RefundRequest",
+                entity_id: req.id,
+                user_id: "system",
+                user_name: "Manutenção automática",
+                event_id: ord.event_id,
+                audit_key: buildAuditKey("estorno_vinculado", req.id),
+                provider: "stripe",
+                external_reference: link.id,
+                amount: (Number(link.amount) || 0) / 100,
+                details: JSON.stringify({
+                  type: "estorno_vinculado",
+                  stripe_refund_id: link.id,
+                  status_stripe: link.status,
+                  payment_id: pay.id,
+                  order_id: ord.id,
+                  moeda: link.currency || "",
+                  valor_solicitado: reqAmountCents / 100,
+                  motivo: "Estorno identificado no Stripe — vinculado sem novo disparo.",
+                }),
+              });
+            } catch {}
+            refundsReconciled++;
             continue;
           }
+
+          if (association.verdict === "inconclusive") {
+            // Sem identidade não há associação NEM novo estorno: o caso fica
+            // pendente de associação (trilha idempotente) e nada financeiro
+            // acontece nesta rodada — sem escolher por aproximação.
+            try {
+              await writeMandatoryAudit(svc, {
+                action: "update",
+                entity_type: "RefundRequest",
+                entity_id: req.id,
+                user_id: "system",
+                user_name: "Manutenção automática",
+                event_id: ord.event_id,
+                audit_key: buildAuditKey("estorno_associacao_pendente", req.id),
+                provider: "stripe",
+                external_reference: pay.intent_id,
+                amount: Number(req.amount_requested) || 0,
+                details: JSON.stringify({
+                  type: "estorno_associacao_pendente",
+                  motivo: association.reason,
+                  payment_id: pay.id,
+                  order_id: ord.id,
+                  estornos_encontrados: stripeRefunds.length,
+                  consulta_completa: refundListing.complete,
+                  paginas: refundListing.pages,
+                }),
+              });
+            } catch {}
+            refundsBlocked++;
+            continue;
+          }
+          // verdict === "absent": nenhum estorno desta solicitação no Stripe. Só
+          // aqui é possível criar com segurança.
 
           // (6) Propriedade da trava: esta solicitação precisa possuir TODOS os
           // ingressos afetados antes de qualquer movimento financeiro.
@@ -667,6 +710,8 @@ export default async function(req: Request): Promise<Response> {
               idempotencyKey: req.idempotency_key,
               reverseTransfer: !!pay.destination_account_id,
               refundApplicationFee: !!pay.destination_account_id,
+              // P0.1 — identidade da solicitação no próprio Refund.
+              metadata: { refund_request_id: req.id },
             });
             if (ref && ref.status === 'failed') {
               await failPrepared('Estorno falhou no Stripe (reconciler — tentativa com chave idempotente).');
@@ -756,13 +801,10 @@ export default async function(req: Request): Promise<Response> {
               status: 'failed',
               rejection_reason: 'Estorno não concluído no Stripe (detectado pelo reconciler agendado).',
             });
-            // Devolve a reserva do teto (pré-incrementada no requestRefund).
-            const reservedBRL = Number(req.amount_requested) || 0;
-            if (reservedBRL > 0) {
-              await svc.entities.Payment.updateMany(
-                { id: req.payment_id, refunded_amount: { $gte: reservedBRL } },
-                { $inc: { refunded_amount: -reservedBRL } }
-              );
+            // P1.2 — devolve APENAS a reserva desta solicitação (token).
+            const reservedCents = Math.round((Number(req.amount_requested) || 0) * 100);
+            if (reservedCents > 0) {
+              await releaseRefundReservation(svc, req.payment_id, req.id, reservedCents);
             }
             // Destrava os ingressos travados para este estorno (refund_pending → issued).
             // CONC-001 — escopado pela solicitação: não solta travas alheias.

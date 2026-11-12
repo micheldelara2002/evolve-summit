@@ -2,6 +2,7 @@
 // All amounts handled in cents at the Stripe boundary; BRL decimal elsewhere.
 
 import { secrets } from "base44:runtime";
+import { collectPages } from "./pagination.ts";
 
 const STRIPE_API = "https://api.stripe.com/v1";
 const STRIPE_VERSION = "2025-10-29.clover";
@@ -110,17 +111,37 @@ export async function retrieveRefundWithCharge(refundId: string): Promise<any> {
   return data;
 }
 
-// Lista os estornos de um PaymentIntent — usado pelo reconciliador ANTES de
+// P1.3 (patch Fase 1) — Lista TODOS os estornos de um PaymentIntent, com
+// paginação real (starting_after/has_more). Usado pelo reconciliador ANTES de
 // criar um estorno: se o Stripe já tem o refund (resposta perdida, retry após
 // timeout), o resultado existente é reconciliado em vez de abrir outro.
-export async function listRefundsForIntent(intentId: string): Promise<any[]> {
-  const res = await fetch(
-    `${STRIPE_API}/refunds?payment_intent=${encodeURIComponent(intentId)}&limit=100`,
-    { headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION } },
-  );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
-  return Array.isArray(data?.data) ? data.data : [];
+//
+// Resultado incompleto (limite operacional de páginas atingido) NÃO é "não
+// existe": `complete: false` obriga o chamador a tratar o caso como
+// inconclusivo. Erro de rede/HTTP é lançado — também inconclusivo.
+const REFUND_LIST_MAX_PAGES = 5;
+
+export async function listRefundsForIntent(
+  intentId: string,
+  opts?: { maxPages?: number; perPage?: number },
+): Promise<{ refunds: any[]; complete: boolean; pages: number }> {
+  const perPage = Math.max(1, Math.min(opts?.perPage || 100, 100));
+  const page = await collectPages<any>(async (cursor) => {
+    const qs = new URLSearchParams();
+    qs.set("payment_intent", intentId);
+    qs.set("limit", String(perPage));
+    if (cursor) qs.set("starting_after", cursor);
+    const res = await fetch(`${STRIPE_API}/refunds?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+    return {
+      items: Array.isArray(data?.data) ? data.data : [],
+      hasMore: !!data?.has_more,
+    };
+  }, { maxPages: opts?.maxPages || REFUND_LIST_MAX_PAGES });
+  return { refunds: page.items, complete: page.complete, pages: page.pages };
 }
 
 export async function createRefund(opts: {
@@ -132,6 +153,10 @@ export async function createRefund(opts: {
   // comissão da plataforma proporcionalmente ao valor estornado.
   reverseTransfer?: boolean;
   refundApplicationFee?: boolean;
+  // P0.1 (patch Fase 1) — identidade da solicitação gravada NO ESTORNO.
+  // O Refund do Stripe carrega o vínculo; a correlação nunca depende de valor,
+  // data ou posição na lista, e sobrevive à perda da resposta HTTP.
+  metadata?: Record<string, string>;
 }): Promise<any> {
   const { paymentIntentId, amountCents, reason, idempotencyKey } = opts;
   const params = new URLSearchParams();
@@ -141,6 +166,12 @@ export async function createRefund(opts: {
   if (opts.reverseTransfer) params.append("reverse_transfer", "true");
   if (opts.refundApplicationFee) params.append("refund_application_fee", "true");
   params.append("metadata[base44_app_id]", secrets.get("BASE44_APP_ID") || "");
+  if (opts.metadata) {
+    for (const k of Object.keys(opts.metadata)) {
+      const v = opts.metadata[k];
+      if (v != null && v !== "") params.append(`metadata[${k}]`, String(v));
+    }
+  }
   return stripeRequest("/refunds", params, idempotencyKey);
 }
 

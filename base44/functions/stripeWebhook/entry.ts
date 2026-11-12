@@ -1,7 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { secrets } from "base44:runtime";
 import { constructStripeEvent, retrieveChargeWithRefunds } from "../../shared/stripeClient.ts";
-import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripeRefund, applyUnassociatedRefundAmount } from "../../shared/commerceFulfillment.ts";
+import { associateRefundsToRequests } from "../../shared/refundGuards.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 
@@ -193,24 +194,28 @@ export default async function(req: Request): Promise<Response> {
       const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
       if (!order) return Response.json({ received: true, skipped: "order not found" });
 
-      // Associa o estorno à solicitação PELO ID do Refund do Stripe (não por
-      // ordenação temporal): estornos por item concorrentes cancelam os itens
-      // certos. IDs do evento vêm em charge.refunds.data; se ausentes, recupera
-      // o charge na API. Fallback legado: solicitação mais recente.
-      let refundIds: string[] = ((charge.refunds && charge.refunds.data) || []).map((r: any) => r.id);
-      if (refundIds.length === 0) {
+      // P0.2 (patch Fase 1) — CORRELAÇÃO SEM FALLBACK TEMPORAL.
+      // A solicitação só é reconhecida por IDENTIDADE: `stripe_refund_id` já
+      // gravado ou `metadata.refund_request_id` do próprio Refund. A
+      // "solicitação mais recente" (corrida webhook × gravação do ID) foi
+      // REMOVIDA — ela podia associar o estorno à solicitação errada.
+      let refundObjects: any[] = ((charge.refunds && charge.refunds.data) || []).filter((r: any) => r && r.id);
+      if (refundObjects.length === 0) {
         try {
           const fullCharge = await retrieveChargeWithRefunds(charge.id);
-          refundIds = ((fullCharge.refunds && fullCharge.refunds.data) || []).map((r: any) => r.id);
+          refundObjects = ((fullCharge.refunds && fullCharge.refunds.data) || []).filter((r: any) => r && r.id);
         } catch (expErr: any) {
           console.error('[stripeWebhook] charge refunds lookup failed:', expErr?.message || expErr);
         }
       }
       const reqs = await svc.entities.RefundRequest.filter({ payment_id: payment.id, is_deleted: false });
-      let matched = reqs.find((r: any) => r.stripe_refund_id && refundIds.includes(r.stripe_refund_id));
-      if (!matched) {
-        matched = reqs.sort((a: any, b: any) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0];
-      }
+      const association = associateRefundsToRequests({
+        refunds: refundObjects,
+        requests: reqs,
+        paymentIntentId: piId,
+        currency: payment.currency || charge.currency,
+      });
+      const matched = association.matched;
       // Processa o estorno com a lógica comum ao webhook e ao reconciler do
       // job agendado: cancela ingressos/participantes afetados, atribui o
       // valor cumulativo autoritativo, alerta ingresso já utilizado e
@@ -260,11 +265,70 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
       }
 
+      // ===== SEM ASSOCIAÇÃO INEQUÍVOCA (P0.2) =====
+      // Separação obrigatória: confirmação FINANCEIRA (sempre) ≠ associação da
+      // solicitação (só com identidade) ≠ cancelamento de ingressos (só com
+      // associação). Aqui o dinheiro devolvido é registrado e o evento fica
+      // PENDENTE de associação — nenhum ingresso/participante/item é cancelado
+      // por aproximação, e nada se perde do lado financeiro.
+      if (!matched) {
+        const financial = await applyUnassociatedRefundAmount(
+          svc, payment, (charge.amount_refunded || 0), (charge.amount || 0)
+        );
+        const pendingTrail = {
+          action: "status_change",
+          entity_type: "RefundRequest",
+          entity_id: "",
+          user_id: "system",
+          user_name: "Stripe",
+          event_id: order.event_id,
+          audit_key: buildAuditKey("estorno_sem_associacao", charge.id, charge.amount_refunded || 0),
+          provider: "stripe",
+          external_reference: charge.id,
+          amount: financial.refundAmountBRL,
+          details: JSON.stringify({
+            type: "estorno_sem_associacao",
+            motivo: association.reason,
+            ambiguo: association.ambiguous,
+            payment_id: payment.id,
+            order_id: order.id,
+            intent_id: piId,
+            charge_id: charge.id,
+            valor_estornado_acumulado: financial.refundAmountBRL,
+            valor_pago: (Number(charge.amount) || 0) / 100,
+            estornos_no_charge: refundObjects.map((r: any) => r.id),
+          }),
+        };
+        try {
+          await writeMandatoryAudit(svc, pendingTrail);
+        } catch (trailErr: any) {
+          await recordPendingTrail(svc, { ...pendingTrail, failure_reason: trailErr?.message || String(trailErr) });
+          console.error("[stripeWebhook] trilha obrigatória indisponível (estorno sem associação):", trailErr?.message || trailErr);
+          return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
+        }
+        return Response.json({
+          received: true,
+          association: "pending",
+          refundAmount: financial.refundAmountBRL,
+          partial: financial.isPartial,
+        });
+      }
+
+      // Associação inequívoca: grava o vínculo definitivo (se veio pela
+      // metadata) e processa ingressos/participantes/itens desta solicitação.
+      if (association.refund?.id && matched.stripe_refund_id !== association.refund.id) {
+        try { await svc.entities.RefundRequest.update(matched.id, { stripe_refund_id: association.refund.id }); } catch {}
+      }
       const outcome = await applyConfirmedStripeRefund(
         svc, payment, order, matched,
         (charge.amount_refunded || 0), (charge.amount || 0)
       );
-      return Response.json({ received: true, refundAmount: outcome.refundAmountBRL, partial: outcome.isPartial });
+      return Response.json({
+        received: true,
+        association: "matched",
+        refundAmount: outcome.refundAmountBRL,
+        partial: outcome.isPartial,
+      });
     }
 
     // Unhandled event type — acknowledge so Stripe stops retrying.

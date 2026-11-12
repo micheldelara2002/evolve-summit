@@ -8,6 +8,7 @@ import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
 import { extractClientIp } from "../../shared/commerceAudit.ts";
 import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { REFUND_REQUEST_PROVENANCE } from "../../shared/refundGuards.ts";
+import { availableRefundCents, claimRefundReservation, releaseRefundReservation } from "../../shared/refundLedger.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -325,29 +326,19 @@ export default async function(req: Request): Promise<Response> {
       : payment.amount;
     const isPartial = refundType === "partial" || refundAmountBRL < payment.amount;
 
-    // Teto: nunca estorna acima do que foi pago e ainda não devolvido.
-    const paidCents = Number(payment.amount_cents) || toCents(payment.amount);
-    const refundedCents = toCents(Number(payment.refunded_amount) || 0);
-    const remainingCents = Math.max(0, paidCents - refundedCents);
+    // Teto: nunca estorna acima do que foi pago e ainda não comprometido.
+    // P1.1 (patch Fase 1) — o saldo vem do LEDGER: pago − (confirmado no Stripe
+    // + reservas pendentes). `refunded_amount` é só o confirmado, nunca reserva.
+    const remainingCents = availableRefundCents(payment);
     const refundAmountCents = Math.min(toCents(refundAmountBRL), remainingCents);
     if (refundAmountCents <= 0) {
       return Response.json({ error: "Não há valor a estornar para este pagamento." }, { status: 400 });
     }
 
-    // Trava atômica do teto (anti-TOCTOU, P3): dois estornos concorrentes não
-    // podem passar ambos com o refunded_amount antigo. Reserva o valor com CAS +
-    // $inc; o webhook charge.refunded depois ASSIGNA o valor cumulativo
-    // autoritativo do Stripe (convergência). Falha na reserva → teto já
-    // alcançado por outra solicitação. A reserva é devolvida se o Stripe recusar.
-    const refundBRL = round2(refundAmountCents / 100);
-    const capRemaining = round2(payment.amount - refundBRL);
-    const capClaim = await svc.entities.Payment.updateMany(
-      { id: payment.id, $or: [ { refunded_amount: { $lte: capRemaining } }, { refunded_amount: { $exists: false } } ] },
-      { $inc: { refunded_amount: refundBRL } }
-    );
-    if (!capClaim || !capClaim.updated) {
-      return Response.json({ error: "O teto de estorno deste pagamento já foi alcançado por outra solicitação." }, { status: 409 });
-    }
+    // P1.1/P1.2 (patch Fase 1) — A RESERVA do valor acontece logo após a criação
+    // da RefundRequest (claimRefundReservation): o ID da solicitação é o dono da
+    // reserva, e o teto é conferido na MESMA escrita atômica que incrementa os
+    // contadores — nunca leitura seguida de escrita.
 
     // ===== Trava anti-corrida estorno × check-in (P0): issued → refund_pending =====
     // ANTES do disparo no Stripe: nenhum check-in valida ingresso com estorno
@@ -359,7 +350,6 @@ export default async function(req: Request): Promise<Response> {
       : orderTickets;
     const paidIssuable = paidAffected.filter((t: any) => t.status === "issued");
     if (paidIssuable.length === 0) {
-      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
       return Response.json({ error: "Não há ingressos elegíveis para estorno." }, { status: 400 });
     }
     // RefundRequest ANTES da trava E do Stripe: o webhook charge.refunded
@@ -393,9 +383,23 @@ export default async function(req: Request): Promise<Response> {
       provenance: REFUND_REQUEST_PROVENANCE,
     });
 
+    // P1.1 — Reserva ATÔMICA do valor, com a solicitação como dona. Duas
+    // solicitações concorrentes nunca reservam acima do saldo; a reserva é
+    // liberada por identidade em qualquer falha abaixo.
+    const reservation = await claimRefundReservation(svc, payment, refundRequest.id, refundAmountCents);
+    if (!reservation.ok) {
+      try {
+        await svc.entities.RefundRequest.update(refundRequest.id, {
+          status: "failed",
+          rejection_reason: `Reserva de valor indisponível (${reservation.reason})`,
+        });
+      } catch {}
+      return Response.json({ error: "O teto de estorno deste pagamento já foi alcançado por outra solicitação." }, { status: 409 });
+    }
+
     if (!(await lockTicketsForRefund(svc, paidIssuable.map((t: any) => t.id), refundRequest.id))) {
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: "Trava de estorno perdida em corrida (check-in concorrente)." }); } catch {}
-      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      await releaseRefundReservation(svc, payment.id, refundRequest.id, refundAmountCents);
       return Response.json({ error: "Um ingresso deste pedido acabou de ser utilizado ou mudou de estado — estorno bloqueado. Verifique o check-in e tente novamente." }, { status: 409 });
     }
 
@@ -435,12 +439,8 @@ export default async function(req: Request): Promise<Response> {
           rejection_reason: "Trilha de auditoria indisponível — estorno não disparado.",
         });
       } catch {}
-      try {
-        await svc.entities.Payment.updateMany(
-          { id: payment.id, refunded_amount: { $gte: refundBRL } },
-          { $inc: { refunded_amount: -refundBRL } },
-        );
-      } catch {}
+      // P1.2 — libera APENAS a reserva desta solicitação (token).
+      await releaseRefundReservation(svc, payment.id, refundRequest.id, refundAmountCents);
       await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
       console.error('[requestRefund] trilha obrigatória indisponível:', auditErr?.message || auditErr);
       return Response.json({
@@ -456,6 +456,10 @@ export default async function(req: Request): Promise<Response> {
       idempotencyKey: idemKey,
       reverseTransfer: !!payment.destination_account_id,
       refundApplicationFee: !!payment.destination_account_id,
+      // P0.1 — identidade da solicitação gravada no próprio Refund: a
+      // correlação sobrevive à perda da resposta HTTP (webhook/reconciler
+      // reconhecem o estorno sem depender de valor/data).
+      metadata: { refund_request_id: refundRequest.id },
     });
     try {
       try {
@@ -480,8 +484,8 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'Não foi possível confirmar o estorno no Stripe. A solicitação permanece em andamento — aguarde alguns minutos e verifique o status antes de tentar novamente.' }, { status: 502 });
       }
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed", rejection_reason: err?.message || String(err) }); } catch {}
-      // Devolve a reserva do teto — o estorno não aconteceu.
-      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      // Devolve APENAS a reserva desta solicitação — o estorno não aconteceu.
+      await releaseRefundReservation(svc, payment.id, refundRequest.id, refundAmountCents);
       // Destrava os ingressos — o estorno não foi disparado. Escopado por
       // solicitação (CONC-001): nunca solta a trava de outra em andamento.
       await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
@@ -521,7 +525,7 @@ export default async function(req: Request): Promise<Response> {
         await recordPendingTrail(svc, { ...failTrail, failure_reason: auditErr?.message || String(auditErr) });
       }
       try { await svc.entities.RefundRequest.update(refundRequest.id, { status: "failed" }); } catch {}
-      try { await svc.entities.Payment.updateMany({ id: payment.id, refunded_amount: { $gte: refundBRL } }, { $inc: { refunded_amount: -refundBRL } }); } catch {}
+      await releaseRefundReservation(svc, payment.id, refundRequest.id, refundAmountCents);
       await unlockTicketsForRefund(svc, order.id, itemIds, refundRequest.id);
       return Response.json({ error: "Estorno falhou no Stripe.", refund_status: refund.status }, { status: 502 });
     }

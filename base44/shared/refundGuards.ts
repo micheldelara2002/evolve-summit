@@ -101,6 +101,137 @@ export function validateRefundRelations(payment: any, order: any, request: any):
   return { ok: true, reason: "" };
 }
 
+// ===== P0.1 (patch Fase 1) — CORRELAÇÃO INEQUÍVOCA Stripe Refund ↔ RefundRequest =====
+//
+// Identidade é SEMPRE um vínculo declarado, nunca uma coincidência de valor,
+// data ou posição na lista:
+//   1. `stripe_refund_id` gravado na solicitação (vínculo definitivo);
+//   2. `metadata.refund_request_id` do próprio Refund no Stripe, gravada na
+//      criação (createRefund) — sobrevive à perda da resposta HTTP.
+// Valor e moeda são APENAS verificações adicionais. Sem identidade ⇒
+// "inconclusive": nada é associado, nada é criado, o caso fica pendente.
+
+export type RefundAssociationVerdict = "matched" | "absent" | "inconclusive";
+
+export type RefundAssociation = {
+  verdict: RefundAssociationVerdict;
+  refund?: any;
+  reason: string;
+};
+
+const refundMetaRequestId = (refund: any): string => {
+  const v = refund?.metadata?.refund_request_id;
+  return v == null ? "" : String(v);
+};
+
+const sameCurrency = (refund: any, currency?: string): boolean => {
+  const a = String(refund?.currency || "").toLowerCase();
+  const b = String(currency || "brl").toLowerCase();
+  return !a || !b || a === b;
+};
+
+// Decide se ESTA solicitação tem (ou não) um Refund correspondente no Stripe.
+// `complete` = false quando a listagem foi truncada (paginação incompleta):
+// sem a lista inteira não é possível afirmar ausência — resultado inconclusivo.
+export function associateRefundToRequest(input: {
+  refunds: any[];
+  request: any;
+  paymentIntentId: string;
+  currency?: string;
+  complete?: boolean;
+}): RefundAssociation {
+  const request = input.request;
+  if (!request?.id) return { verdict: "inconclusive", reason: "Solicitação sem identidade." };
+  const intent = input.paymentIntentId == null ? "" : String(input.paymentIntentId);
+  const complete = input.complete !== false;
+  const all = Array.isArray(input.refunds) ? input.refunds.filter((r: any) => r && r.id) : [];
+  // Estorno de outro PaymentIntent nunca é considerado (defesa extra: a lista
+  // já vem filtrada por intent, mas o vínculo é conferido aqui também).
+  const known = all.filter((r: any) => !r.payment_intent || !intent || String(r.payment_intent) === intent);
+
+  const check = (refund: any): RefundAssociation => {
+    if (refund.payment_intent && intent && String(refund.payment_intent) !== intent) {
+      return { verdict: "inconclusive", reason: "Estorno pertence a outro PaymentIntent." };
+    }
+    if (!sameCurrency(refund, input.currency)) {
+      return { verdict: "inconclusive", reason: "Estorno em moeda divergente do pagamento." };
+    }
+    return { verdict: "matched", refund, reason: "" };
+  };
+
+  // (1) Vínculo definitivo já gravado localmente.
+  const storedId = request.stripe_refund_id ? String(request.stripe_refund_id) : "";
+  if (storedId) {
+    const byId = known.find((r: any) => String(r.id) === storedId);
+    if (byId) {
+      const meta = refundMetaRequestId(byId);
+      if (meta && meta !== String(request.id)) {
+        return { verdict: "inconclusive", reason: "Estorno gravado pertence a outra solicitação." };
+      }
+      return check(byId);
+    }
+    // Gravado mas não encontrado: listagem incompleta/divergente ⇒ não decide
+    // (nunca criar outro em cima de um resultado inconclusivo).
+    return { verdict: "inconclusive", reason: "Estorno gravado não encontrado no Stripe." };
+  }
+
+  // (2) Identidade declarada pelo Stripe (metadata gravada na criação).
+  const byMeta = known.filter((r: any) => refundMetaRequestId(r) === String(request.id));
+  if (byMeta.length === 1) return check(byMeta[0]);
+  if (byMeta.length > 1) {
+    return { verdict: "inconclusive", reason: "Mais de um estorno declara esta solicitação." };
+  }
+
+  // (3) Estorno sem identidade de solicitação: proibido associar por valor.
+  const unattributed = known.filter((r: any) => !refundMetaRequestId(r));
+  if (unattributed.length > 0) {
+    return { verdict: "inconclusive", reason: "Existe estorno no Stripe sem identidade de solicitação." };
+  }
+
+  if (!complete) return { verdict: "inconclusive", reason: "Listagem de estornos incompleta." };
+
+  return { verdict: "absent", reason: "Nenhum estorno desta solicitação no Stripe." };
+}
+
+// Correlação usada pelo WEBHOOK (charge.refunded): descobre A QUAL solicitação
+// pertencem os estornos do charge. Sem identidade única ⇒ matched = null.
+export function associateRefundsToRequests(input: {
+  refunds: any[];
+  requests: any[];
+  paymentIntentId: string;
+  currency?: string;
+}): { matched: any | null; refund: any | null; reason: string; ambiguous: boolean } {
+  const requests = Array.isArray(input.requests) ? input.requests.filter((r: any) => r && r.id) : [];
+  if (requests.length === 0) return { matched: null, refund: null, reason: "Pagamento sem solicitação de estorno.", ambiguous: false };
+  const intent = input.paymentIntentId == null ? "" : String(input.paymentIntentId);
+  const refunds = (Array.isArray(input.refunds) ? input.refunds : []).filter((r: any) => r && r.id)
+    .filter((r: any) => !r.payment_intent || !intent || String(r.payment_intent) === intent);
+
+  const byId = new Map<string, any>(requests.map((r: any) => [String(r.id), r]));
+  const candidates = new Map<string, { request: any; refund: any }>();
+  for (const refund of refunds) {
+    const meta = refundMetaRequestId(refund);
+    let req = meta ? byId.get(meta) || null : null;
+    if (!req) req = requests.find((r: any) => r.stripe_refund_id && String(r.stripe_refund_id) === String(refund.id)) || null;
+    if (!req) continue;
+    if (!sameCurrency(refund, input.currency)) continue;
+    if (!candidates.has(String(req.id))) candidates.set(String(req.id), { request: req, refund });
+  }
+
+  if (candidates.size === 1) {
+    const only = [...candidates.values()][0];
+    return { matched: only.request, refund: only.refund, reason: "", ambiguous: false };
+  }
+  if (candidates.size > 1) {
+    return {
+      matched: null, refund: null,
+      reason: "Mais de uma solicitação corresponde a estornos deste pagamento.",
+      ambiguous: true,
+    };
+  }
+  return { matched: null, refund: null, reason: "Nenhum estorno com identidade de solicitação.", ambiguous: false };
+}
+
 // Valor: nunca acima do pago e do que o Stripe ainda não devolveu. O saldo é
 // calculado sobre os estornos REAIS do Stripe (não sobre a reserva local), para
 // que uma nova tentativa do reconciliador não seja bloqueada pela própria
