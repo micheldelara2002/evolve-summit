@@ -48,6 +48,13 @@
       "default": 0,
       "description": "Quantidade efetivamente vendida (paga)"
     },
+    "stock_returned_ticket_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "P1 (patch Fase 1, 2026-11-12) \u2014 REGISTRO IDEMPOTENTE da devolu\u00e7\u00e3o de estoque: IDs dos ingressos cuja unidade j\u00e1 voltou para o lote. \u00c9 o guarda da opera\u00e7\u00e3o de devolu\u00e7\u00e3o, gravado na MESMA escrita at\u00f4mica que decrementa quantity_sold ($inc + $addToSet condicionados a este ingresso n\u00e3o estar aqui) \u2014 a plataforma n\u00e3o tem transa\u00e7\u00e3o entre documentos, e um marcador em outra entidade deixaria janela de duplicidade ou de perda. Repetir a devolu\u00e7\u00e3o \u00e9 no-op (nenhum decremento), e a recupera\u00e7\u00e3o ap\u00f3s interrup\u00e7\u00e3o n\u00e3o depende de mem\u00f3ria da execu\u00e7\u00e3o anterior. Crescimento limitado ao estoque vendido do lote (um id por ingresso estornado, \u224824 bytes). Lotes legados n\u00e3o t\u00eam o campo; ele \u00e9 criado na primeira devolu\u00e7\u00e3o."
+    },
     "is_active": {
       "type": "boolean",
       "default": true

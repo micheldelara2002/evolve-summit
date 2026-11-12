@@ -485,28 +485,31 @@ export async function applyConfirmedStripeRefund(
     } catch (usedErr: any) {
       console.error("[applyConfirmedStripeRefund] used-ticket audit failed:", usedErr?.message || usedErr);
     }
-    if (matched) {
-      try {
-        await svc.entities.RefundRequest.update(matched.id, {
-          status: "failed",
-          rejection_reason: "Estorno no Stripe atingiu ingresso(s) já utilizado(s) — ingresso mantido válido; reverta o check-in para revisar.",
-        });
-      } catch {}
-    }
   }
 
-  // Confirma a solicitação correspondente (requestRefund apenas dispara o
-  // estorno no Stripe — quem processa é o webhook/reconciler).
-  try {
-    if (matched && matched.status !== "processed" && matched.status !== "failed") {
-      await svc.entities.RefundRequest.update(matched.id, {
-        status: "processed",
+  // P1 (patch Fase 1, 2026-11-12) — A SOLICITAÇÃO SÓ CONCLUI COM O ESTADO PERSISTIDO.
+  // A decisão sai do banco (CAS), nunca do objeto lido antes da execução: uma
+  // solicitação marcada 'failed' (ex.: ingresso já utilizado) não é reclassificada
+  // para 'processed' por um retry que ainda carrega o estado antigo. Falha de
+  // escrita é propagada (ok=false) — o chamador não reconhece sucesso e repete,
+  // e a repetição não duplica ledger, cancelamento nem estoque.
+  const persisted = outcome.usedSkipped > 0
+    ? await persistRefundRequestStatus(svc, matched, "failed", {
+        rejection_reason: "Estorno no Stripe atingiu ingresso(s) já utilizado(s) — ingresso mantido válido; reverta o check-in para revisar.",
+      })
+    : await persistRefundRequestStatus(svc, matched, "processed", {
         processed_at: new Date().toISOString(),
-        amount_refunded: matched.amount_requested || refundAmountBRL,
+        amount_refunded: matched?.amount_requested || refundAmountBRL,
       });
-    }
-  } catch (reqErr: any) {
-    console.error("[applyConfirmedStripeRefund] refund request confirm failed:", reqErr?.message || reqErr);
+  if (!persisted.ok) {
+    console.error(
+      "[applyConfirmedStripeRefund] estado da solicitação NÃO persistido:",
+      persisted.reason, "| request:", matched?.id || "",
+    );
+    return {
+      ok: false, usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL,
+      reason: persisted.reason || "Estado da solicitação não persistido.",
+    };
   }
 
   return { ok: true, usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL };
@@ -555,6 +558,77 @@ export async function applyUnassociatedRefundAmount(
   return { ok: true, isPartial, refundAmountBRL: cumulative / 100, applied: applied.applied };
 }
 
+// ===== P1 (patch Fase 1, 2026-11-12) — DEVOLUÇÃO DE ESTOQUE EXATAMENTE UMA VEZ =====
+//
+// A plataforma NÃO oferece transação entre documentos: um marcador gravado em
+// OUTRA entidade (antes ou depois do decremento) deixaria sempre uma janela —
+// interrupção entre marcador e decremento (estoque nunca devolvido) ou entre
+// decremento e marcador (devolução duplicada no retry). A única escrita atômica
+// disponível é POR DOCUMENTO, então o guarda vive no MESMO documento que é
+// decrementado (SalesLot): o id do ingresso entra no registro do lote e a
+// quantidade sai da venda NA MESMA operação, condicionada a esse ingresso ainda
+// não estar no registro. Sem estado intermediário: repetir é no-op (updated 0),
+// a interrupção não deixa inconsistência e a recuperação não depende de memória
+// da execução anterior.
+//
+// Crescimento: um id por ingresso estornado naquele lote (≈24 bytes), limitado
+// pelo estoque vendido do lote — nunca pelo tempo nem por estornos de outros
+// lotes. Reutiliza a mesma primitiva de CAS já usada em coupon_codes_registry
+// (Event) e lead_partner_ids (Participant).
+export async function returnSoldQuantityOnce(
+  svc: any,
+  lotId: string,
+  ticketId: string,
+): Promise<{ ok: boolean; applied: boolean; reason?: string }> {
+  if (!lotId || !ticketId) {
+    return { ok: false, applied: false, reason: "Devolução de estoque sem lote ou ingresso de origem." };
+  }
+  const res = await svc.entities.SalesLot.updateMany(
+    { id: lotId, stock_returned_ticket_ids: { $ne: ticketId } },
+    { $inc: { quantity_sold: -1 }, $addToSet: { stock_returned_ticket_ids: ticketId } },
+  );
+  return { ok: true, applied: !!(res && res.updated) };
+}
+
+// P1 (patch Fase 1, 2026-11-12) — PERSISTÊNCIA DO ESTADO DA SOLICITAÇÃO.
+//
+// A solicitação só é dada como concluída com o estado GRAVADO. O CAS usa o
+// status do BANCO (nunca o objeto lido antes), de modo que:
+//   • retry de um evento já persistido é no-op (mesmo status ⇒ sucesso);
+//   • solicitação 'failed'/'rejected' NUNCA é reclassificada para 'processed'
+//     por um retry que ainda carrega o estado antigo;
+//   • falha de escrita é devolvida explicitamente (ok=false) — o chamador não
+//     declara conclusão e repete.
+async function persistRefundRequestStatus(
+  svc: any,
+  request: any,
+  status: string,
+  extra: Record<string, any>,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!request || !request.id) return { ok: true };
+  try {
+    const res = await svc.entities.RefundRequest.updateMany(
+      { id: request.id, status: { $in: ["pending", "approved"] } },
+      { $set: { status, ...extra } },
+    );
+    if (res && res.updated) return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: `Estado da solicitação não persistido: ${err?.message || err}` };
+  }
+  let current: any = null;
+  try {
+    current = (await svc.entities.RefundRequest.filter({ id: request.id }))[0] || null;
+  } catch (err: any) {
+    return { ok: false, reason: `Estado da solicitação não verificável: ${err?.message || err}` };
+  }
+  if (!current) return { ok: false, reason: "Solicitação de estorno não encontrada ao persistir o estado." };
+  if (current.status === status) return { ok: true };
+  return {
+    ok: false,
+    reason: `Solicitação em estado '${current.status}' — não é reclassificada para '${status}'.`,
+  };
+}
+
 // Process a successful refund: cancel participants + tickets + counters (MetricBucket).
 //
 // P0.1 (patch final Fase 1) — O LEDGER É O PORTÃO FINANCEIRO.
@@ -580,7 +654,6 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
   }
 
   let usedSkipped = 0;
-  const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
   const targetItemIds = orderItemIds && orderItemIds.length > 0 ? new Set(orderItemIds) : null;
   const relevantTickets = targetItemIds ? tickets.filter((t: any) => targetItemIds.has(t.order_item_id)) : tickets;
@@ -589,32 +662,62 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
   // (por valor) cancelam todos; cancel_item cancela apenas os itens selecionados, cada
   // um com seu próprio participante (1 ingresso = 1 registro). O VALOR devolvido varia
   // pela política de prazo (100%–0%) e é independente do cancelamento da participação.
-  for (const ticket of relevantTickets) {
-    if (ticket.status === "cancelled" || ticket.status === "refunded") continue;
-    // Trava pós-check-in (P3): ingresso UTILIZADO nunca é cancelado
-    // silenciosamente (estorno direto no painel do Stripe) — o ingresso segue
-    // válido e o chamador alerta (webhook marca a solicitação + auditoria).
-    if (ticket.status === "used") { usedSkipped++; continue; }
-    // CONC-001: o estorno confirmado consome a trava — limpa o dono dela.
-    await svc.entities.Ticket.update(ticket.id, { status: "refunded", refund_request_id: null });
-    if (ticket.participant_id) {
-      const part = (await svc.entities.Participant.filter({ id: ticket.participant_id }))[0];
-      if (part && part.registration_status !== "cancelled") {
-        await svc.entities.Participant.update(ticket.participant_id, { registration_status: "cancelled" });
-        try { await decUniqueParticipant(svc, order.event_id, part.created_date); } catch {}
-        try { await decParticipantsByRole(svc, order.event_id, part.role_in_event || "attendee", part.created_date); } catch {}
+  //
+  // P1 (patch Fase 1, 2026-11-12) — TODA etapa é RECONHECIDA PELO ESTADO DA ENTIDADE e
+  // pode ser repetida: a recuperação de uma execução interrompida é a própria repetição
+  // (webhook / reconciler), sem memória da execução anterior.
+  //   ingresso     → status 'refunded' + carimbo refunded_by_request_id desta solicitação;
+  //   participante → registration_status 'cancelled' (contadores só na transição);
+  //   item         → refunded = true;
+  //   estoque      → registro no PRÓPRIO lote, atômico com o decremento;
+  //   solicitação  → status persistido ao final (applyConfirmedStripeRefund).
+  try {
+    for (const ticket of relevantTickets) {
+      // Trava pós-check-in (P3): ingresso UTILIZADO nunca é cancelado
+      // silenciosamente (estorno direto no painel do Stripe) — o ingresso segue
+      // válido e o chamador alerta (webhook marca a solicitação + auditoria).
+      if (ticket.status === "used") { usedSkipped++; continue; }
+      if (ticket.status === "cancelled") continue;
+      if (ticket.status === "refunded") {
+        // Já processado por uma execução interrompida: só continua se o carimbo
+        // é DESTA solicitação. Ingresso estornado por outra origem (outra
+        // solicitação, legado) nunca é tocado de novo — não devolve estoque alheio.
+        if (!refundRequestId || ticket.refunded_by_request_id !== refundRequestId) continue;
+      } else {
+        // CONC-001: o estorno confirmado consome a trava (limpa o dono) e carimba
+        // a origem — status e carimbo na MESMA escrita.
+        await svc.entities.Ticket.update(ticket.id, {
+          status: "refunded",
+          refund_request_id: null,
+          refunded_by_request_id: refundRequestId || null,
+        });
       }
+      if (ticket.participant_id) {
+        const part = (await svc.entities.Participant.filter({ id: ticket.participant_id }))[0];
+        if (part && part.registration_status !== "cancelled") {
+          await svc.entities.Participant.update(ticket.participant_id, { registration_status: "cancelled" });
+          try { await decUniqueParticipant(svc, order.event_id, part.created_date); } catch {}
+          try { await decParticipantsByRole(svc, order.event_id, part.role_in_event || "attendee", part.created_date); } catch {}
+        }
+      }
+      await svc.entities.OrderItem.update(ticket.order_item_id, { refunded: true });
+      // Devolução de estoque EXATAMENTE uma vez (guarda e decremento na mesma escrita).
+      const stock = await returnSoldQuantityOnce(svc, ticket.lot_id, ticket.id);
+      if (!stock.ok) throw new Error(stock.reason || "Devolução de estoque recusada.");
     }
-    await svc.entities.OrderItem.update(ticket.order_item_id, { refunded: true });
-    // Decrement sold quantity back.
-    await svc.entities.SalesLot.updateMany({ id: ticket.lot_id }, { $inc: { quantity_sold: -1 } });
-  }
 
-  // P1.1 — o valor confirmado já foi aplicado no PORTÃO acima (o ledger nunca é
-  // tocado aqui). Só agora, com o financeiro consolidado, os status locais.
-  const newStatus = isPartial ? "partially_refunded" : "refunded";
-  await svc.entities.Payment.update(payment.id, { status: newStatus });
-  await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
+    // P1.1 — o valor confirmado já foi aplicado no PORTÃO acima (o ledger nunca é
+    // tocado aqui). Só agora, com o financeiro consolidado, os status locais.
+    const newStatus = isPartial ? "partially_refunded" : "refunded";
+    await svc.entities.Payment.update(payment.id, { status: newStatus });
+    await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
+  } catch (opErr: any) {
+    // P1 — FALHA OPERACIONAL É EXPLÍCITA: nada é declarado concluído. O chamador
+    // responde 500/retenta e a repetição retoma exatamente o que falta (cada
+    // etapa é idempotente), sem duplicar ledger, cancelamento ou estoque.
+    console.error("[processRefundSuccess] efeito operacional pendente:", opErr?.message || opErr);
+    return { ok: false, usedSkipped, reason: `Efeito operacional pendente: ${opErr?.message || opErr}` };
+  }
 
   // P2 — Estorno integral devolve o uso do cupom ao invés contabilizado
   // (marker reseta; um novo pagamento do pedido contaria o uso de novo).

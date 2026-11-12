@@ -52,6 +52,11 @@ function applyUpdate(doc, update) {
         if (!Array.isArray(doc[k])) doc[k] = [];
         doc[k].push(v);
       }
+    } else if (op === "$addToSet") {
+      for (const [k, v] of Object.entries(payload)) {
+        if (!Array.isArray(doc[k])) doc[k] = [];
+        if (!doc[k].includes(v)) doc[k].push(v);
+      }
     } else if (op === "$pull") {
       for (const [k, v] of Object.entries(payload)) {
         if (Array.isArray(doc[k])) doc[k] = doc[k].filter((x) => x !== v);
