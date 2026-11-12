@@ -28,11 +28,12 @@ function events(n, over = () => ({})) {
   return Array.from({ length: n }, (_, i) => legacyEvent(i + 1, over(i + 1)));
 }
 
-function assertLegacyIntact(db, eventId, expectedPayout) {
+function assertLegacyIntact(db, eventId, expectedPayout, expectedCoupons) {
   const ev = db.event(eventId);
   assert.equal(ev.payout_account_id, expectedPayout, `legado de ${eventId} preservado`);
   assert.ok(ev.refund_policy, `refund_policy de ${eventId} preservado`);
-  assert.deepEqual(ev.coupon_codes_registry, [`CUPOM${Number(eventId.split("_")[1])}`]);
+  const coupons = expectedCoupons || [`CUPOM${Number(eventId.split("_")[1])}`];
+  assert.deepEqual(ev.coupon_codes_registry, coupons);
 }
 
 // ---------------------------------------------------------------------------
@@ -407,4 +408,189 @@ test("15 — escrita que não persiste impede a limpeza do legado", async () => 
   assert.equal(retry.ok, true);
   assert.equal(db.finances.length, 1);
   assert.equal(db.event("ev_001").payout_account_id, "");
+});
+
+// ---------------------------------------------------------------------------
+// VALIDAÇÃO EXATA DE VALOR (16–24)
+//
+// A confirmação não aceita "campo preenchido": compara o valor gravado com o
+// esperado. Estes testes adulteram o que o banco persiste (resposta otimista com
+// valor divergente) e provam que a divergência bloqueia ANTES da trilha e da
+// limpeza do legado — e que a reexecução, uma vez corrigida, conclui sem duplicar.
+// ---------------------------------------------------------------------------
+
+// Persiste um documento adulterado devolvendo sucesso (o banco não guardou o que
+// foi enviado). Devolve a função que restaura o comportamento normal.
+function tamperCreate(db, mutate) {
+  const realCreate = db.svc.entities.EventFinance.create.bind(db.svc.entities.EventFinance);
+  db.svc.entities.EventFinance.create = async (data) => realCreate(mutate({ ...data }));
+  return () => { db.svc.entities.EventFinance.create = realCreate; };
+}
+
+function tamperUpdate(db, mutate) {
+  const realUpdate = db.svc.entities.EventFinance.update.bind(db.svc.entities.EventFinance);
+  db.svc.entities.EventFinance.update = async (id, patch) => realUpdate(id, mutate({ ...patch }));
+  return () => { db.svc.entities.EventFinance.update = realUpdate; };
+}
+
+function existingFinance(over = {}) {
+  return {
+    id: "fin_existente",
+    event_id: "ev_001",
+    commission_percent: 12,
+    payout_account_id: "",
+    refund_policy: "",
+    coupon_codes_registry: [],
+    ...over,
+  };
+}
+
+test("16 — valores gravados idênticos: confirmação aprova e a migração conclui", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)] });
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.created, 1);
+  const fin = db.finance("ev_001");
+  assert.equal(fin.commission_percent, 10);
+  assert.equal(fin.payout_account_id, "acct_1");
+  assert.deepEqual(fin.coupon_codes_registry, ["CUPOM1"]);
+  assert.equal(db.auditLogs.length, 1, "trilha gravada");
+  assert.equal(db.event("ev_001").payout_account_id, "", "legado limpo");
+});
+
+test("17 — comissão divergente: bloqueia antes da trilha e preserva o legado", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)] });
+  tamperCreate(db, (data) => ({ ...data, commission_percent: 15 }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /commission_percent divergente/);
+  assert.match(res.details[0].error, /esperado número 10, persistido número 15/);
+  assert.equal(db.auditLogs.length, 0, "sem trilha de sucesso");
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("18 — payout_account_id divergente: bloqueia", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)] });
+  tamperCreate(db, (data) => ({ ...data, payout_account_id: "acct_OUTRA" }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /payout_account_id divergente/);
+  assert.match(res.details[0].error, /acct_OUTRA/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("19 — refund_policy divergente no merge: bloqueia", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)], finances: [existingFinance()] });
+  tamperUpdate(db, (patch) => ({ ...patch, refund_policy: JSON.stringify({ full_refund_until_days: 3 }) }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /refund_policy divergente/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("20 — coupon_codes_registry com a mesma lista em ordem diferente: bloqueia", async () => {
+  const db = createFakeEventDb({
+    events: [legacyEvent(1, { coupon_codes_registry: ["CA", "CB"] })],
+  });
+  tamperCreate(db, (data) => ({ ...data, coupon_codes_registry: ["CB", "CA"] }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /coupon_codes_registry divergente/);
+  assert.match(res.details[0].error, /item 0 divergente/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1", ["CA", "CB"]);
+});
+
+test("21 — coupon_codes_registry com item a mais: bloqueia", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)] });
+  tamperCreate(db, (data) => ({ ...data, coupon_codes_registry: ["CUPOM1", "EXTRA"] }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /coupon_codes_registry divergente/);
+  assert.match(res.details[0].error, /2 item\(ns\)|1 item\(ns\)/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("22 — zero é valor: comissão 0 persiste como 0 e a migração conclui", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1, { commission_percent: 0 })] });
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, true);
+  assert.ok(res.details[0].fields.includes("commission_percent"), "zero conta como valor a migrar");
+  assert.equal(db.finance("ev_001").commission_percent, 0, "zero gravado como zero");
+  assert.equal(db.event("ev_001").commission_percent, null, "legado limpo");
+});
+
+test("23 — zero esperado contra campo vazio persistido: bloqueia (0 ≠ ausência)", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1, { commission_percent: 0 })] });
+  tamperCreate(db, (data) => ({ ...data, commission_percent: "" }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /commission_percent divergente/);
+  assert.match(res.details[0].error, /esperado número 0/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("24 — escrita que altera valor já configurado é bloqueada (existente é a fonte da verdade)", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)], finances: [existingFinance()] });
+  // O update "substitui" o documento em vez de completá-lo: o legado venceu indevidamente.
+  tamperUpdate(db, (patch) => ({ ...patch, commission_percent: 10 }));
+
+  const res = await run(db, { eventId: "ev_001" });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.details[0].stage, "finance_confirm");
+  assert.match(res.details[0].error, /commission_percent já configurado/);
+  assert.equal(db.auditLogs.length, 0);
+  assertLegacyIntact(db, "ev_001", "acct_1");
+});
+
+test("25 — reexecução após corrigir a divergência: conclui sem duplicidade", async () => {
+  const db = createFakeEventDb({ events: [legacyEvent(1)] });
+  const restore = tamperCreate(db, (data) => ({ ...data, commission_percent: 15 }));
+
+  const blocked = await run(db, { eventId: "ev_001" });
+  assert.equal(blocked.ok, false);
+  assert.equal(db.auditLogs.length, 0, "nada de trilha de sucesso");
+  assertLegacyIntact(db, "ev_001", "acct_1");
+
+  // A divergência é corrigida no documento (caminho normal de gestão do evento).
+  restore();
+  db.finance("ev_001").commission_percent = 10;
+
+  const retry = await run(db, { eventId: "ev_001" });
+
+  assert.equal(retry.ok, true);
+  assert.equal(retry.created, 0, "documento não é recriado");
+  assert.equal(retry.cleared_only, 1);
+  assert.equal(db.finances.length, 1, "sem documento duplicado");
+  assert.equal(db.auditLogs.length, 1, "uma única trilha");
+  assert.equal(db.finance("ev_001").commission_percent, 10);
+  assert.equal(db.event("ev_001").payout_account_id, "", "legado limpo na reexecução");
+  assert.equal(db.event("ev_001").commission_percent, null);
 });

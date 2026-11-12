@@ -12,7 +12,8 @@
 //   2. criar o documento (se não existe) OU completar só os campos vazios
 //      (valor já configurado em EventFinance é a fonte da verdade — nunca é
 //      sobrescrito pelo legado);
-//   3. CONFIRMAR por leitura que os valores estão gravados;
+//   3. CONFIRMAR por leitura que os valores gravados são EXATAMENTE os esperados
+//      (comparação de valor, não de presença — ver `confirmFinancePersisted`);
 //   4. gravar a TRILHA OBRIGATÓRIA (lança se não confirmar);
 //   5. só então limpar os campos legados no Event;
 //   6. CONFIRMAR por leitura que o legado foi esvaziado.
@@ -74,6 +75,122 @@ function msg(err: any): string {
   return err?.message || String(err);
 }
 
+// ===== VALIDAÇÃO DE VALOR (não de presença) =====
+//
+// "Está preenchido" não prova nada: comissão 15 no lugar de 10, conta de
+// recebimento trocada, política com outro conteúdo ou cupons em outra ordem
+// passariam — e o legado seria limpo sobre um dado ERRADO. Perdido o legado, não
+// haveria de onde recuperar. Por isso a confirmação compara o valor EFETIVAMENTE
+// gravado com o esperado, campo por campo:
+//
+//   • números: valor numérico exato (0 é valor, não ausência);
+//   • arrays : conteúdo E ordem, elemento por elemento;
+//   • objetos: mesmas chaves, mesmos valores (ordem de chave não é conteúdo);
+//   • textos : iguais, ou JSON semanticamente equivalente;
+//   • tipos diferentes (10 vs "10", 0 vs "") são divergência.
+//
+// As mensagens são administrativas (a função exige admin) e truncam valores
+// longos, para não despejar listas inteiras no log.
+
+const MAX_PREVIEW = 60;
+
+function describeValue(v: any): string {
+  if (v === undefined) return "ausente";
+  if (v === null) return "nulo";
+  if (typeof v === "number") return `número ${v}`;
+  if (typeof v === "boolean") return `booleano ${v}`;
+  if (typeof v === "string") {
+    return v.length > MAX_PREVIEW ? `texto de ${v.length} caracteres` : `texto "${v}"`;
+  }
+  if (Array.isArray(v)) {
+    const head = v.slice(0, 5).map((item) => describeValue(item)).join(", ");
+    return `lista de ${v.length} item(ns) [${head}${v.length > 5 ? ", …" : ""}]`;
+  }
+  if (typeof v === "object") {
+    const json = JSON.stringify(canonicalize(v));
+    return json.length > MAX_PREVIEW ? `objeto de ${json.length} caracteres` : `objeto ${json}`;
+  }
+  return typeof v;
+}
+
+// Só textos que começam como JSON são decodificados: um código de cupom ("AB12")
+// continua sendo texto comparado literalmente.
+function parseJsonText(text: string): { ok: boolean; value?: any } {
+  const trimmed = text.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return { ok: false };
+  try {
+    return { ok: true, value: JSON.parse(trimmed) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function canonicalize(value: any): any {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out: Record<string, any> = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+
+// Igualdade estrita de valor: tipo + conteúdo + ordem.
+function deepEqual(expected: any, actual: any): boolean {
+  if (expected === actual) return true;
+  if (typeof expected === "number" || typeof actual === "number") return false;
+  if (expected === null || actual === null || expected === undefined || actual === undefined) return false;
+  if (Array.isArray(expected) || Array.isArray(actual)) {
+    if (!Array.isArray(expected) || !Array.isArray(actual)) return false;
+    if (expected.length !== actual.length) return false;
+    return expected.every((item, i) => deepEqual(item, actual[i]));
+  }
+  if (typeof expected === "object" && typeof actual === "object") {
+    const expectedKeys = Object.keys(expected);
+    const actualKeys = Object.keys(actual);
+    if (expectedKeys.length !== actualKeys.length) return false;
+    return expectedKeys.every(
+      (key) => Object.prototype.hasOwnProperty.call(actual, key) && deepEqual(expected[key], actual[key]),
+    );
+  }
+  return false;
+}
+
+// Equivalência: valor idêntico, ou dois textos JSON com o mesmo conteúdo (política
+// de estorno gravada com as chaves em outra ordem não é divergência de conteúdo).
+function valuesEquivalent(expected: any, actual: any): boolean {
+  if (deepEqual(expected, actual)) return true;
+  if (typeof expected === "string" && typeof actual === "string") {
+    const left = parseJsonText(expected);
+    const right = parseJsonText(actual);
+    if (left.ok && right.ok) return deepEqual(canonicalize(left.value), canonicalize(right.value));
+  }
+  return false;
+}
+
+function divergenceDetail(expected: any, actual: any): string {
+  if (Array.isArray(expected) && Array.isArray(actual) && expected.length === actual.length) {
+    for (let i = 0; i < expected.length; i++) {
+      if (!valuesEquivalent(expected[i], actual[i])) {
+        return `item ${i} divergente — esperado ${describeValue(expected[i])}, persistido ${describeValue(actual[i])}`;
+      }
+    }
+  }
+  return `esperado ${describeValue(expected)}, persistido ${describeValue(actual)}`;
+}
+
+// Valores já configurados no documento (fonte da verdade) que esta escrita NÃO
+// toca — confirmados depois da escrita para provar que nada foi perdido.
+function configuredValues(doc: any, writeFields: string[]): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const field of EVENT_FINANCE_FIELDS) {
+    if (writeFields.includes(field)) continue;
+    if (!hasValue(doc?.[field])) continue;
+    out[field] = doc[field];
+  }
+  return out;
+}
+
 // Valores legados realmente presentes no Event (o que precisa ser migrado).
 function legacyValues(event: any): Record<string, any> {
   const out: Record<string, any> = {};
@@ -91,6 +208,7 @@ async function confirmFinancePersisted(
   svc: any,
   eventId: string,
   expected: Record<string, any>,
+  preserved: Record<string, any> = {},
 ): Promise<{ ok: boolean; reason?: string; financeId?: string }> {
   let doc: any = null;
   try {
@@ -102,12 +220,24 @@ async function confirmFinancePersisted(
   if (!doc) {
     return { ok: false, reason: "EventFinance não encontrado após a escrita — nada foi limpo no evento." };
   }
-  const missing = Object.keys(expected).filter((field) => !hasValue(doc[field]));
-  if (missing.length > 0) {
-    return {
-      ok: false,
-      reason: `Campos não persistidos em EventFinance: ${missing.join(", ")} — nada foi limpo no evento.`,
-    };
+  // (a) O que a migração escreveu precisa estar gravado com o MESMO valor.
+  for (const field of Object.keys(expected)) {
+    if (!valuesEquivalent(expected[field], doc[field])) {
+      return {
+        ok: false,
+        reason: `Campo ${field} divergente em EventFinance: ${divergenceDetail(expected[field], doc[field])} — nada foi limpo no evento.`,
+      };
+    }
+  }
+  // (b) Valor já configurado continua sendo a fonte da verdade: a escrita não pode
+  // tê-lo alterado (documento substituído em vez de completado, por exemplo).
+  for (const field of Object.keys(preserved)) {
+    if (!valuesEquivalent(preserved[field], doc[field])) {
+      return {
+        ok: false,
+        reason: `Campo ${field} já configurado em EventFinance foi alterado pela escrita: esperado manter ${describeValue(preserved[field])}, persistido ${describeValue(doc[field])} — nada foi limpo no evento.`,
+      };
+    }
   }
   return { ok: true, financeId: doc.id };
 }
@@ -190,6 +320,7 @@ async function migrateOne(svc: any, event: any, dryRun: boolean, actor: any): Pr
   // (2) Persistência do documento financeiro.
   let financeId = existing?.id || "";
   let expected: Record<string, any> = {};
+  let preserved: Record<string, any> = {};
 
   if (!existing) {
     expected = legacy;
@@ -205,6 +336,7 @@ async function migrateOne(svc: any, event: any, dryRun: boolean, actor: any): Pr
     financeId = created.id;
   } else if (patchFields.length > 0) {
     expected = patch;
+    preserved = configuredValues(existing, patchFields);
     try {
       await svc.entities.EventFinance.update(financeId, patch);
     } catch (err: any) {
@@ -214,7 +346,7 @@ async function migrateOne(svc: any, event: any, dryRun: boolean, actor: any): Pr
 
   // (3) Confirmação da persistência antes de qualquer limpeza.
   if (Object.keys(expected).length > 0) {
-    const confirmed = await confirmFinancePersisted(svc, event.id, expected);
+    const confirmed = await confirmFinancePersisted(svc, event.id, expected, preserved);
     if (!confirmed.ok) {
       return fail("finance_confirm", confirmed.reason || "Persistência do documento financeiro não confirmada.");
     }
