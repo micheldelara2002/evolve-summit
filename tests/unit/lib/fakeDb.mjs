@@ -86,19 +86,58 @@ function collection(rows) {
   };
 }
 
-export function createFakeDb({ payments = [], refundRequests = [] } = {}) {
-  const paymentRows = payments.map((p) => ({ ...p }));
-  const refundRows = refundRequests.map((r) => ({ ...r }));
+// Coleções extras usadas pelos testes de conclusão do estorno (ingressos,
+// pedido, itens, participantes, lotes, cupons, trilha e buckets). Todas são
+// criadas mesmo vazias: o código de produção pode filtrar sem quebrar.
+export function createFakeDb({
+  payments = [],
+  refundRequests = [],
+  orders = [],
+  orderItems = [],
+  tickets = [],
+  participants = [],
+  salesLots = [],
+  coupons = [],
+  auditLogs = [],
+  metricBuckets = [],
+} = {}) {
+  const clone = (rows) => rows.map((r) => ({ ...r }));
+  const paymentRows = clone(payments);
+  const refundRows = clone(refundRequests);
+  const orderRows = clone(orders);
+  const orderItemRows = clone(orderItems);
+  const ticketRows = clone(tickets);
+  const participantRows = clone(participants);
+  const salesLotRows = clone(salesLots);
+  const couponRows = clone(coupons);
+  const auditRows = clone(auditLogs);
+  const bucketRows = clone(metricBuckets);
   const svc = {
     entities: {
       Payment: collection(paymentRows),
       RefundRequest: collection(refundRows),
+      Order: collection(orderRows),
+      OrderItem: collection(orderItemRows),
+      Ticket: collection(ticketRows),
+      Participant: collection(participantRows),
+      SalesLot: collection(salesLotRows),
+      Coupon: collection(couponRows),
+      AuditLog: collection(auditRows),
+      MetricBucket: collection(bucketRows),
     },
   };
   return {
     svc,
     payments: paymentRows,
     refundRequests: refundRows,
+    orders: orderRows,
+    orderItems: orderItemRows,
+    tickets: ticketRows,
+    participants: participantRows,
+    salesLots: salesLotRows,
+    coupons: couponRows,
+    auditLogs: auditRows,
+    metricBuckets: bucketRows,
     payment: (id) => paymentRows.find((p) => p.id === id),
   };
 }

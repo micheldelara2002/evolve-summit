@@ -325,6 +325,13 @@ export default async function(req: Request): Promise<Response> {
           console.error("[stripeWebhook] trilha obrigatória indisponível (estorno sem associação):", trailErr?.message || trailErr);
           return Response.json({ error: "auditoria indisponivel" }, { status: 500 });
         }
+        // P0.1 (patch final Fase 1) — ledger indisponível: o evento NÃO é dado
+        // como concluído. Payment segue no status anterior e a solicitação
+        // continua pendente; 500 faz o Stripe reenviar (a confirmação é
+        // cumulativa e converge sem duplicar valor).
+        if (!financial.ok) {
+          return Response.json({ error: "ledger indisponivel", retryable: true }, { status: 500 });
+        }
         return Response.json({
           received: true,
           association: "pending",
@@ -342,6 +349,12 @@ export default async function(req: Request): Promise<Response> {
         svc, payment, order, matched,
         (charge.amount_refunded || 0), (charge.amount || 0)
       );
+      // P0.1 — falha do ledger: ingressos/participantes/itens NÃO foram tocados,
+      // Payment/Order mantêm o status anterior e a solicitação segue SEM
+      // 'processed'. Resposta 500 → reenvio do Stripe retoma a conclusão local.
+      if (!outcome.ok) {
+        return Response.json({ error: "ledger indisponivel", retryable: true }, { status: 500 });
+      }
       return Response.json({
         received: true,
         association: "matched",

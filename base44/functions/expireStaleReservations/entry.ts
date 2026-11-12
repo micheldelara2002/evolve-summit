@@ -784,11 +784,22 @@ export default async function(req: Request): Promise<Response> {
         }
 
         if (refunded.status === 'succeeded') {
-          await applyConfirmedStripeRefund(
+          const outcome = await applyConfirmedStripeRefund(
             svc, payment, order, req,
             Number(refunded.charge?.amount_refunded) || 0,
             Number(refunded.charge?.amount) || 0
           );
+          // P0.1 (patch final Fase 1) — ledger indisponível: NADA foi concluído
+          // localmente. O caso fica PENDENTE (sem 'processed', sem auditoria de
+          // reconciliação concluída), a reserva e as travas de ingresso são
+          // preservadas e a próxima varredura retenta de forma idempotente.
+          if (!outcome.ok) {
+            console.error(
+              '[expireStaleReservations] ledger indisponível — estorno mantido pendente:',
+              req.id, outcome.reason,
+            );
+            continue;
+          }
           try {
             await svc.entities.AuditLog.create({
               action: 'status_change',

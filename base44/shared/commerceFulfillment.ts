@@ -429,7 +429,7 @@ export async function applyConfirmedStripeRefund(
   matched: any,
   cumulativeRefundedCents: number,
   chargeAmountCents: number,
-): Promise<{ usedSkipped: number; isPartial: boolean; refundAmountBRL: number }> {
+): Promise<{ ok: boolean; usedSkipped: number; isPartial: boolean; refundAmountBRL: number; reason?: string }> {
   const refundAmountBRL = (cumulativeRefundedCents || 0) / 100;
   const isPartial = (cumulativeRefundedCents || 0) < (chargeAmountCents || 0);
   // Per-item: se a solicitação casada for cancel_item, cancela só esses itens.
@@ -442,6 +442,22 @@ export async function applyConfirmedStripeRefund(
     // P1.1 — a confirmação consome a reserva DESTA solicitação na mesma escrita.
     Math.round((Number(matched?.amount_requested) || 0) * 100),
   );
+
+  // P0.1 (patch final Fase 1) — FALHA DO LEDGER NÃO CONCLUI O ESTORNO.
+  // Nada foi concluído localmente (ingressos/participantes/itens intactos,
+  // Payment e Order no status anterior). A solicitação NÃO vira 'processed': o
+  // webhook responde 500 e o reconciler retenta — a confirmação é cumulativa,
+  // então a repetição converge sem contar o valor duas vezes.
+  if (!outcome.ok) {
+    console.error(
+      "[applyConfirmedStripeRefund] processamento local NÃO concluído (ledger):",
+      outcome.reason, "| payment:", payment?.id, "| request:", matched?.id || "",
+    );
+    return {
+      ok: false, usedSkipped: 0, isPartial, refundAmountBRL,
+      reason: outcome.reason || "Ledger de estorno indisponível.",
+    };
+  }
 
   if (outcome.usedSkipped > 0) {
     // Estorno sobre ingresso já utilizado (P3): o dinheiro voltou (Stripe é
@@ -493,7 +509,7 @@ export async function applyConfirmedStripeRefund(
     console.error("[applyConfirmedStripeRefund] refund request confirm failed:", reqErr?.message || reqErr);
   }
 
-  return { usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL };
+  return { ok: true, usedSkipped: outcome.usedSkipped, isPartial, refundAmountBRL };
 }
 
 // P0.2 (patch Fase 1) — CONFIRMAÇÃO FINANCEIRA SEM ASSOCIAÇÃO.
@@ -507,20 +523,62 @@ export async function applyUnassociatedRefundAmount(
   payment: any,
   cumulativeRefundedCents: number,
   chargeAmountCents: number,
-): Promise<{ isPartial: boolean; refundAmountBRL: number; applied: boolean }> {
+): Promise<{ ok: boolean; isPartial: boolean; refundAmountBRL: number; applied: boolean; reason?: string }> {
   const cumulative = Math.max(0, Math.round(Number(cumulativeRefundedCents) || 0));
   const applied = await applyConfirmedRefundCents(svc, payment, cumulative);
   const isPartial = cumulative < Math.max(0, Math.round(Number(chargeAmountCents) || 0));
+
+  // P0.1 (patch final Fase 1) — sem ledger confirmado o pagamento NÃO é
+  // declarado estornado. O valor devolvido pelo Stripe continua na trilha
+  // obrigatória do webhook (`estorno_confirmado` / `estorno_sem_associacao`,
+  // com charge e valor acumulado) e a confirmação é retomada na repetição.
+  if (!applied.ok) {
+    console.error(
+      "[applyUnassociatedRefundAmount] ledger indisponível — status do pagamento NÃO alterado:",
+      applied.reason, "| payment:", payment?.id,
+    );
+    return {
+      ok: false, isPartial, refundAmountBRL: cumulative / 100, applied: false,
+      reason: applied.reason || "Ledger de estorno indisponível.",
+    };
+  }
+
   try {
     await svc.entities.Payment.update(payment.id, { status: isPartial ? "partially_refunded" : "refunded" });
   } catch (err: any) {
     console.error("[applyUnassociatedRefundAmount] payment status update failed:", err?.message || err);
+    return {
+      ok: false, isPartial, refundAmountBRL: cumulative / 100, applied: false,
+      reason: "Status do pagamento não confirmado neste processamento.",
+    };
   }
-  return { isPartial, refundAmountBRL: cumulative / 100, applied: applied.ok && applied.applied };
+  return { ok: true, isPartial, refundAmountBRL: cumulative / 100, applied: applied.applied };
 }
 
 // Process a successful refund: cancel participants + tickets + counters (MetricBucket).
-export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string, reservationCents?: number): Promise<{ usedSkipped: number }> {
+//
+// P0.1 (patch final Fase 1) — O LEDGER É O PORTÃO FINANCEIRO.
+// O valor confirmado do Stripe é aplicado ANTES de qualquer efeito operacional.
+// Se o ledger não pôde ser normalizado/confirmado: NENHUM ingresso/participante/
+// item é cancelado, Payment e Order mantêm o status anterior e a função retorna
+// ok=false. A devolução do dinheiro continua registrada no Stripe (fonte de
+// verdade) e na trilha obrigatória do chamador; o processamento local fica
+// PENDENTE e recuperável pelo reenvio do webhook / reconciler. A confirmação é
+// monotônica (cumulativa), então a repetição não conta o valor duas vezes.
+export async function processRefundSuccess(svc: any, payment: any, order: any, refundAmountBRL: number, isPartial: boolean, orderItemIds?: string[], refundRequestId?: string, reservationCents?: number): Promise<{ ok: boolean; usedSkipped: number; reason?: string }> {
+  // (1) PORTÃO FINANCEIRO — nada abaixo roda se o ledger não confirmar.
+  const ledger = await applyConfirmedRefundCents(svc, payment, Math.round((Number(refundAmountBRL) || 0) * 100), {
+    releaseRequestId: refundRequestId,
+    releaseCents: reservationCents,
+  });
+  if (!ledger.ok) {
+    console.error(
+      "[processRefundSuccess] ledger indisponível — processamento local NÃO concluído:",
+      ledger.reason, "| payment:", payment?.id, "| order:", order?.id, "| request:", refundRequestId || "",
+    );
+    return { ok: false, usedSkipped: 0, reason: ledger.reason || "Ledger de estorno indisponível." };
+  }
+
   let usedSkipped = 0;
   const orderItems = await svc.entities.OrderItem.filter({ order_id: order.id, is_deleted: false });
   const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
@@ -552,15 +610,9 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
     await svc.entities.SalesLot.updateMany({ id: ticket.lot_id }, { $inc: { quantity_sold: -1 } });
   }
 
-  // P1.1 (patch Fase 1) — valor CONFIRMADO e valor RESERVADO são contadores
-  // distintos: aqui só o confirmado é aplicado (cumulativo e autoritativo do
-  // Stripe, monotônico), pelo ledger. Uma confirmação nunca apaga a reserva de
-  // outra solicitação e um evento fora de ordem não reduz o já devolvido.
+  // P1.1 — o valor confirmado já foi aplicado no PORTÃO acima (o ledger nunca é
+  // tocado aqui). Só agora, com o financeiro consolidado, os status locais.
   const newStatus = isPartial ? "partially_refunded" : "refunded";
-  await applyConfirmedRefundCents(svc, payment, Math.round((Number(refundAmountBRL) || 0) * 100), {
-    releaseRequestId: refundRequestId,
-    releaseCents: reservationCents,
-  });
   await svc.entities.Payment.update(payment.id, { status: newStatus });
   await svc.entities.Order.update(order.id, { status: isPartial ? "partially_refunded" : "refunded" });
 
@@ -602,7 +654,7 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
       user_id: order.buyer_user_id,
     });
   } catch {}
-  return { usedSkipped };
+  return { ok: true, usedSkipped };
 }
 
 // ===== Trava anti-corrida estorno × check-in (P0 TOCTOU) =====

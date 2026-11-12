@@ -261,7 +261,11 @@ export default async function(req: Request): Promise<Response> {
       // Cancelamento local idempotente (ingressos/participantes/pedido).
       // Falha no meio → destrava os ingressos (nada fica travado sem estorno).
       try {
-        await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
+        const processed = await processRefundSuccess(svc, payment, order, 0, refundType === "cancel_item", itemIds, refundRequest.id);
+        // P0.1 (patch final Fase 1) — ledger não confirmado NÃO é sucesso: o
+        // cancelamento não é declarado concluído e cai na compensação abaixo
+        // (destrava os ingressos e permite nova tentativa).
+        if (!processed.ok) throw new Error(processed.reason || "Não foi possível concluir o cancelamento agora.");
         try {
           await svc.entities.RefundRequest.update(refundRequest.id, {
             status: "processed",
