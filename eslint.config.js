@@ -3,6 +3,7 @@ import pluginJs from "@eslint/js";
 import pluginReact from "eslint-plugin-react";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginUnusedImports from "eslint-plugin-unused-imports";
+import tsParser from "@typescript-eslint/parser";
 
 export default [
   {
@@ -71,6 +72,34 @@ export default [
       },
     },
     rules: {
+      "no-unused-vars": "off",
+    },
+  },
+  {
+    // Backend TypeScript (base44/**). Sem este bloco, o ESLint não analisava
+    // NENHUM arquivo .ts do backend — o comando passava sem inspecionar nada.
+    // Parser TS real + regras de correção (sem no-undef: runtime Deno).
+    files: ["base44/**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+      },
+      globals: { ...globals.node, Deno: "readonly" },
+    },
+    rules: {
+      "no-dupe-keys": "error",
+      "no-dupe-args": "error",
+      "no-dupe-class-members": "error",
+      "no-unreachable": "error",
+      "no-const-assign": "error",
+      "no-self-assign": "error",
+      "no-self-compare": "error",
+      "no-fallthrough": "error",
+      "no-unsafe-finally": "error",
+      "no-unsafe-negation": "error",
+      "valid-typeof": "error",
       "no-unused-vars": "off",
     },
   },

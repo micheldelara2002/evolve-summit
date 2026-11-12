@@ -335,7 +335,10 @@ test("8 — falha no ingresso depois do ledger: financeiro correto, retry conclu
     return realTicketUpdate(id, patch);
   };
 
-  await assert.rejects(() => runMatched(db), /transitória/);
+  // P1 (patch Fase 1) — a falha operacional é EXPLÍCITA (ok=false), não um throw.
+  const first = await runMatched(db);
+  assert.equal(first.ok, false);
+  assert.match(first.reason, /transitória/);
 
   // O ledger é o portão e já confirmou (o dinheiro voltou no Stripe): o valor
   // confirmado NÃO regride. O estado operacional ainda não foi concluído.
@@ -359,29 +362,30 @@ test("8 — falha no ingresso depois do ledger: financeiro correto, retry conclu
 // 9. Falha no processamento de ingressos: estados recuperáveis
 // ---------------------------------------------------------------------------
 
-test("9 — falha no estoque: financeiro consolidado, financeiro nunca é revertido nem duplicado", async () => {
+test("9 — falha no estoque: financeiro consolidado e devolução recuperada no retry", async () => {
   const db = makeFixture();
   const realLotUpdate = db.svc.entities.SalesLot.updateMany.bind(db.svc.entities.SalesLot);
   db.svc.entities.SalesLot.updateMany = async () => { throw new Error("estoque indisponível"); };
 
-  await assert.rejects(() => runMatched(db), /estoque indisponível/);
+  // P1 (patch Fase 1) — falha operacional explícita: nada é declarado concluído.
+  const first = await runMatched(db);
+  assert.equal(first.ok, false);
+  assert.match(first.reason, /estoque indisponível/);
 
   // Financeiro é autoritativo e já está consolidado; nada é revertido.
   assert.equal(db.payment("pay_1").refunded_cents, 10000);
   assert.equal(db.payment("pay_1").refund_committed_cents, 10000);
   assert.equal(db.payment("pay_1").status, "succeeded", "conclusão local não foi declarada");
   assert.equal(db.refundRequests[0].status, "approved");
-  // Efeitos já aplicados neste ingresso (claim do ingresso é a ÚNICA escrita que
-  // autoriza os efeitos seguintes — por isso o estoque nunca é decrementado 2x).
-  assert.equal(db.tickets[0].status, "refunded");
-  assert.equal(db.salesLots[0].quantity_sold, 1, "LIMITAÇÃO: devolução de estoque pendente de revisão manual");
+  assert.equal(db.tickets[0].status, "refunded", "ingresso já processado");
+  assert.equal(db.salesLots[0].quantity_sold, 1, "devolução pendente, recuperável");
 
-  // Retry: converge no financeiro e no status, sem decremento duplicado.
+  // Retry: conclui a devolução pendente, sem decremento duplicado.
   db.svc.entities.SalesLot.updateMany = realLotUpdate;
   const retried = await runMatched(db);
   assert.equal(retried.ok, true);
   assert.equal(db.payment("pay_1").refunded_cents, 10000, "não duplicou");
-  assert.equal(db.salesLots[0].quantity_sold, 1, "sem decremento duplicado (ingresso já terminal)");
+  assert.equal(db.salesLots[0].quantity_sold, 0, "estoque devolvido no retry");
   assert.equal(db.payment("pay_1").status, "refunded");
   assert.equal(db.refundRequests[0].status, "processed");
 });
