@@ -594,22 +594,34 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
 // (que falhou no CAS sobre ingressos já refund_pending da primeira) REVERTIA as
 // travas alheias e reabria a janela de check-in durante o estorno alheio.
 export async function lockTicketsForRefund(svc: any, ticketIds: string[], refundRequestId?: string): Promise<boolean> {
+  // P0.2 (2026-11-12) — SEM DONO NÃO HÁ TRAVA. Uma operação sem
+  // refund_request_id não pode carimbar (nem depois liberar) ingresso nenhum:
+  // era por aí que a compensação de uma solicitação alcançava ingressos de outra.
+  if (!refundRequestId) {
+    console.error("[lockTicketsForRefund] recusado: refund_request_id obrigatório.");
+    return false;
+  }
   if (!ticketIds || ticketIds.length === 0) return true;
-  const stamp: any = { status: "refund_pending" };
-  if (refundRequestId) stamp.refund_request_id = refundRequestId;
+  // Claim condicional: só ingresso LIVRE (issued e sem dono) entra na trava, com
+  // o dono carimbado na MESMA escrita atômica. Ingresso já travado por outra
+  // solicitação não casa e derruba a operação inteira.
   const claim = await svc.entities.Ticket.updateMany(
-    { id: { $in: ticketIds }, status: "issued" },
-    { $set: stamp }
+    {
+      id: { $in: ticketIds },
+      status: "issued",
+      $or: [{ refund_request_id: { $exists: false } }, { refund_request_id: null }],
+    },
+    { $set: { status: "refund_pending", refund_request_id: refundRequestId } }
   );
   const locked = claim && claim.updated ? claim.updated : 0;
   if (locked === ticketIds.length) return true;
   // Reverte APENAS os ingressos travados por ESTA solicitação — nada fica
   // travado sem estorno em andamento e nenhuma trava alheia é tocada.
   try {
-    const rollback: any = { id: { $in: ticketIds }, status: "refund_pending" };
-    if (refundRequestId) rollback.refund_request_id = refundRequestId;
-    else rollback.refund_request_id = { $exists: false };
-    await svc.entities.Ticket.updateMany(rollback, { $set: { status: "issued" } });
+    await svc.entities.Ticket.updateMany(
+      { id: { $in: ticketIds }, status: "refund_pending", refund_request_id: refundRequestId },
+      { $set: { status: "issued", refund_request_id: null } }
+    );
   } catch (err: any) {
     console.error("[lockTicketsForRefund] rollback failed:", err?.message || err);
   }
@@ -620,23 +632,26 @@ export async function lockTicketsForRefund(svc: any, ticketIds: string[], refund
 // Stripe. Idempotente por CAS: só reativa exatamente o que ainda está travado
 // (estorno confirmado já moveu os ingressos para 'refunded' — não é tocado).
 //
-// CONC-001 (2026-10-17) — escopo por dono: quando o refundRequestId é passado,
-// apenas ingressos travados POR ESTA solicitação (ou legados sem carimbo,
-// janela de deploy) são destravados — o falhar de uma solicitação nunca libera
-// a trava de outra em andamento no mesmo pedido.
-export async function unlockTicketsForRefund(svc: any, orderId: string, orderItemIds?: string[], refundRequestId?: string): Promise<void> {
-  const query: any = { order_id: orderId, status: "refund_pending" };
-  if (orderItemIds && orderItemIds.length > 0) query.order_item_id = { $in: orderItemIds };
-  if (refundRequestId) {
-    query.$or = [
-      { refund_request_id: refundRequestId },
-      { refund_request_id: { $exists: false } },
-      { refund_request_id: null },
-    ];
+// P0.2 (2026-11-12) — ESCOPO ESTRITO POR DONO, SEM FALLBACK GENÉRICO.
+// A liberação exige o refund_request_id e toca EXCLUSIVAMENTE ingressos
+// refund_pending carimbados com ele. O fallback antigo (liberar também travas
+// legadas sem carimbo, e liberar TUDO quando não havia dono) permitia que uma
+// solicitação alcançasse ingressos de outra — foi removido do caminho normal.
+// Ingressos legados sem carimbo só saem de refund_pending pelo caminho
+// administrativo explícito (releaseLegacyRefundLocks), com escopo, validação e
+// trilha próprios.
+export async function unlockTicketsForRefund(svc: any, orderId: string, orderItemIds?: string[], refundRequestId?: string): Promise<{ released: number }> {
+  if (!refundRequestId) {
+    console.error("[unlockTicketsForRefund] recusado: refund_request_id obrigatório (nenhuma trava liberada).");
+    return { released: 0 };
   }
+  const query: any = { order_id: orderId, status: "refund_pending", refund_request_id: refundRequestId };
+  if (orderItemIds && orderItemIds.length > 0) query.order_item_id = { $in: orderItemIds };
   try {
-    await svc.entities.Ticket.updateMany(query, { $set: { status: "issued" } });
+    const res = await svc.entities.Ticket.updateMany(query, { $set: { status: "issued", refund_request_id: null } });
+    return { released: res && res.updated ? res.updated : 0 };
   } catch (err: any) {
     console.error("[unlockTicketsForRefund] failed:", err?.message || err);
+    return { released: 0 };
   }
 }

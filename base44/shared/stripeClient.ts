@@ -110,6 +110,19 @@ export async function retrieveRefundWithCharge(refundId: string): Promise<any> {
   return data;
 }
 
+// Lista os estornos de um PaymentIntent — usado pelo reconciliador ANTES de
+// criar um estorno: se o Stripe já tem o refund (resposta perdida, retry após
+// timeout), o resultado existente é reconciliado em vez de abrir outro.
+export async function listRefundsForIntent(intentId: string): Promise<any[]> {
+  const res = await fetch(
+    `${STRIPE_API}/refunds?payment_intent=${encodeURIComponent(intentId)}&limit=100`,
+    { headers: { Authorization: `Bearer ${secrets.get("STRIPE_SECRET_KEY")}`, "Stripe-Version": STRIPE_VERSION } },
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe error ${res.status}`);
+  return Array.isArray(data?.data) ? data.data : [];
+}
+
 export async function createRefund(opts: {
   paymentIntentId: string;
   amountCents?: number; // partial if provided

@@ -7,6 +7,7 @@ import { processRefundSuccess, lockTicketsForRefund, unlockTicketsForRefund } fr
 import { sendTransactionalEmail } from "../../shared/transactionalEmail.ts";
 import { extractClientIp } from "../../shared/commerceAudit.ts";
 import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { REFUND_REQUEST_PROVENANCE } from "../../shared/refundGuards.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -64,6 +65,15 @@ export default async function(req: Request): Promise<Response> {
 
     const order = (await svc.entities.Order.filter({ id: payment.order_id }))[0];
     if (!order) return Response.json({ error: "Pedido não encontrado." }, { status: 404 });
+    // P0.1 — relações conferidas no servidor: o pedido vem do PAGAMENTO e o
+    // evento tem que ser o mesmo nos dois registros (estorno nunca cruza
+    // pedido/evento).
+    if (payment.order_id !== order.id) {
+      return Response.json({ error: "Inconsistência entre pagamento e pedido." }, { status: 409 });
+    }
+    if (payment.event_id && payment.event_id !== order.event_id) {
+      return Response.json({ error: "Inconsistência de evento entre pagamento e pedido." }, { status: 409 });
+    }
 
     const event = (await svc.entities.Event.filter({ id: order.event_id }))[0];
 
@@ -196,6 +206,7 @@ export default async function(req: Request): Promise<Response> {
         policy_decision: evalFree.decision,
         status: "pending",
         order_item_ids: itemIds || [],
+        provenance: REFUND_REQUEST_PROVENANCE,
       });
 
       if (!(await lockTicketsForRefund(svc, freeIssuable.map((t: any) => t.id), refundRequest.id))) {
@@ -377,6 +388,9 @@ export default async function(req: Request): Promise<Response> {
       status: "pending",
       order_item_ids: itemIds || [],
       idempotency_key: idemKey,
+      // P0.1 — marca de origem: só este fluxo (service role) a grava; o
+      // reconciliador recusa qualquer solicitação sem ela.
+      provenance: REFUND_REQUEST_PROVENANCE,
     });
 
     if (!(await lockTicketsForRefund(svc, paidIssuable.map((t: any) => t.id), refundRequest.id))) {

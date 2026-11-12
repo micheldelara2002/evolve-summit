@@ -20,7 +20,8 @@
     "test:e2e:p1": "node tests/seed/env.mjs npx playwright test --grep @P1",
     "test:e2e:doctor": "node tests/doctor.js",
     "test:e2e:bootstrap": "node tests/seed/bootstrap.mjs",
-    "test:e2e:cleanup": "node tests/seed/cleanup.mjs"
+    "test:e2e:cleanup": "node tests/seed/cleanup.mjs",
+    "test:unit:refund": "node --test tests/unit/refund-p0.test.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.60",
