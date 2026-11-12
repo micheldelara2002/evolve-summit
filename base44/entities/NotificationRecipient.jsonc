@@ -1,6 +1,7 @@
 {
   "name": "NotificationRecipient",
   "type": "object",
+  "description": "Destinat\u00e1rio de uma campanha de notifica\u00e7\u00e3o (um registro por campanha \u00d7 usu\u00e1rio). Fase 2 (2026-11-12): a ESCRITA \u00e9 exclusivamente do servidor \u2014 `update` \u00e9 admin-only. Antes o pr\u00f3prio destinat\u00e1rio atualizava o registro pelo SDK, o que permitia falsificar delivery_status/delivered_at, marcar clique inexistente, apontar o registro para outra campanha e reescrever recipient_email/recipient_name. A leitura continua liberada para o destinat\u00e1rio (\u00e9 a caixa de notifica\u00e7\u00f5es dele) e para admin. Marcar leitura e clique acontece pela fun\u00e7\u00e3o manageNotificationCampaign (ops mark_read e mark_clicked, service role, anzoradas no usu\u00e1rio autenticado, flip idempotente).",
   "properties": {
     "campaign_id": {
       "type": "string",
@@ -30,22 +31,22 @@
         "failed"
       ],
       "default": "pending",
-      "description": "Status de entrega"
+      "description": "Status de entrega \u2014 escrito apenas pelo despacho no servidor (campaignDispatch)"
     },
     "delivered_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Data de entrega (nullable)"
+      "description": "Data de entrega (nullable) \u2014 escrita apenas pelo servidor"
     },
     "read_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Data de leitura (nullable)"
+      "description": "Data de leitura (nullable) \u2014 gravada por manageNotificationCampaign op mark_read (flip condicional, exatamente um vencedor)"
     },
     "clicked_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Data de clique no CTA (nullable)"
+      "description": "Data de clique no CTA (nullable) \u2014 gravada por manageNotificationCampaign op mark_clicked"
     },
     "error_reason": {
       "type": "string",
@@ -75,16 +76,9 @@
       }
     },
     "update": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.recipient_user_id": "{{user.id}}"
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
       "user_condition": {

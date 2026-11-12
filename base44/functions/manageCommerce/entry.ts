@@ -4,10 +4,13 @@ import { verifyEventMembership, EVENT_FINANCE_ROLES } from "../../shared/eventAu
 import { resolveRefundPolicy, DEFAULT_GLOBAL_REFUND_POLICY } from "../../shared/commercePolicy.ts";
 import { validateCommerceRecord, validateRefundPolicyPayload } from "../../shared/commerceValidation.ts";
 import { auditHash, buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { withEventFinance, patchEventFinance, backfillCouponRegistry, claimCouponCode, releaseCouponCode } from "../../shared/eventFinance.ts";
 
 // Admin/event-manager commerce config CRUD.
 // Entities managed: TicketType, SalesLot, Coupon.
-// Refund policy: stored as JSON on the Event entity (refund_policy field), override of global default.
+// Refund policy + coupon code registry: vivem em EventFinance (Fase 2) — a
+// entidade Event tem leitura aberta a usuários autenticados e não pode carregar
+// campo interno. Leitura/escrita aqui sempre via shared/eventFinance.ts.
 //
 // Actions: list, create, update, delete (soft), getPolicy, setPolicy, getGlobalPolicy.
 
@@ -25,7 +28,8 @@ function normalizeCouponCode(code: any): string {
   return String(code || '').trim().toUpperCase();
 }
 
-// DAT-001 — registro de códigos no próprio Event (coupon_codes_registry):
+// DAT-001 — registro de códigos em EventFinance (coupon_codes_registry) —
+// movido do Event na Fase 2 (a leitura de Event é aberta e expunha os códigos):
 // constraint lógica de unicidade CONCORRENTE por evento. O claim é um
 // updateMany condicional ({ código $ne } + $push) — em corrida há EXATAMENTE
 // um vencedor (primitivo validado em produção 2026-09-28); a operação
@@ -36,44 +40,10 @@ function normalizeCouponCode(code: any): string {
 // adicionados ao registro antes do claim — duplicatas legadas NUNCA são
 // apagadas automaticamente, apenas diagnosticadas no list.
 
-// Backfill idempotente dos códigos ativos do evento para o registro.
-async function backfillCouponRegistry(svc: any, eventId: string): Promise<void> {
-  const active = await svc.entities.Coupon.filter({ event_id: eventId, is_deleted: false });
-  for (const c of active) {
-    const nc = normalizeCouponCode(c.code);
-    if (!nc) continue;
-    try {
-      await svc.entities.Event.updateMany(
-        { id: eventId, coupon_codes_registry: { $ne: nc } },
-        { $push: { coupon_codes_registry: nc } }
-      );
-    } catch {}
-  }
-}
-
-// Claim atômico: true = código adquirido; false = código já registrado.
-async function claimCouponCode(svc: any, eventId: string, code: string): Promise<boolean> {
-  await backfillCouponRegistry(svc, eventId);
-  const claim = await svc.entities.Event.updateMany(
-    { id: eventId, coupon_codes_registry: { $ne: code } },
-    { $push: { coupon_codes_registry: code } }
-  );
-  return !!(claim && claim.updated);
-}
-
-// Devolve o código ao registro APENAS se nenhum outro cupom ativo o usa
-// (duplicatas legadas permanecem registradas; só são diagnosticadas).
-async function releaseCouponCode(svc: any, eventId: string, code: string): Promise<void> {
-  if (!code) return;
-  const others = await svc.entities.Coupon.filter({ event_id: eventId, code, is_deleted: false });
-  if (others.length > 0) return;
-  try {
-    await svc.entities.Event.updateMany(
-      { id: eventId },
-      { $pull: { coupon_codes_registry: code } }
-    );
-  } catch {}
-}
+// Fase 2 (2026-11-12) — backfillCouponRegistry, claimCouponCode e
+// releaseCouponCode vivem em shared/eventFinance.ts e operam o documento de
+// EventFinance do evento. A primitiva de CAS ($ne + $push / $pull) é a mesma;
+// mudou apenas o documento, que não é mais lido por usuários comuns.
 
 function parseOverride(event: any): any {
   if (!event?.refund_policy) return null;
@@ -124,7 +94,7 @@ export default async function(req: Request): Promise<Response> {
     // ===== Refund policy (per-event override + global default) =====
     if (action === 'getPolicy') {
       if (!eventId) return Response.json({ error: 'eventId obrigatório.' }, { status: 400 });
-      const event = (await svc.entities.Event.filter({ id: eventId }))[0];
+      const event = await withEventFinance(svc, (await svc.entities.Event.filter({ id: eventId }))[0]);
       const override = parseOverride(event);
       const policy = resolveRefundPolicy(override, { refund_policy: DEFAULT_GLOBAL_REFUND_POLICY });
       // event_start: usado pelo checkout para informar as janelas de estorno ao comprador.
@@ -142,8 +112,8 @@ export default async function(req: Request): Promise<Response> {
       if (!policyCheck.ok) {
         return Response.json({ error: 'Política de estorno inválida.', errors: policyCheck.errors }, { status: 400 });
       }
-      const previousPolicy = (await svc.entities.Event.filter({ id: eventId }))[0]?.refund_policy ?? null;
-      await svc.entities.Event.update(eventId, { refund_policy: JSON.stringify(policyCheck.data) });
+      const previousPolicy = (await withEventFinance(svc, (await svc.entities.Event.filter({ id: eventId }))[0]))?.refund_policy ?? null;
+      await patchEventFinance(svc, eventId, { refund_policy: JSON.stringify(policyCheck.data) });
       try {
         await trailConfigChange('politica', eventId, 'Event', eventId, policyCheck.data, {
           type: 'politica_estorno_alterada',
@@ -151,7 +121,7 @@ export default async function(req: Request): Promise<Response> {
           politica_nova: policyCheck.data,
         });
       } catch (auditErr: any) {
-        try { await svc.entities.Event.update(eventId, { refund_policy: previousPolicy ?? '' }); } catch {}
+        try { await patchEventFinance(svc, eventId, { refund_policy: previousPolicy ?? '' }); } catch {}
         console.error('[manageCommerce] trilha obrigatória indisponível (política):', auditErr?.message || auditErr);
         return Response.json({ error: CONFIG_TRAIL_ERROR }, { status: 503 });
       }

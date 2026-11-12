@@ -178,14 +178,6 @@ export default function AdminPeople() {
     queryFn: () => base44.entities.Person.list("-created_date", 500),
   });
 
-  // Buscar users para mostrar status de acesso
-  const { data: allUsers = [] } = useQuery({
-    queryKey: ["admin_users_for_people"],
-    queryFn: () => base44.entities.User.list(),
-  });
-
-  const linkedPersonIds = new Set(allUsers.filter((u) => u.person_id).map((u) => u.person_id));
-
   // Filtros client-side
   const filtered = allPeople.filter((p) => {
     const q = search.toLowerCase();
@@ -201,6 +193,18 @@ export default function AdminPeople() {
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+
+  // Status de acesso (Fase 2): consulta restrita às pessoas da PÁGINA atual.
+  // `User.list()` sem limite carregava a coleção inteira de usuários a cada
+  // visita, e o selo de "tem acesso" só é desenhado nas linhas visíveis.
+  const pagePersonIds = paginated.map((p) => p.id);
+  const { data: pageUsers = [] } = useQuery({
+    queryKey: ["admin_users_for_people_page", pagePersonIds.join(",")],
+    enabled: pagePersonIds.length > 0,
+    queryFn: () => base44.entities.User.filter({ person_id: { $in: pagePersonIds } }, "-created_date", 50),
+  });
+
+  const linkedPersonIds = new Set(pageUsers.filter((u) => u.person_id).map((u) => u.person_id));
 
   const handleInactivate = async (person) => {
     await base44.entities.Person.update(person.id, { is_active: false });

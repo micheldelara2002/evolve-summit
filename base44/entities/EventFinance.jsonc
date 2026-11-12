@@ -1,0 +1,59 @@
+{
+  "name": "EventFinance",
+  "type": "object",
+  "description": "Fase 2 (2026-11-12) \u2014 Campos financeiros INTERNOS do evento, extra\u00eddos da entidade Event. Motivo: Event tem leitura aberta a qualquer usu\u00e1rio autenticado para eventos ativos (RLS: status in [active, finished]), e esses campos n\u00e3o s\u00e3o p\u00fablicos \u2014 comiss\u00e3o da plataforma, conta recebedora do organizador, pol\u00edtica de estorno e registro de c\u00f3digos de cupom (cuja exposi\u00e7\u00e3o permitia descobrir cupons v\u00e1lidos). Passam a viver aqui, em entidade admin-only: a gest\u00e3o do evento continua acessando por backend functions que validam o v\u00ednculo com o evento (manageCommerce, managePayouts, createPaymentIntent, requestRefund) usando service role. Um documento por evento, criado sob demanda (ensureEventFinance). Campos com o mesmo nome em Event s\u00e3o LEGADO: n\u00e3o s\u00e3o mais escritos e s\u00e3o esvaziados pela migra\u00e7\u00e3o migrateEventFinance.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (um documento por evento)"
+    },
+    "commission_percent": {
+      "type": "number",
+      "description": "Override da comiss\u00e3o da plataforma para este evento (0\u2013100). null/vazio = herda o padr\u00e3o de PlatformSetting 'commission'."
+    },
+    "payout_account_id": {
+      "type": "string",
+      "description": "ID da PayoutAccount (conta Stripe Connect do organizador) que recebe as vendas deste evento. Vazio = vendas caem na conta da plataforma."
+    },
+    "refund_policy": {
+      "type": "string",
+      "description": "Pol\u00edtica de estorno do evento como JSON ({full_refund_until_days, partial_refund_percent, no_refund_within_days, allow_manual_override}). Lida por requestRefund e manageCommerce com fallback para o padr\u00e3o global."
+    },
+    "coupon_codes_registry": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "DAT-001 \u2014 Registro de c\u00f3digos de cupom normalizados do evento: constraint l\u00f3gica de unicidade CONCORRENTE por evento (claim at\u00f4mico $ne + $push neste documento \u2014 exatamente um vencedor em corrida). N\u00e3o \u00e9 fonte de exibi\u00e7\u00e3o; duplicatas legadas s\u00f3 s\u00e3o diagnosticadas, nunca apagadas automaticamente."
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { fulfillOrder, captureStripeFee, expirePaymentOnce, applyConfirmedStripe
 import { associateRefundsToRequests } from "../../shared/refundGuards.ts";
 import { deliverTickets } from "../../shared/ticketPdf.ts";
 import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { assertPaymentMatchesIntent } from "../../shared/paymentMatch.ts";
 
 // Stripe webhook receiver — validates signature, then handles:
 //   payment_intent.succeeded  → idempotent fulfillment (participants + tickets + email)
@@ -47,6 +48,74 @@ export default async function(req: Request): Promise<Response> {
       const payments = await svc.entities.Payment.filter({ intent_id: pi.id }, "-created_date", 1);
       const payment = payments[0];
       if (!payment) return Response.json({ received: true, skipped: "payment not found" });
+
+      // ===== Fase 2 — IDENTIDADE INEQUÍVOCA (valor e moeda) =====
+      // Só emite ingresso para exatamente o que o servidor cobrou. Divergência
+      // NÃO confirma o pagamento, NÃO emite ingresso e NÃO libera reservas: a
+      // trilha obrigatória guarda os dois valores e o pedido fica para
+      // resolução manual. Resposta 200 porque é erro de contrato, não falha
+      // transitória — reenviar o mesmo evento daria o mesmo resultado.
+      const match = assertPaymentMatchesIntent({
+        intentAmountCents: pi.amount_received ?? pi.amount,
+        intentCurrency: pi.currency,
+        paymentAmountCents: payment.amount_cents,
+        paymentAmount: payment.amount,
+        paymentCurrency: payment.currency,
+      });
+      if (!match.ok) {
+        console.error("[stripeWebhook] cobrança divergente do pedido:", payment.id, match.reason);
+        const divergentKey = buildAuditKey("pagamento_divergente", `${pi.id}|${match.receivedCents}|${match.currency}`);
+        const divergentDetails = {
+          type: "pagamento_divergente",
+          motivo: match.reason,
+          order_id: order.id,
+          payment_id: payment.id,
+          intent_id: pi.id,
+          centavos_cobrados: match.receivedCents,
+          centavos_esperados: match.expectedCents,
+          moeda_esperada: match.currency,
+          moeda_cobrada: pi.currency || "",
+        };
+        const receivedBRL = (Number(match.receivedCents) || 0) / 100;
+        try {
+          await writeMandatoryAudit(svc, {
+            action: "status_change",
+            entity_type: "Payment",
+            entity_id: payment.id,
+            user_id: "system",
+            user_name: "Stripe",
+            event_id: order.event_id,
+            audit_key: divergentKey,
+            provider: "stripe",
+            external_reference: pi.id,
+            amount: receivedBRL,
+            details: JSON.stringify(divergentDetails),
+          });
+        } catch (auditErr: any) {
+          console.error("[stripeWebhook] trilha de divergência indisponível:", auditErr?.message || auditErr);
+          try {
+            await recordPendingTrail(svc, {
+              action: "status_change",
+              entity_type: "Payment",
+              entity_id: payment.id,
+              event_id: order.event_id,
+              audit_key: divergentKey,
+              provider: "stripe",
+              external_reference: pi.id,
+              amount: receivedBRL,
+              failure_reason: auditErr?.message || String(auditErr),
+              details: JSON.stringify(divergentDetails),
+            });
+          } catch {}
+        }
+        try {
+          await svc.entities.Payment.updateMany(
+            { id: payment.id, status: "pending" },
+            { $set: { error_reason: `Cobrança divergente do pedido: ${match.reason}` } }
+          );
+        } catch {}
+        return Response.json({ received: true, skipped: "amount_or_currency_mismatch", reason: match.reason });
+      }
 
       const orderItems = await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false });
 

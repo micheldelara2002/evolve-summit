@@ -22,19 +22,15 @@ export default function NotificationDetailModal({ recipient, campaign, onClose }
 
   const markReadMutation = useMutation({
     mutationFn: async (recipientId) => {
-      if (campaign?.id) {
-        // P0 (2026-10-17) — leitura + read_count via backend: flip condicional
-        // de read_at com incremento idempotente (escrita direta via SDK da
-        // campanha é admin-only).
-        await base44.functions.invoke("manageNotificationCampaign", {
-          op: "mark_read",
-          campaign_id: campaign.id,
-        });
-      } else {
-        await base44.entities.NotificationRecipient.update(recipientId, {
-          read_at: new Date().toISOString(),
-        });
-      }
+      // Fase 2 (2026-11-12) — a leitura é gravada sempre no servidor: o RLS de
+      // NotificationRecipient.update passou a ser admin-only (antes o próprio
+      // destinatário escrevia no registro e podia falsificar entrega/clique).
+      // O backend ancora o registro ao usuário autenticado e faz o flip
+      // condicional de read_at + incremento idempotente de read_count.
+      await base44.functions.invoke("manageNotificationCampaign", {
+        op: "mark_read",
+        ...(campaign?.id ? { campaign_id: campaign.id } : { recipient_id: recipientId }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification_inbox"] });
@@ -45,8 +41,10 @@ export default function NotificationDetailModal({ recipient, campaign, onClose }
 
   const markClickedMutation = useMutation({
     mutationFn: async (recipientId) => {
-      await base44.entities.NotificationRecipient.update(recipientId, {
-        clicked_at: new Date().toISOString(),
+      // Fase 2 — clique também via backend (mesmo motivo do mark_read).
+      await base44.functions.invoke("manageNotificationCampaign", {
+        op: "mark_clicked",
+        ...(campaign?.id ? { campaign_id: campaign.id } : { recipient_id: recipientId }),
       });
     },
     onSuccess: () => {

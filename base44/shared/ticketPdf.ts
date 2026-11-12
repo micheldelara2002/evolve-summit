@@ -14,6 +14,7 @@ import qrcode from 'npm:qrcode-generator@1.4.4';
 import { DEFAULT_GLOBAL_REFUND_POLICY } from './commercePolicy.ts';
 import { sendTransactionalEmail } from './transactionalEmail.ts';
 import { fetchSafeImage, MAX_IMAGE_DIM } from './safeImageFetch.ts';
+import { withEventFinance } from './eventFinance.ts';
 
 export type TicketSponsor = {
   name: string;
@@ -437,9 +438,11 @@ export async function buildTicketPdfExtras(svc: any, event: any): Promise<{ even
   }
 
   // Política de devolução/cancelamento do evento (override sobre o default global)
+  // Fase 2 — política em EventFinance; com fallback legado.
   try {
     let override: any = {};
-    try { override = event.refund_policy ? JSON.parse(event.refund_policy) : {}; } catch {}
+    const financeEvent = await withEventFinance(svc, event);
+    try { override = financeEvent.refund_policy ? JSON.parse(financeEvent.refund_policy) : {}; } catch {}
     const policy = { ...DEFAULT_GLOBAL_REFUND_POLICY, ...override };
     const lines = [
       `• Devolução integral: solicitada até ${policy.full_refund_until_days} dia(s) antes do início do evento.`,
@@ -474,8 +477,9 @@ export async function buildTicketReceipt(svc: any, order: any, event: any): Prom
   let receipt: any = { paidAt: '', paymentMethod: '', receiverName: '', receiverDoc: '' };
   try {
     const payment = order?.id ? ((await svc.entities.Payment.filter({ order_id: order.id }))[0] || null) : null;
-    const payoutAccount = event?.payout_account_id
-      ? ((await svc.entities.PayoutAccount.filter({ id: event.payout_account_id }))[0] || null)
+    const financeEvent = await withEventFinance(svc, event);
+    const payoutAccount = financeEvent?.payout_account_id
+      ? ((await svc.entities.PayoutAccount.filter({ id: financeEvent.payout_account_id }))[0] || null)
       : null;
     receipt = {
       paidAt: payment?.succeeded_at || order?.created_date || '',

@@ -59,11 +59,17 @@ export default async function(req: Request): Promise<Response> {
 
     // ===== mark_read: contador idempotente da campanha =====
     if (op === 'mark_read') {
-      const { campaign_id } = body;
-      if (!campaign_id) return Response.json({ error: 'campaign_id obrigatório.' }, { status: 400 });
-      const recs = await svc.entities.NotificationRecipient.filter({
-        campaign_id, recipient_user_id: user.id,
-      });
+      const { campaign_id, recipient_id } = body;
+      if (!campaign_id && !recipient_id) return Response.json({ error: 'campaign_id ou recipient_id obrigatório.' }, { status: 400 });
+      // Fase 2 (2026-11-12) — a leitura é gravada no SERVIDOR: o RLS de
+      // NotificationRecipient.update passou a ser admin-only. Antes o próprio
+      // destinatário escrevia direto no registro e podia falsificar entrega e
+      // clique, trocar a campanha e reescrever o conteúdo recebido.
+      // O filtro ancora o destinatário neste usuário: id de outra pessoa não casa.
+      const query = recipient_id
+        ? { id: recipient_id, recipient_user_id: user.id }
+        : { campaign_id, recipient_user_id: user.id };
+      const recs = await svc.entities.NotificationRecipient.filter(query);
       const rec = recs[0];
       if (!rec) return Response.json({ error: 'Notificação não encontrada.' }, { status: 404 });
       if (rec.read_at) return Response.json({ ok: true, already_read: true });
@@ -76,13 +82,32 @@ export default async function(req: Request): Promise<Response> {
       if (flip && flip.updated) {
         try {
           await svc.entities.NotificationCampaign.updateMany(
-            { id: campaign_id },
+            { id: rec.campaign_id },
             { $inc: { read_count: 1 } }
           );
         } catch { /* contador é best-effort */ }
         return Response.json({ ok: true, already_read: false });
       }
       return Response.json({ ok: true, already_read: true });
+    }
+
+    // ===== mark_clicked: registro idempotente do clique no CTA =====
+    // Mesma regra do mark_read: escrito no servidor, escopado ao próprio
+    // destinatário (o registro direto pelo SDK é admin-only desde a Fase 2).
+    if (op === 'mark_clicked') {
+      const { campaign_id, recipient_id } = body;
+      if (!campaign_id && !recipient_id) return Response.json({ error: 'campaign_id ou recipient_id obrigatório.' }, { status: 400 });
+      const query = recipient_id
+        ? { id: recipient_id, recipient_user_id: user.id }
+        : { campaign_id, recipient_user_id: user.id };
+      const rec = (await svc.entities.NotificationRecipient.filter(query))[0];
+      if (!rec) return Response.json({ error: 'Notificação não encontrada.' }, { status: 404 });
+      if (rec.clicked_at) return Response.json({ ok: true, already_clicked: true });
+      const flip = await svc.entities.NotificationRecipient.updateMany(
+        { id: rec.id, clicked_at: null },
+        { $set: { clicked_at: new Date().toISOString() } }
+      );
+      return Response.json({ ok: true, already_clicked: !(flip && flip.updated) });
     }
 
     // ===== delete: soft delete pelo criador ou admin =====

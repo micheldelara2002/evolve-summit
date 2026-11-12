@@ -9,6 +9,7 @@ import {
   updateConnectedAccountPayoutSettings,
 } from "../../shared/stripeClient.ts";
 import { auditHash, buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { withEventFinance, patchEventFinance } from "../../shared/eventFinance.ts";
 
 // Stripe Connect — o organizador do evento recebe as vendas direto na conta
 // conectada dele (destination charge). A plataforma retém apenas a comissão
@@ -175,7 +176,10 @@ export default async function(req: Request): Promise<Response> {
     const loadEvent = async () => {
       const event = (await svc.entities.Event.filter({ id: eventId, is_deleted: false }))[0];
       if (!event) throw { status: 404, message: "Evento não encontrado." };
-      return event;
+      // Fase 2 — comissão e conta recebedora vivem em EventFinance (campo
+      // interno do evento). withEventFinance resolve das duas fontes e não
+      // escreve: nenhum consumidor abaixo muda.
+      return await withEventFinance(svc, event);
     };
     const requireManager = async (ev: any) => {
       const auth = await verifyEventMembership(base44, user, ev.id, EVENT_MANAGER_ROLES);
@@ -387,7 +391,7 @@ export default async function(req: Request): Promise<Response> {
         const previousCommission = existingEvent.commission_percent ?? null;
         const hasOverride = commission_percent !== null && commission_percent !== undefined && commission_percent !== "";
         const value = hasOverride ? Math.min(100, Math.max(0, Number(commission_percent))) : null;
-        await svc.entities.Event.update(eventId, { commission_percent: value });
+        await patchEventFinance(svc, eventId, { commission_percent: value });
         try {
           await trailPayoutChange("comissao_evento", "Event", eventId, { commission_percent: value }, {
             type: "comissao_evento_alterada",
@@ -395,7 +399,7 @@ export default async function(req: Request): Promise<Response> {
             comissao_nova: value,
           });
         } catch (auditErr: any) {
-          try { await svc.entities.Event.update(eventId, { commission_percent: previousCommission }); } catch {}
+          try { await patchEventFinance(svc, eventId, { commission_percent: previousCommission }); } catch {}
           console.error('[managePayouts] trilha obrigatória indisponível (comissão do evento):', auditErr?.message || auditErr);
           return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
         }
@@ -408,10 +412,10 @@ export default async function(req: Request): Promise<Response> {
         const linkEvent = await loadEvent();
         const previousAccountId = linkEvent.payout_account_id || "";
         const revertLink = async () => {
-          try { await svc.entities.Event.update(eventId, { payout_account_id: previousAccountId }); } catch {}
+          try { await patchEventFinance(svc, eventId, { payout_account_id: previousAccountId }); } catch {}
         };
         if (!payout_account_id) {
-          await svc.entities.Event.update(eventId, { payout_account_id: "" });
+          await patchEventFinance(svc, eventId, { payout_account_id: "" });
           try {
             await trailPayoutChange("conta_recebedora", "Event", eventId, { payout_account_id: "" }, {
               type: "conta_recebedora_alterada",
@@ -427,7 +431,7 @@ export default async function(req: Request): Promise<Response> {
         }
         const acct = (await svc.entities.PayoutAccount.filter({ id: payout_account_id, is_deleted: false }))[0];
         if (!acct) return Response.json({ error: "Conta não encontrada." }, { status: 404 });
-        await svc.entities.Event.update(eventId, { payout_account_id: acct.id });
+        await patchEventFinance(svc, eventId, { payout_account_id: acct.id });
         try {
           await trailPayoutChange("conta_recebedora", "Event", eventId, { payout_account_id: acct.id }, {
             type: "conta_recebedora_alterada",

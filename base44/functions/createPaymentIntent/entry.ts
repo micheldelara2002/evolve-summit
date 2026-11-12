@@ -10,6 +10,7 @@ import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUs
 import { claimCheckoutLock, attachCheckoutLock, releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 import { buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { withEventFinance } from "../../shared/eventFinance.ts";
 
 // Creates an Order + OrderItems + Stripe PaymentIntent for a cart of tickets.
 // Reserves lot quantities atomically (cannot oversell). Returns the client secret
@@ -73,7 +74,9 @@ export default async function(req: Request): Promise<Response> {
 
     // Resolve buyer person.
     const buyerPersonId = await resolveCallerPerson(svc, user);
-    const event = (await svc.entities.Event.filter({ id: eventId, is_deleted: false }))[0];
+    // Fase 2 — comissão e conta recebedora vivem em EventFinance (campo
+    // interno); o fallback legado é preservado por withEventFinance.
+    const event = await withEventFinance(svc, (await svc.entities.Event.filter({ id: eventId, is_deleted: false }))[0]);
     if (!event) return Response.json({ error: 'Evento não encontrado.' }, { status: 404 });
     // Tickets só são vendidos se o evento estiver ativo (não draft, não finalizado, não cancelado).
     if (event.status !== 'active') {

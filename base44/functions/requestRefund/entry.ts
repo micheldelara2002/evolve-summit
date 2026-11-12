@@ -9,6 +9,7 @@ import { extractClientIp } from "../../shared/commerceAudit.ts";
 import { buildAuditKey, recordPendingTrail, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { REFUND_REQUEST_PROVENANCE } from "../../shared/refundGuards.ts";
 import { availableRefundCents, claimRefundReservation, releaseRefundReservation } from "../../shared/refundLedger.ts";
+import { withEventFinance } from "../../shared/eventFinance.ts";
 
 // Solicita um estorno/cancelamento de pedido. Suporta:
 //   - full: estorna o pedido inteiro (100%).
@@ -76,7 +77,9 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: "Inconsistência de evento entre pagamento e pedido." }, { status: 409 });
     }
 
-    const event = (await svc.entities.Event.filter({ id: order.event_id }))[0];
+    // Fase 2 — a política de estorno vive em EventFinance (campo interno do
+    // evento); withEventFinance preserva o fallback legado durante a migração.
+    const event = await withEventFinance(svc, (await svc.entities.Event.filter({ id: order.event_id }))[0]);
 
     // Evaluate policy (global + per-event override).
     let override: any = null;
