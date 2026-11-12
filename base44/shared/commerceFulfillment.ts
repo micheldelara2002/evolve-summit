@@ -587,7 +587,34 @@ export async function returnSoldQuantityOnce(
     { id: lotId, stock_returned_ticket_ids: { $ne: ticketId } },
     { $inc: { quantity_sold: -1 }, $addToSet: { stock_returned_ticket_ids: ticketId } },
   );
-  return { ok: true, applied: !!(res && res.updated) };
+  if (res && res.updated) return { ok: true, applied: true };
+
+  // P1.1 (patch Fase 1, 2026-11-12) — ZERO ATUALIZAÇÃO NÃO PROVA DEVOLUÇÃO.
+  // O filtro tem DUAS condições (lote existe E ingresso ainda não registrado):
+  // não casar pode significar lote inexistente, e tratar isso como sucesso
+  // concluiria Payment/Order/RefundRequest sem o estoque devolvido. A
+  // confirmação vem da leitura do lote DEPOIS da tentativa — somente o ingresso
+  // JÁ registrado caracteriza repetição idempotente legítima.
+  let lot: any = null;
+  try {
+    lot = (await svc.entities.SalesLot.filter({ id: lotId }))[0] || null;
+  } catch (err: any) {
+    return { ok: false, applied: false, reason: `Leitura de confirmação do lote falhou: ${err?.message || err}` };
+  }
+  if (!lot) {
+    return { ok: false, applied: false, reason: `Lote ${lotId} não encontrado — devolução de estoque não comprovada.` };
+  }
+  const returnedIds = Array.isArray(lot.stock_returned_ticket_ids) ? lot.stock_returned_ticket_ids : [];
+  if (returnedIds.includes(ticketId)) {
+    // Devolução já efetivada e registrada por uma execução anterior. Nenhum
+    // segundo decremento é tentado — a repetição é apenas reconhecida.
+    return { ok: true, applied: false };
+  }
+  return {
+    ok: false,
+    applied: false,
+    reason: `Ingresso ${ticketId} não registrado no lote ${lotId} — devolução de estoque não comprovada.`,
+  };
 }
 
 // P1 (patch Fase 1, 2026-11-12) — PERSISTÊNCIA DO ESTADO DA SOLICITAÇÃO.
