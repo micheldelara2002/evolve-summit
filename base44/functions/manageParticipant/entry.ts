@@ -355,6 +355,8 @@ export default async function(req) {
             error: 'Papel alterado, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
             participant: updated,
             audit_state: 'unavailable',
+            // F3-13 — caminho de recuperação da trilha da alteração já efetivada.
+            recovery: { op: 'recoverRoleAudit', participant_id: participantId, event_id: eventId },
           }, { status: 503 });
         }
         return Response.json({ participant: updated, audit_state: auditState });
@@ -376,6 +378,67 @@ export default async function(req) {
       }
       await base44.asServiceRole.entities.Participant.update(participantId, { is_deleted: true });
       return Response.json({ ok: true });
+    }
+
+    // F3-13 (2026-11-12) — RECUPERAÇÃO da trilha de uma alteração de papel JÁ
+    // EFETIVADA. Sem isto, a falha total (principal + pendência) deixava a
+    // alteração permanentemente sem trilha: na repetição `changesRole` é falso
+    // (o papel já mudou) e nada é tentado de novo.
+    // Regras: o papel NOVO vem do estado persistido (nunca do corpo); autor e
+    // evento vêm do contexto autenticado e do gate; a chave é determinística pela
+    // ocorrência (`updated_date` do participante), então repetir não duplica e a
+    // trilha é marcada como reconstruída — não como uma alteração nova.
+    if (op === 'recoverRoleAudit') {
+      const participantId = String(body.participant_id || '');
+      if (!participantId) return Response.json({ error: 'participant_id ausente.' }, { status: 400 });
+      const found = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId });
+      if (!found.length) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
+      const current = found[0];
+
+      // Conferência apenas: se a tela informa o papel atual, ele precisa bater
+      // com o banco. O valor informado nunca é gravado nem auditado.
+      if (body.role_in_event !== undefined && String(body.role_in_event) !== String(current.role_in_event)) {
+        return Response.json({
+          error: 'O papel atual deste participante não confere com a tela. Recarregue antes de recuperar a trilha.',
+        }, { status: 409 });
+      }
+
+      const occurrence = `participant:${participantId}:${current.updated_date || current.created_date || ''}`;
+      const trailKey = buildAuditKey('role_change', occurrence);
+
+      // Já existe trilha para esta ocorrência? Então nada é gravado de novo.
+      let alreadyRecorded = false;
+      try {
+        const existing = await base44.asServiceRole.entities.AuditLog.filter({ audit_key: trailKey });
+        alreadyRecorded = Array.isArray(existing) && existing.length > 0;
+      } catch {
+        alreadyRecorded = false;
+      }
+
+      if (!alreadyRecorded) {
+        const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
+          entityId: participantId,
+          occurrence,
+          details: {
+            field: 'role_in_event',
+            old_value: null,
+            new_value: current.role_in_event,
+            participant_email: current.email || '',
+            recovered: true,
+            recovery_source: 'estado_persistido',
+          },
+        });
+        if (auditState === 'unavailable') {
+          return Response.json({
+            error: 'A trilha de auditoria não pôde ser registrada. Tente novamente para concluir a auditoria.',
+            audit_state: 'unavailable',
+            recovered: false,
+          }, { status: 503 });
+        }
+        return Response.json({ ok: true, audit_state: auditState, recovered: true, already_recorded: false });
+      }
+
+      return Response.json({ ok: true, audit_state: 'recorded', recovered: false, already_recorded: true });
     }
 
     if (op === 'getSessions') {
@@ -423,7 +486,7 @@ export default async function(req) {
       if (!enable) {
         if (!membershipId) return Response.json({ error: 'membership_id ausente para desativar avaliador.' }, { status: 400 });
         try {
-          await revokeEventRole(base44, { eventId, role: 'reviewer', membershipId });
+          await revokeEventRole(base44, { eventId, role: 'reviewer', membershipId, actor: user });
           return Response.json({ ok: true });
         } catch (error: any) {
           if (error?.message === 'not_found') {

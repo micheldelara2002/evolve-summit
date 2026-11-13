@@ -126,13 +126,15 @@ export default async function(req: Request): Promise<Response> {
       // A-05: mesma porta usada por manageParticipant.setReviewer — revogar por
       // qualquer tela inativa o vínculo e remove a pessoa da banca.
       try {
-        await revokeEventRole(base44, {
+        const revoked = await revokeEventRole(base44, {
           eventId,
           role,
           membershipId: String(body.membership_id || ''),
           inviteId: String(body.invite_id || ''),
+          actor: user,
         });
-        return Response.json({ ok: true });
+        // F3-13 — estado da trilha de revogação exposto ao operador.
+        return Response.json({ ok: true, audit_state: revoked?.auditState });
       } catch (error: any) {
         if (error?.message === 'missing_params') {
           return Response.json({ error: 'membership_id ausente.' }, { status: 400 });

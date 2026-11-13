@@ -10,10 +10,14 @@
 
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { inviteAccount } from "./accountInvites.ts";
+import { recordAccessChange } from "./accessAudit.ts";
 
+// F3-13 — `auditState` (recorded | pending | unavailable) acompanha a concessão:
+// o vínculo de acesso nunca fica sem tentativa de trilha, e o chamador informa
+// ao operador quando a auditoria não pôde ser persistida.
 export type GrantResult =
-  | { status: "linked"; userId: string; personId: string; membership: any }
-  | { status: "invited"; invite: any; invited: boolean; inviteError: string };
+  | { status: "linked"; userId: string; personId: string; membership: any; auditState?: string }
+  | { status: "invited"; invite: any; invited: boolean; inviteError: string; auditState?: string };
 
 function svcOf(client: any): any {
   return client && client.asServiceRole ? client.asServiceRole : client;
@@ -192,9 +196,20 @@ export async function grantEventRole(
     });
 
     // Convites antigos para este e-mail passam a valer agora.
-    await linkPendingInvites(client, { personId, userId: target.id, email: target.email });
+    await linkPendingInvites(client, { personId, userId: target.id, email: target.email, actor });
 
-    return { status: "linked", userId: target.id, personId, membership };
+    // F3-13 — concessão de acesso auditada (chave idempotente = o vínculo).
+    const auditState = await recordAccessChange(svc, {
+      eventId,
+      entityType: "EventMembership",
+      entityId: membership?.id || "",
+      actor,
+      operation: "role_grant",
+      reference: membership?.id || `${eventId}:${emailNorm}:${role}`,
+      details: { role, granted_to: emailNorm, user_id: target.id, person_id: personId, outcome: "linked" },
+    });
+
+    return { status: "linked", userId: target.id, personId, membership, auditState };
   }
 
   const pending = await svc.entities.EventInvite.filter({
@@ -229,7 +244,19 @@ export async function grantEventRole(
       invite_error: invited ? "" : inviteError,
     });
   }
-  return { status: "invited", invite, invited, inviteError };
+  // F3-13 — convite pendente também é concessão de acesso (o papel vale no
+  // primeiro acesso); a chave é o próprio convite, então reenviar não duplica.
+  const auditState = await recordAccessChange(svc, {
+    eventId,
+    entityType: "EventInvite",
+    entityId: invite?.id || "",
+    actor,
+    operation: "role_grant",
+    reference: invite?.id || `${eventId}:${emailNorm}:${role}:invite`,
+    details: { role, granted_to: emailNorm, outcome: "invited", invite_sent: !!invited },
+  });
+
+  return { status: "invited", invite, invited, inviteError, auditState };
 }
 
 /**
@@ -242,8 +269,8 @@ export async function grantEventRole(
  */
 export async function revokeEventRole(
   client: any,
-  { eventId, role, membershipId, inviteId }: any,
-): Promise<{ ok: true }> {
+  { eventId, role, membershipId, inviteId, actor }: any,
+): Promise<{ ok: true; auditState?: string }> {
   const svc = svcOf(client);
   if (!eventId || !role) throw new Error("missing_params");
 
@@ -252,7 +279,17 @@ export async function revokeEventRole(
     const invite = invites?.[0];
     if (!invite) throw new Error("not_found");
     await svc.entities.EventInvite.update(invite.id, { status: "revoked" });
-    return { ok: true };
+    // F3-13 — revogação de convite auditada.
+    const auditState = await recordAccessChange(svc, {
+      eventId,
+      entityType: "EventInvite",
+      entityId: invite.id,
+      actor,
+      operation: "role_revoke",
+      reference: `invite:${invite.id}`,
+      details: { role: invite.target_role || role, revoked_email: invite.email || "", outcome: "revoked" },
+    });
+    return { ok: true, auditState };
   }
 
   if (!membershipId) throw new Error("missing_params");
@@ -264,6 +301,17 @@ export async function revokeEventRole(
   if (!rows?.length) throw new Error("not_found");
 
   await svc.entities.EventMembership.update(String(membershipId), { is_active: false, is_deleted: true });
+
+  // F3-13 — revogação de papel auditada (chave = vínculo revogado).
+  const auditState = await recordAccessChange(svc, {
+    eventId,
+    entityType: "EventMembership",
+    entityId: String(membershipId),
+    actor,
+    operation: "role_revoke",
+    reference: String(membershipId),
+    details: { role, revoked_user_id: rows[0].user_id || "", revoked_email: rows[0].user_email || "", outcome: "revoked" },
+  });
 
   // Revogar o papel também tira a pessoa da banca: sem isso, quem voltasse a
   // receber o papel reentraria silenciosamente nas premiações já designadas.
@@ -279,7 +327,7 @@ export async function revokeEventRole(
     }
   }
 
-  return { ok: true };
+  return { ok: true, auditState };
 }
 
 /**
@@ -288,7 +336,7 @@ export async function revokeEventRole(
  */
 export async function linkPendingInvites(
   client: any,
-  { personId, userId, email }: any,
+  { personId, userId, email, actor }: any,
 ): Promise<{ linked: number }> {
   const svc = svcOf(client);
   const emailNorm = normalizeEmail(email);
@@ -344,6 +392,24 @@ export async function linkPendingInvites(
       accepted_at: new Date().toISOString(),
       accepted_user_id: userId,
     });
+
+    // F3-13 — aceite do convite = o acesso passa a valer de fato. Chave = o
+    // convite, então o primeiro acesso repetido não gera trilha duplicada.
+    await recordAccessChange(svc, {
+      eventId: invite.event_id,
+      entityType: "EventInvite",
+      entityId: invite.id,
+      actor: actor || { id: userId },
+      operation: "invite_accepted",
+      reference: invite.id,
+      details: {
+        role: invite.target_role || "manager",
+        accepted_by_user_id: userId,
+        person_id: personId,
+        outcome: "accepted",
+      },
+    });
+
     linked += 1;
   }
   return { linked };

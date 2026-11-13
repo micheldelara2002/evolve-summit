@@ -346,3 +346,110 @@ test("HTTP-26 — sem vínculo no evento a alteração é negada e nada é audit
   assert.equal(f.state.audits.length, 0);
   assert.equal(f.state.participants.find((p) => p.id === "part_2").role_in_event, "attendee");
 });
+
+// ---------------------------------------------------------------------------
+// manageParticipant — RECUPERAÇÃO da trilha de papel já efetivado (F3-13)
+// ---------------------------------------------------------------------------
+function recoverBody(overrides = {}) {
+  return { op: "recoverRoleAudit", event_id: EVENT, participant_id: "part_1", ...overrides };
+}
+
+test("HTTP-27 — repetição após falha total RECUPERA a trilha da alteração efetivada", async () => {
+  const f = fixture();
+  f.state.faults.anyAudit = true;
+  const failed = await invoke(f.state, manageParticipant, roleBody());
+
+  assert.equal(failed.status, 503);
+  assert.equal(failed.data.recovery?.op, "recoverRoleAudit", "a resposta indica o caminho de recuperação");
+  assert.equal(roleAudits(f.state).length, 0);
+
+  f.state.faults.anyAudit = false;
+  const recovered = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.data.audit_state, "recorded");
+  assert.equal(recovered.data.recovered, true);
+
+  const trails = roleAudits(f.state);
+  assert.equal(trails.length, 1);
+  const details = JSON.parse(trails[0].details);
+  assert.equal(details.recovered, true, "marcada como reconstruída, não como alteração nova");
+  assert.equal(details.new_value, "speaker", "valor novo vem do estado persistido");
+  assert.equal(details.old_value, null, "valor anterior desconhecido não é inventado");
+  assert.equal(trails[0].user_id, "user_1", "autor vem do contexto autenticado");
+  assert.equal(trails[0].event_id, EVENT);
+});
+
+test("HTTP-28 — repetir a recuperação não duplica a trilha", async () => {
+  const f = fixture();
+  f.state.faults.anyAudit = true;
+  await invoke(f.state, manageParticipant, roleBody());
+  f.state.faults.anyAudit = false;
+
+  const first = await invoke(f.state, manageParticipant, recoverBody());
+  const second = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(first.data.recovered, true);
+  assert.equal(second.status, 200);
+  assert.equal(second.data.already_recorded, true);
+  assert.equal(second.data.recovered, false);
+  assert.equal(roleAudits(f.state).length, 1);
+});
+
+test("HTTP-29 — recuperação com auditoria indisponível: 503, nada inventado", async () => {
+  const f = fixture();
+  f.state.faults.anyAudit = true;
+  await invoke(f.state, manageParticipant, roleBody());
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 503);
+  assert.equal(res.data.audit_state, "unavailable");
+  assert.equal(res.data.recovered, false);
+  assert.equal(f.state.audits.length, 0);
+});
+
+test("HTTP-30 — corpo não define o papel recuperado (divergência é recusada)", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, recoverBody({ role_in_event: "manager" }));
+
+  assert.equal(res.status, 409, "papel informado difere do persistido");
+  assert.equal(f.state.audits.length, 0, "nada é auditado a partir do corpo");
+});
+
+test("HTTP-31 — duas recuperações simultâneas convergem na mesma chave", async () => {
+  const f = fixture();
+  f.state.faults.anyAudit = true;
+  await invoke(f.state, manageParticipant, roleBody());
+  f.state.faults.anyAudit = false;
+
+  const [a, b] = await Promise.all([
+    invoke(f.state, manageParticipant, recoverBody()),
+    invoke(f.state, manageParticipant, recoverBody()),
+  ]);
+
+  assert.ok([a.status, b.status].every((s) => s === 200));
+  const trails = roleAudits(f.state);
+  assert.ok(trails.length >= 1, "a trilha existe");
+  assert.equal(new Set(trails.map((t) => t.audit_key)).size, 1, "mesma chave determinística");
+});
+
+test("HTTP-32 — recuperação não atravessa evento", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, recoverBody({ participant_id: "part_2" }));
+
+  assert.equal(res.status, 404);
+  assert.equal(f.state.audits.length, 0);
+});
+
+test("HTTP-33 — não fabrica trilha quando a alteração já foi auditada", async () => {
+  const f = fixture();
+  await invoke(f.state, manageParticipant, roleBody());
+  assert.equal(roleAudits(f.state).length, 1);
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 200);
+  assert.equal(res.data.already_recorded, true);
+  assert.equal(roleAudits(f.state).length, 1);
+});

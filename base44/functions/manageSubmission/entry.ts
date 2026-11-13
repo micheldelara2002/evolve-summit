@@ -9,6 +9,7 @@ import { resolveIdentity, normalizeEmail } from "../../shared/identity.ts";
 import { ensureSelfPerson } from "../../shared/selfPerson.ts";
 import { validateContent, validateAnswers } from "../../shared/submissionForm.ts";
 import { incUniqueParticipant, incParticipantsByRole, moveParticipantsByRole } from "../../shared/businessMetrics.ts";
+import { recordAccessChange } from "../../shared/accessAudit.ts";
 
 /**
  * manageSubmission — porta única de escrita de Submission (Call for Papers).
@@ -90,7 +91,7 @@ async function findDuplicateSubmission(svc: any, { cfpId, personId, email, title
  * proposta aprovada ou outra sessão viva) — quem tem duas palestras não perde a
  * segunda. Papéis de gestão (manager/team/partner_rep) nunca são tocados.
  */
-async function revertSpeakerParticipant(svc: any, eventId: string, submission: any) {
+async function revertSpeakerParticipant(svc: any, eventId: string, submission: any, actor?: any) {
   const rows = await svc.entities.Participant.filter({ id: submission.participant_id, is_deleted: false });
   const participant = rows?.[0];
   if (!participant || participant.role_in_event !== 'speaker') return;
@@ -104,8 +105,26 @@ async function revertSpeakerParticipant(svc: any, eventId: string, submission: a
     (liveSessions || []).length > 0;
   if (stillSpeaker) return;
 
-  await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
+  const reverted = await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
   await moveParticipantsByRole(svc, eventId, 'speaker', 'attendee', participant.created_date);
+
+  // F3-13 — rebaixar o palestrante REVOGA acesso: trilha obrigatória no backend.
+  return await recordAccessChange(svc, {
+    eventId,
+    entityType: 'Participant',
+    entityId: participant.id,
+    actor,
+    operation: 'role_change',
+    reference: `participant:${participant.id}:${reverted?.updated_date || participant.updated_date || participant.created_date || ''}`,
+    details: {
+      field: 'role_in_event',
+      old_value: 'speaker',
+      new_value: 'attendee',
+      source: 'cfp_cancel',
+      submission_id: submission.id,
+      participant_email: participant.email || '',
+    },
+  });
 }
 
 /**
@@ -407,6 +426,7 @@ export default async function(req: Request): Promise<Response> {
           is_deleted: false,
         });
         let participant = found[0];
+        let promotedFrom: string | null = null;
         if (!participant && submission.person_id) {
           found = await svc.entities.Participant.filter({
             event_id: eventId,
@@ -431,7 +451,30 @@ export default async function(req: Request): Promise<Response> {
           const oldRole = participant.role_in_event;
           await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
           await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
+          promotedFrom = oldRole;
         }
+
+        // F3-13 — aprovar a proposta concede acesso de PALESTRANTE: a concessão
+        // passa a ter trilha gerada pelo backend. A chave é determinística por
+        // participante + ocorrência, então a retomada da A-03 não duplica; a
+        // falha de auditoria não derruba uma aprovação legítima (a curadoria é
+        // fluxo de conteúdo, não operação financeira) — o estado é informado.
+        const roleAuditState = await recordAccessChange(svc, {
+          eventId,
+          entityType: 'Participant',
+          entityId: participant.id,
+          actor: user,
+          operation: 'role_change',
+          reference: `participant:${participant.id}:${participant.updated_date || participant.created_date || ''}`,
+          details: {
+            field: 'role_in_event',
+            old_value: promotedFrom,
+            new_value: 'speaker',
+            source: 'cfp_approve',
+            submission_id: submission.id,
+            participant_email: participant.email || '',
+          },
+        });
 
         const session = await svc.entities.Session.create({
           event_id: eventId,
@@ -451,7 +494,12 @@ export default async function(req: Request): Promise<Response> {
           ...reviewer,
         });
 
-        return Response.json({ ok: true, session_id: session.id, participant_id: participant.id });
+        return Response.json({
+          ok: true,
+          session_id: session.id,
+          participant_id: participant.id,
+          audit_state: roleAuditState,
+        });
       }
 
       if (submission.session_id) {
@@ -464,9 +512,9 @@ export default async function(req: Request): Promise<Response> {
 
       // A-02: cancelar uma proposta aprovada também desfaz o palestrante.
       const hadParticipant = !!submission.participant_id;
-      if (targetStatus === 'cancelled' && hadParticipant) {
-        await revertSpeakerParticipant(svc, eventId, submission);
-      }
+      const revokeAuditState = (targetStatus === 'cancelled' && hadParticipant)
+        ? await revertSpeakerParticipant(svc, eventId, submission, user)
+        : null;
 
       await svc.entities.Submission.update(submission.id, {
         status: targetStatus,
@@ -475,7 +523,11 @@ export default async function(req: Request): Promise<Response> {
         ...(hadParticipant ? { participant_id: '' } : {}),
       });
 
-      return Response.json({ ok: true, status: targetStatus });
+      return Response.json({
+        ok: true,
+        status: targetStatus,
+        ...(revokeAuditState ? { audit_state: revokeAuditState } : {}),
+      });
     } catch (error) {
       await releaseClaim(svc, submission);
       throw error;

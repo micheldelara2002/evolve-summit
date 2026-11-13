@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
+import { recordAccessChange } from "../../shared/accessAudit.ts";
 
 // 2026-11-04 — RELAÇÃO PARCEIRO ↔ EVENTO.
 // O Partner é global; o vínculo é por evento. Porta única porque a RLS de
@@ -79,6 +80,9 @@ export default async function (req: Request): Promise<Response> {
     });
 
     let participantsCreated = 0;
+    // F3-13 — associar representante concede o papel partner_rep: cada
+    // concessão/alteração deixa trilha; o estado volta na resposta.
+    const accessAudits: Array<{ participant_id: string; audit_state: string }> = [];
     if (repIds.length) {
       const reps = await svc.entities.PartnerRepresentative.filter({
         id: { $in: repIds },
@@ -102,15 +106,32 @@ export default async function (req: Request): Promise<Response> {
         );
         if (existingParticipant) {
           if (existingParticipant.role_in_event !== 'partner_rep') {
-            await svc.entities.Participant.update(existingParticipant.id, {
+            const updatedRep = await svc.entities.Participant.update(existingParticipant.id, {
               role_in_event: 'partner_rep',
               person_id: rep.person_id,
               photo_url: person.photo_url || existingParticipant.photo_url || '',
             });
+            const state = await recordAccessChange(svc, {
+              eventId,
+              entityType: 'Participant',
+              entityId: existingParticipant.id,
+              actor: user,
+              operation: 'role_change',
+              reference: `participant:${existingParticipant.id}:${updatedRep?.updated_date || existingParticipant.updated_date || ''}`,
+              details: {
+                field: 'role_in_event',
+                old_value: existingParticipant.role_in_event || null,
+                new_value: 'partner_rep',
+                source: 'event_partner_association',
+                partner_id: partnerId,
+                person_id: rep.person_id,
+              },
+            });
+            accessAudits.push({ participant_id: existingParticipant.id, audit_state: state });
           }
           continue;
         }
-        await svc.entities.Participant.create({
+        const createdRep = await svc.entities.Participant.create({
           event_id: eventId,
           full_name: person.full_name || '',
           email,
@@ -126,6 +147,25 @@ export default async function (req: Request): Promise<Response> {
           is_deleted: false,
           created_day: new Date().toISOString().slice(0, 10),
         });
+
+        // F3-13 — participante criado já como partner_rep: concessão auditada.
+        const state = await recordAccessChange(svc, {
+          eventId,
+          entityType: 'Participant',
+          entityId: createdRep.id,
+          actor: user,
+          operation: 'role_change',
+          reference: `participant:${createdRep.id}:${createdRep.created_date || ''}`,
+          details: {
+            field: 'role_in_event',
+            old_value: null,
+            new_value: 'partner_rep',
+            source: 'event_partner_association',
+            partner_id: partnerId,
+            person_id: rep.person_id,
+          },
+        });
+        accessAudits.push({ participant_id: createdRep.id, audit_state: state });
         participantsCreated += 1;
       }
     }
@@ -134,6 +174,7 @@ export default async function (req: Request): Promise<Response> {
       ok: true,
       event_partner_id: eventPartner.id,
       participants_created: participantsCreated,
+      audit_states: accessAudits,
     });
   } catch (error: any) {
     console.error('associateEventPartner error:', error?.message || error);
