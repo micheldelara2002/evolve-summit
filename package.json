@@ -27,6 +27,8 @@
     "test:unit:authz": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/session-track-authz.test.mjs",
     "test:unit:fase3": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/fase3-privacy-audit.test.mjs tests/unit/audit-logger.test.mjs tests/unit/certificate-audit.test.mjs tests/unit/account-deletion.test.mjs",
     "test:unit:auditlog": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/audit-logger.test.mjs",
+    "test:unit:certhttp": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/fase3-http-audit.test.mjs",
+    "test:unit:csv": "node --test tests/unit/csv-injection.test.mjs",
     "test:unit:certaudit": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/certificate-audit.test.mjs",
     "test:unit:deletion": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/account-deletion.test.mjs"
   },

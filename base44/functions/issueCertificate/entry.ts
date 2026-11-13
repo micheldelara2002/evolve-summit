@@ -61,7 +61,34 @@ export default async function(req: Request): Promise<Response> {
     }
     const existing = await base44.asServiceRole.entities.Certificate.filter(existingFilter);
     if (existing && existing.length > 0) {
-      return Response.json({ certificate: existing[0], alreadyExisted: true });
+      // F3-11 (2026-11-12) — RECUPERAÇÃO DA TRILHA NA REEMISSÃO.
+      // Antes: retorno imediato de `alreadyExisted`, sem tocar na auditoria. Um
+      // certificado cuja emissão falhou na trilha principal E na pendência
+      // ficava permanentemente sem trilha — e a reemissão nunca a recuperava.
+      // Agora a mesma chave determinística é reaplicada: trilha existente é
+      // apenas confirmada (sem novo registro); ausente é gravada agora; se
+      // principal e pendência falharem, a resposta é explícita (503).
+      const found = existing[0];
+      try {
+        const outcome = await auditCertificateIssuance(
+          base44.asServiceRole,
+          buildCertificateAuditEntry({ certificate: found, eventId, participantId, tipo, sessionId, user }),
+        );
+        return Response.json({
+          certificate: found,
+          alreadyExisted: true,
+          audit_state: outcome.state,
+          audit_recovered: outcome.state === 'recorded' && !outcome.already_recorded,
+        });
+      } catch (err: any) {
+        console.error('[issueCertificate] reemissão: auditoria indisponível:', err?.message || err);
+        return Response.json({
+          error: 'Certificado já existe, mas a trilha de auditoria não pôde ser registrada. Repita a emissão para concluir a auditoria.',
+          certificate: found,
+          alreadyExisted: true,
+          audit_state: 'unavailable',
+        }, { status: 503 });
+      }
     }
 
     // Consistency check: palestra certificate requires session speaker match
@@ -138,22 +165,15 @@ export default async function(req: Request): Promise<Response> {
     // (certificado_emitido|<id>) ⇒ reexecução não duplica. Falha de trilha NÃO
     // silencia: o certificado já existe, então o caso vai para trilha PENDENTE
     // (reconciliada por resolvePendingTrails) — nunca é descartado.
-    const auditEntry = {
-      action: 'create',
-      entity_type: 'Certificate',
-      entity_id: finalCertificate.id,
-      user_id: user.id,
-      user_name: user.full_name || user.email || '',
-      event_id: eventId,
-      audit_key: buildAuditKey('certificado_emitido', finalCertificate.id),
-      details: JSON.stringify({
-        tipo,
-        participant_id: participantId,
-        session_id: sessionId || '',
-        template: finalCertificate.template || 'classico',
-        deduplicated,
-      }),
-    };
+    const auditEntry = buildCertificateAuditEntry({
+      certificate: finalCertificate,
+      eventId,
+      participantId,
+      tipo,
+      sessionId,
+      user,
+      deduplicated,
+    });
     try {
       const auditOutcome = await auditCertificateIssuance(base44.asServiceRole, auditEntry);
       return Response.json({
@@ -177,6 +197,28 @@ export default async function(req: Request): Promise<Response> {
   } catch (error: any) {
     return Response.json({ error: error?.message || String(error) }, { status: 500 });
   }
+}
+
+// F3-11 — entrada de trilha ÚNICA para emissão e reemissão: a chave
+// determinística depende só do certificado (`certificado_emitido|<id>`), então
+// a reemissão confirma a trilha existente em vez de duplicá-la.
+function buildCertificateAuditEntry({ certificate, eventId, participantId, tipo, sessionId, user, deduplicated = 0 }) {
+  return {
+    action: 'create',
+    entity_type: 'Certificate',
+    entity_id: certificate.id,
+    user_id: user.id,
+    user_name: user.full_name || user.email || '',
+    event_id: eventId,
+    audit_key: buildAuditKey('certificado_emitido', certificate.id),
+    details: JSON.stringify({
+      tipo,
+      participant_id: participantId,
+      session_id: sessionId || '',
+      template: certificate.template || 'classico',
+      deduplicated,
+    }),
+  };
 }
 
 function generateSecureHash() {

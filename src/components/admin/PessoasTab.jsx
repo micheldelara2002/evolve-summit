@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { logAudit } from "@/lib/audit";
 import { decParticipantCounter } from "@/lib/businessCounters";
 import { t } from "@/lib/i18n";
+import { csvCell } from "@/lib/csvSafe";
 import { toast } from "sonner";
 import CsvImport from "@/components/admin/CsvImport";
 import ConfirmDeleteDialog from "@/components/ui/ConfirmDeleteDialog";
@@ -180,7 +181,7 @@ export default function PessoasTab({
       p.created_date ? new Date(p.created_date).toLocaleDateString("pt-BR") : "",
     ]);
     const csv = [headers, ...rowsCsv]
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .map((r) => r.map(csvCell).join(","))
       .join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

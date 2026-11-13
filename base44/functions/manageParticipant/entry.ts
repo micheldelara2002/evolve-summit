@@ -14,6 +14,7 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
 import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
+import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified } from "../../shared/auditTrail.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 // (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
 
@@ -36,24 +37,41 @@ async function isStaffManager(base44, user, eventId) {
 
 // F3-08 — auditoria de operação crítica gerada no BACKEND. Autor, evento,
 // entidade e resultado vêm da operação executada, nunca do corpo da requisição.
-// Best-effort: falha de trilha não desfaz a operação, mas fica explícita no log
-// do servidor (a operação só conclui após a escrita do participante).
-async function auditRoleChange(svc, user, eventId, { entityType = 'Participant', entityId, details }) {
+//
+// F3-10 (2026-11-12) — TRILHA OBRIGATÓRIA: era best-effort (falha ia só para o
+// console e a alteração de papel era declarada concluída sem evidência). Agora
+// a estratégia é a MESMA de certificados e operações financeiras:
+//   • trilha principal gravada e CONFIRMADA   → 'recorded';
+//   • principal falhou, pendência gravada e RELIDA por leitura → 'pending'
+//     (reconciliada por resolvePendingTrails com a mesma chave);
+//   • principal e pendência falharam          → 'unavailable' (o chamador
+//     responde 503: nunca declara a alteração concluída sem auditoria).
+// A chave é determinística por OCORRÊNCIA real da escrita (informada pelo
+// chamador), então retry/replay não duplica trilha e duas transições legítimas
+// distintas não se sobrescrevem.
+async function auditRoleChange(svc, user, eventId, { entityType = 'Participant', entityId, occurrence, details }) {
+  const entry = {
+    event_id: eventId,
+    action: 'role_change',
+    entity_type: entityType,
+    entity_id: entityId || '',
+    user_id: user.id,
+    user_name: user.full_name || user.email || '',
+    details: JSON.stringify(details || {}),
+    ip_address: '',
+    audit_key: buildAuditKey('role_change', occurrence || `${entityType}:${entityId || 'sem_id'}`),
+  };
   try {
-    await svc.entities.AuditLog.create({
-      event_id: eventId,
-      action: 'role_change',
-      entity_type: entityType,
-      entity_id: entityId || '',
-      user_id: user.id,
-      user_name: user.full_name || user.email || '',
-      details: JSON.stringify(details || {}),
-      ip_address: '',
-      mandatory: false,
-      status: 'recorded',
-    });
+    await writeMandatoryAudit(svc, entry);
+    return 'recorded';
   } catch (err: any) {
-    console.error('[manageParticipant] trilha de role_change não gravada:', err?.message || err);
+    const failure = err?.message || String(err);
+    const pending = await recordPendingTrailVerified(svc, {
+      ...entry,
+      provider: 'base44',
+      failure_reason: failure,
+    });
+    return pending ? 'pending' : 'unavailable';
   }
 }
 
@@ -318,10 +336,13 @@ export default async function(req) {
         }
       }
       const updated = await base44.asServiceRole.entities.Participant.update(participantId, data);
-      // F3-08 — papel alterado é auditado aqui (operação crítica).
+      // F3-08/F3-10 — papel alterado é auditado aqui (operação crítica), com
+      // trilha obrigatória. Sem trilha confirmada e sem pendência persistida a
+      // resposta é 503: a alteração existe, mas não é declarada concluída.
       if (changesRole) {
-        await auditRoleChange(base44.asServiceRole, user, eventId, {
+        const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
           entityId: participantId,
+          occurrence: `participant:${participantId}:${updated?.updated_date || ''}`,
           details: {
             field: 'role_in_event',
             old_value: current.role_in_event,
@@ -329,6 +350,14 @@ export default async function(req) {
             participant_email: current.email || '',
           },
         });
+        if (auditState === 'unavailable') {
+          return Response.json({
+            error: 'Papel alterado, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+            participant: updated,
+            audit_state: 'unavailable',
+          }, { status: 503 });
+        }
+        return Response.json({ participant: updated, audit_state: auditState });
       }
       return Response.json({ participant: updated });
     }
@@ -546,21 +575,37 @@ export default async function(req) {
           actor: user,
         });
         if (result.status === 'linked') {
-          await auditRoleChange(base44.asServiceRole, user, eventId, {
+          const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
             entityType: 'EventMembership',
             entityId: result.membership?.id || '',
+            occurrence: `membership:${result.membership?.id || ''}`,
             details: { role: 'team', granted_to: email, outcome: 'linked' },
           });
-          return Response.json({ status: 'linked', membership: result.membership });
+          if (auditState === 'unavailable') {
+            return Response.json({
+              error: 'Equipe vinculada, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+              membership: result.membership,
+              audit_state: 'unavailable',
+            }, { status: 503 });
+          }
+          return Response.json({ status: 'linked', membership: result.membership, audit_state: auditState });
         }
-        await auditRoleChange(base44.asServiceRole, user, eventId, {
+        const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
           entityType: 'EventMembership',
           entityId: '',
+          occurrence: `invite:${eventId}:${email}`,
           details: { role: 'team', granted_to: email, outcome: 'invited' },
         });
+        if (auditState === 'unavailable') {
+          return Response.json({
+            error: 'Convite registrado, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+            audit_state: 'unavailable',
+          }, { status: 503 });
+        }
         return Response.json({
           status: 'invited',
           invite: { invited: !!result.invited, error: result.inviteError || '' },
+          audit_state: auditState,
         });
       } catch (error: any) {
         const map: Record<string, [string, number]> = {
@@ -602,9 +647,10 @@ export default async function(req) {
       if (participant && participant.role_in_event === 'team') {
         await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
       }
-      await auditRoleChange(svc, user, eventId, {
+      const auditState = await auditRoleChange(svc, user, eventId, {
         entityType: 'EventMembership',
         entityId: memberships?.[0]?.id || '',
+        occurrence: `removal:${eventId}:${email || participant?.id || ''}`,
         details: {
           role: 'team',
           removed: (memberships || []).length,
@@ -612,7 +658,14 @@ export default async function(req) {
           participant_email: email || '',
         },
       });
-      return Response.json({ ok: true, memberships_removed: (memberships || []).length });
+      if (auditState === 'unavailable') {
+        return Response.json({
+          error: 'Equipe removida, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+          memberships_removed: (memberships || []).length,
+          audit_state: 'unavailable',
+        }, { status: 503 });
+      }
+      return Response.json({ ok: true, memberships_removed: (memberships || []).length, audit_state: auditState });
     }
 
     return Response.json({ error: 'Operação desconhecida: ' + op }, { status: 400 });

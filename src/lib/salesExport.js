@@ -1,6 +1,7 @@
 // Geração de relatório de vendas em CSV (separador ';' + BOM para Excel pt-BR).
 // Usado pelo painel "Receber minhas vendas" (organizador) e pela aba Pedidos (admin)
 // para que o organizador emita NFs em lote no emissor próprio da empresa.
+import { csvCell } from './csvSafe.js';
 
 const CSV_HEADERS = [
   "Data do pedido",
@@ -20,10 +21,7 @@ const CSV_HEADERS = [
   "Estornado",
 ];
 
-function csvEscape(value) {
-  const s = String(value ?? "");
-  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// F3-12 — a célula passa por csvCell (escaping + neutralização de fórmula).
 
 // Recebe o formato devolvido por getEventOrders (array de pedidos com itens).
 // Inclui apenas pedidos pagos (paid / partially_refunded) — é o que vira receita/NF.
@@ -51,7 +49,7 @@ function buildSalesCsv(orders) {
           it.ticket_status || "",
           it.refunded ? "Sim" : "Nao",
         ]
-          .map(csvEscape)
+          .map(csvCell)
           .join(";")
       );
     }
