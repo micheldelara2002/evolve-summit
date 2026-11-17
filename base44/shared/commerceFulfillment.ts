@@ -250,26 +250,33 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
 
         // Link ticket back to the order item.
         await svc.entities.OrderItem.update(item.id, { ticket_id: ticket.id });
-
-        // Confirm lot: reserved → sold EXATAMENTE UMA VEZ (F4-02/P2). O marcador
-        // do item entra na MESMA escrita do `$inc`, então um retry não duplica
-        // `quantity_sold` e uma conversão interrompida é retomável. Falha de
-        // escrita não é engolida: o fulfillment fica 'pending_retry' (visível na
-        // aba de transações) em vez de concluir com estoque não convertido.
-        const conversion = await convertReservedToSoldOnce(svc, item);
-        // F4-03 — lote inexistente NÃO é sucesso em pedido com reserva
-        // identificada: bloqueia e o pedido fica recuperável (pending_retry).
-        if (blocksFulfillment(conversion, stockTracked)) {
-          throw new Error(`Conversão de estoque não aplicada (${conversion.reason})`);
-        }
-        if (!conversion.converted && conversion.reason !== "ja_convertido") {
-          console.warn(
-            "[fulfillOrder] conversão de estoque não aplicada (pedido sem reserva identificada):",
-            item.id, conversion.reason,
-          );
-        }
       }
       createdTickets.push(ticket);
+
+      // Confirm lot: reserved → sold EXATAMENTE UMA VEZ (F4-02/P2). O marcador
+      // do item entra na MESMA escrita do `$inc`, então um retry não duplica
+      // `quantity_sold` e uma conversão interrompida é retomável. Falha de
+      // escrita não é engolida: o fulfillment fica 'pending_retry' (visível na
+      // aba de transações) em vez de concluir com estoque não convertido.
+      //
+      // F4-04 — a conversão é verificada para TODO item, inclusive quando o
+      // ingresso JÁ existia (retry de uma tentativa anterior): antes ela vivia
+      // dentro do `if (!ticket)` e um retry pulava a conversão pendente. O
+      // marcador idempotente garante uma única venda por item — repetir aqui não
+      // duplica ingresso, participante nem venda.
+      const conversion = await convertReservedToSoldOnce(svc, item);
+      // F4-03 / F4-04 — lote inexistente, reserva insuficiente, escrita ou
+      // leitura indisponíveis NÃO são sucesso em pedido com reserva
+      // identificada: bloqueiam e o pedido fica recuperável (pending_retry).
+      if (blocksFulfillment(conversion, stockTracked)) {
+        throw new Error(`Conversão de estoque não aplicada em ${item.id} (${conversion.reason})`);
+      }
+      if (!conversion.converted && conversion.reason !== "ja_convertido") {
+        console.warn(
+          "[fulfillOrder] conversão de estoque não aplicada (pedido sem reserva identificada):",
+          item.id, conversion.reason,
+        );
+      }
 
       // 1 ingresso = 1 Participant — cada ingresso tem seu PRÓPRIO registro na
       // lista de participantes do evento (nunca reutiliza o registro de outro
@@ -321,22 +328,34 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       }
     }
 
-    // F4-01 (AUD-01) + F4-02 (P2) — a venda está confirmada. Primeiro RETOMA
-    // qualquer conversão interrompida (CAS por item, sem duplicar vendas);
-    // depois encerra as reservas do pedido APENAS quando as unidades do lote já
-    // viraram vendidas. Pagamento confirmado com fulfillment incompleto mantém
-    // a reserva VIVA — nunca é devolvida e nunca perde o token.
-    try {
-      const resumed = await resumeOrderStockConversion(svc, order.id);
-      const consumed = await consumeOrderReservations(svc, order.id);
-      if (consumed.pending > 0 || resumed.pending > 0) {
-        console.warn(
-          "[fulfillOrder] reservas aguardando conversão completa:",
-          "consumo_pendente=", consumed.pending, "itens_sem_ingresso=", resumed.pending,
+    // F4-01 (AUD-01) + F4-02 (P2) + F4-04 — PORTÃO OBRIGATÓRIO ANTES DE 'fulfilled'.
+    //
+    // Para pedido com reserva identificada, 'fulfilled' só é declarado quando
+    // TODAS as unidades reservadas já viraram vendidas e as reservas foram
+    // encerradas. Nenhum resultado não confirmado conta como concluído:
+    //   • retomada indisponível (leitura falhou) → bloqueia;
+    //   • item com conversão pendente (lote ausente/insuficiente/escrita ou
+    //     leitura ilegível, item sem ingresso) → bloqueia;
+    //   • reserva cuja conversão ainda não completou → bloqueia.
+    // O erro NÃO é engolido: o catch abaixo deixa o pagamento em 'succeeded',
+    // Payment/Order em 'pending_retry' e a reserva VIVA (token preservado) para
+    // a próxima rodada. Pedido legado (sem StockReservation) não passa por aqui.
+    const resumed = await resumeOrderStockConversion(svc, order.id);
+    if (resumed.unavailable) {
+      throw new Error(`Conversão de estoque não confirmada: retomada indisponível (${resumed.reasons.join(", ")}).`);
+    }
+    if (!resumed.legacy) {
+      if (resumed.pending > 0) {
+        throw new Error(
+          `Fulfillment bloqueado: ${resumed.pending} item(ns) com conversão de estoque pendente (${resumed.reasons.join(", ")}).`,
         );
       }
-    } catch (err: any) {
-      console.error("[fulfillOrder] consumo das reservas falhou:", err?.message || err);
+      const consumed = await consumeOrderReservations(svc, order.id);
+      if (consumed.pending > 0) {
+        throw new Error(
+          `Fulfillment bloqueado: ${consumed.pending} reserva(s) de estoque com conversão incompleta (nenhuma unidade devolvida).`,
+        );
+      }
     }
 
     // Mark order fulfilled.

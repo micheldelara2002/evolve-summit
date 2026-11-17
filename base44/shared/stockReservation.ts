@@ -399,37 +399,64 @@ async function consumeReservationIfFullyConverted(
 // RETOMADA da conversão: para pedidos com reserva identificada, converte o que
 // ficou pendente de uma execução interrompida — sempre por CAS no marcador, sem
 // duplicar `quantity_sold`. Só converte item que JÁ tem ingresso emitido:
-// converter sem ingresso vendente uma unidade que ninguém recebeu.
+// converter sem ingresso venderia uma unidade que ninguém recebeu.
 // Pedidos legados (sem StockReservation) não passam por aqui.
+//
+// F4-04 — NENHUM RESULTADO NÃO CONFIRMADO É TRATADO COMO CONCLUÍDO:
+//   • falha de leitura (reservas, itens ou ingressos) devolve `unavailable: true`;
+//     `pending: 0` com `unavailable` NÃO significa "nada a fazer" — o chamador
+//     precisa bloquear em vez de concluir o pedido;
+//   • `lote_inexistente`, `reservado_insuficiente`, `conversao_indisponivel`,
+//     `leitura_indisponivel`, `conversao_nao_aplicada` e item sem ingresso
+//     permanecem PENDENTES, com o motivo em `reasons`;
+//   • só `convertido` e `ja_convertido` contam como concluídos — e `ja_convertido`
+//     vem da LEITURA do marcador no lote, nunca da resposta da escrita.
 export async function resumeOrderStockConversion(
   svc: any,
   orderId: string,
-): Promise<{ converted: number; pending: number; legacy: boolean }> {
-  if (!orderId) return { converted: 0, pending: 0, legacy: true };
-  const records = await listOrderReservations(svc, orderId);
-  if (records.length === 0) return { converted: 0, pending: 0, legacy: true };
+): Promise<{ converted: number; pending: number; unavailable: boolean; reasons: string[]; legacy: boolean }> {
+  if (!orderId) return { converted: 0, pending: 0, unavailable: false, reasons: [], legacy: true };
+
+  // Leitura das reservas com erro EXPLÍCITO: `listOrderReservations` devolve []
+  // em falha, e isso seria confundido com "pedido legado" — exatamente o que a
+  // retomada de um pagamento confirmado não pode fazer.
+  let records: any[] = [];
+  try {
+    records = (await svc.entities[ENTITY].filter({ order_id: orderId, is_deleted: false })) || [];
+  } catch (err: any) {
+    console.error("[stockReservation] reservas do pedido ilegíveis:", orderId, err?.message || err);
+    return { converted: 0, pending: 0, unavailable: true, reasons: ["reservas_indisponiveis"], legacy: false };
+  }
+  if (records.length === 0) return { converted: 0, pending: 0, unavailable: false, reasons: [], legacy: true };
 
   const reservedLots = new Set(records.map((r: any) => String(r.lot_id || "")));
   let items: any[] = [];
   let tickets: any[] = [];
   try {
-    items = await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false }) || [];
-    tickets = await svc.entities.Ticket.filter({ order_id: orderId, is_deleted: false }) || [];
+    items = (await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false })) || [];
+    tickets = (await svc.entities.Ticket.filter({ order_id: orderId, is_deleted: false })) || [];
   } catch (err: any) {
     console.error("[stockReservation] retomada de conversão indisponível:", orderId, err?.message || err);
-    return { converted: 0, pending: 0, legacy: false };
+    return { converted: 0, pending: 0, unavailable: true, reasons: ["itens_ou_ingressos_indisponiveis"], legacy: false };
   }
 
   let converted = 0;
   let pending = 0;
+  const reasons: string[] = [];
   for (const item of items || []) {
     if (!reservedLots.has(String(item.lot_id || ""))) continue;
     const hasTicket = (tickets || []).some((t: any) => t.order_item_id === item.id && !t.is_deleted);
-    if (!hasTicket) { pending++; continue; }
+    if (!hasTicket) {
+      pending++;
+      reasons.push(`${item.id}:sem_ingresso`);
+      continue;
+    }
     const out = await convertReservedToSoldOnce(svc, item);
-    if (out.converted) converted++;
+    if (out.converted || out.reason === "ja_convertido") { converted++; continue; }
+    pending++;
+    reasons.push(`${item.id}:${out.reason}`);
   }
-  return { converted, pending, legacy: false };
+  return { converted, pending, unavailable: false, reasons, legacy: false };
 }
 
 // Encerra as reservas do pedido — apenas as que já estão integralmente

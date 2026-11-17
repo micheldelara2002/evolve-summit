@@ -8,7 +8,12 @@
 
 function matchesValue(actual, cond) {
   if (cond === undefined) return true;
-  if (cond !== null && typeof cond === "object" && !Array.isArray(cond)) {
+  // Lista de valores = "$in" (semântica do banco real), usada por exemplo em
+  // Person.filter({ contact_email: emailMatchVariants(email) }).
+  if (Array.isArray(cond)) {
+    return Array.isArray(actual) ? cond.some((v) => actual.includes(v)) : cond.includes(actual);
+  }
+  if (cond !== null && typeof cond === "object") {
     if ("$exists" in cond) return cond.$exists ? actual !== undefined : actual === undefined;
     if ("$lte" in cond) return actual !== undefined && actual !== null && actual <= cond.$lte;
     if ("$gte" in cond) return actual !== undefined && actual !== null && actual >= cond.$gte;
@@ -84,7 +89,9 @@ function collection(rows) {
       return { ...d };
     },
     async create(data) {
-      const row = { id: `gen_${rows.length + 1}`, ...data };
+      // `is_deleted` tem default false no schema das entidades: sem ele, filtros
+      // do tipo { is_deleted: false } não casariam o registro recém-criado.
+      const row = { is_deleted: false, id: `gen_${rows.length + 1}`, ...data };
       rows.push(row);
       return { ...row };
     },
@@ -106,6 +113,10 @@ export function createFakeDb({
   auditLogs = [],
   metricBuckets = [],
   stockReservations = [],
+  persons = [],
+  events = [],
+  users = [],
+  checkoutLocks = [],
 } = {}) {
   const clone = (rows) => rows.map((r) => ({ ...r }));
   const paymentRows = clone(payments);
@@ -120,6 +131,13 @@ export function createFakeDb({
   const bucketRows = clone(metricBuckets);
   // F4-01 (AUD-01) — reservas de estoque identificadas.
   const stockReservationRows = clone(stockReservations);
+  // F4-04 — coleções usadas pelo fulfillment completo (fulfillOrder): pessoa do
+  // titular, evento do pedido, conta do titular e lock de checkout liberado no
+  // fim. Vazias por padrão: as suítes anteriores não são afetadas.
+  const personRows = clone(persons);
+  const eventRows = clone(events);
+  const userRows = clone(users);
+  const checkoutLockRows = clone(checkoutLocks);
   const svc = {
     entities: {
       Payment: collection(paymentRows),
@@ -133,6 +151,10 @@ export function createFakeDb({
       AuditLog: collection(auditRows),
       MetricBucket: collection(bucketRows),
       StockReservation: collection(stockReservationRows),
+      Person: collection(personRows),
+      Event: collection(eventRows),
+      User: collection(userRows),
+      CheckoutLock: collection(checkoutLockRows),
     },
   };
   return {
@@ -148,6 +170,8 @@ export function createFakeDb({
     auditLogs: auditRows,
     metricBuckets: bucketRows,
     stockReservations: stockReservationRows,
+    persons: personRows,
+    events: eventRows,
     payment: (id) => paymentRows.find((p) => p.id === id),
   };
 }
