@@ -9,6 +9,7 @@ import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
 import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
 import { buildAuditKey, resolvePendingTrails, writeMandatoryAudit } from "../../shared/auditTrail.ts";
+import { reconcileStockReservations } from "../../shared/stockReservation.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -327,6 +328,29 @@ export default async function(req: Request): Promise<Response> {
         });
       } catch {}
       expired++;
+    }
+
+    // ===== F4-01 (AUD-01) — RECONCILIAÇÃO DE RESERVAS DE ESTOQUE =====
+    // Reservas identificadas (StockReservation) que ficaram vivas sem compra
+    // correspondente — falha intermediária do checkout (pedido/itens/cobrança).
+    // Regra restritiva: só libera o que é comprovadamente órfão. Reserva dentro
+    // da validade é mantida; pedido com pagamento confirmado NUNCA é liberado
+    // (é consolidado como venda); pedido pendente dentro da janela é mantido.
+    // A devolução é o CAS por token — uma única vez por reserva.
+    let stockReservationsReleased = 0;
+    let stockReservationsChecked = 0;
+    try {
+      const stock = await reconcileStockReservations(svc, 50);
+      stockReservationsChecked = stock.examined;
+      stockReservationsReleased = stock.released;
+      if (stock.examined > 0) {
+        console.log(
+          '[expireStaleReservations] reservas de estoque: examinadas=%d liberadas=%d mantidas=%d falhas=%d',
+          stock.examined, stock.released, stock.kept, stock.failed,
+        );
+      }
+    } catch (stockErr: any) {
+      console.error('[expireStaleReservations] reconciliação de reservas de estoque falhou:', stockErr?.message || stockErr);
     }
 
     // ===== Reconciler de emissão: pagamentos pagos × ingressos/participantes =====
@@ -1069,6 +1093,9 @@ export default async function(req: Request): Promise<Response> {
       // Trilha obrigatória (P0-B): casos concluídos nesta rodada e ainda pendentes.
       audit_trail_resolved: trailResolved,
       audit_trail_pending: trailPending,
+      // F4-01 — reservas de estoque identificadas (AUD-01).
+      stock_reservations_checked: stockReservationsChecked,
+      stock_reservations_released: stockReservationsReleased,
     };
     if (maintenanceSetting) {
       try {

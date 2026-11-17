@@ -105,6 +105,7 @@ export function createFakeDb({
   coupons = [],
   auditLogs = [],
   metricBuckets = [],
+  stockReservations = [],
 } = {}) {
   const clone = (rows) => rows.map((r) => ({ ...r }));
   const paymentRows = clone(payments);
@@ -117,6 +118,8 @@ export function createFakeDb({
   const couponRows = clone(coupons);
   const auditRows = clone(auditLogs);
   const bucketRows = clone(metricBuckets);
+  // F4-01 (AUD-01) — reservas de estoque identificadas.
+  const stockReservationRows = clone(stockReservations);
   const svc = {
     entities: {
       Payment: collection(paymentRows),
@@ -129,6 +132,7 @@ export function createFakeDb({
       Coupon: collection(couponRows),
       AuditLog: collection(auditRows),
       MetricBucket: collection(bucketRows),
+      StockReservation: collection(stockReservationRows),
     },
   };
   return {
@@ -143,6 +147,7 @@ export function createFakeDb({
     coupons: couponRows,
     auditLogs: auditRows,
     metricBuckets: bucketRows,
+    stockReservations: stockReservationRows,
     payment: (id) => paymentRows.find((p) => p.id === id),
   };
 }

@@ -1,0 +1,91 @@
+{
+  "name": "StockReservation",
+  "type": "object",
+  "description": "F4-01 (AUD-01) \u2014 Reserva de estoque IDENTIFIC\u00c1VEL e recuper\u00e1vel de um checkout. Cada tentativa de checkout recebe um token gerado no SERVIDOR (checkout_token); cada lote reservado gera UM registro aqui. O registro guarda os metadados (evento, comprador, pedido, lote, quantidade, validade) e o ESTADO do ciclo: claiming (registro criado, estoque ainda n\u00e3o aplicado), active (estoque reservado no lote), released (devolvido ou nunca aplicado), consumed (venda confirmada \u2014 estoque virou vendido). IMPORTANTE: este registro N\u00c3O \u00e9 a exclus\u00e3o m\u00fatua da libera\u00e7\u00e3o \u2014 quem garante decremento \u00fanico \u00e9 o TOKEN gravado no PR\u00d3PRIO lote (SalesLot.reservation_tokens) na MESMA escrita que incrementa quantity_reserved: a libera\u00e7\u00e3o \u00e9 um CAS por token ($inc -qty + $pull token), ent\u00e3o repetir \u00e9 no-op e nenhum checkout libera a reserva de outro. Escrita exclusivamente por backend (service role); RLS admin-only.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento do checkout (escopo de isolamento)"
+    },
+    "checkout_token": {
+      "type": "string",
+      "description": "Token da TENTATIVA de checkout, gerado no servidor. \u00c9 o mesmo valor gravado em SalesLot.reservation_tokens na escrita at\u00f4mica da reserva e a chave da libera\u00e7\u00e3o idempotente."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do User comprador (rastreio/auditoria)"
+    },
+    "order_id": {
+      "type": "string",
+      "description": "ID do pedido associado. Vazio enquanto o pedido ainda n\u00e3o existe (reserva acontece antes do create do Order) \u2014 attachReservationsToOrder preenche depois. Registro vencido sem pedido e sem token no lote \u00e9 liberado pela reconcilia\u00e7\u00e3o."
+    },
+    "lot_id": {
+      "type": "string",
+      "description": "ID do SalesLot reservado"
+    },
+    "quantity": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade reservada neste lote por esta tentativa"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "claiming",
+        "active",
+        "released",
+        "consumed"
+      ],
+      "enumColors": [
+        "yellow",
+        "green",
+        "gray",
+        "blue"
+      ],
+      "default": "claiming",
+      "description": "claiming = registro gravado, estoque ainda n\u00e3o aplicado; active = estoque reservado no lote; released = devolvido (ou nunca aplicado \u2014 libera\u00e7\u00e3o sem token no lote \u00e9 no-op); consumed = venda confirmada (reserved\u2192sold), reserva encerrada e nunca mais liber\u00e1vel."
+    },
+    "released_reason": {
+      "type": "string",
+      "description": "Motivo da libera\u00e7\u00e3o/encerramento (coupon_invalid, provider_error, order_released, reconcile_orphan, reconcile_order_ended, lot_unavailable, record_unavailable, sem_estoque\u2026)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Validade da reserva (mesma janela de 15 min do pedido). A reconcilia\u00e7\u00e3o s\u00f3 considera \u00f3rf\u00e3 uma reserva vencida E sem pagamento confirmado nem pedido vivo."
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "checkout_token",
+    "lot_id",
+    "quantity",
+    "state"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

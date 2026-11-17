@@ -6,8 +6,9 @@ import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
 import { findActiveDuplicateEmails } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse, releaseReservations } from "../../shared/commerceFulfillment.ts";
 import { claimCheckoutLock, attachCheckoutLock, releaseCheckoutLock } from "../../shared/checkoutLock.ts";
+import { newCheckoutToken, reserveStockForCheckout, releaseCheckoutReservations, attachReservationsToOrder } from "../../shared/stockReservation.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
 import { buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { withEventFinance } from "../../shared/eventFinance.ts";
@@ -113,6 +114,13 @@ export default async function(req: Request): Promise<Response> {
 
     const now = new Date();
 
+    // ===== F4-01 (AUD-01) — token da TENTATIVA de checkout =====
+    // Gerado no SERVIDOR: identifica de forma única toda reserva de estoque
+    // desta tentativa (StockReservation.checkout_token + token no próprio lote).
+    // É a chave da liberação idempotente: repetir não devolve duas vezes e
+    // nenhum checkout libera a reserva de outro. Nunca vem do cliente.
+    const checkoutToken = newCheckoutToken();
+
     // ===== FIN-001 (r2) — claim atômico por (comprador + evento) =====
     // ANTES de criar/reusar Order, OrderItem ou PaymentIntent. Gate CAS no
     // array checkout_lock_events da Person: corrida no MESMO evento → um
@@ -188,13 +196,11 @@ export default async function(req: Request): Promise<Response> {
           // antes de sobrescrever o pedido (o novo carrinho pode não usá-lo).
           await releaseCouponUse(svc, prev);
           const prevItems = await svc.entities.OrderItem.filter({ order_id: prev.id, is_deleted: false });
+          // F4-01 — devolve as reservas da tentativa anterior POR TOKEN
+          // (idempotente e escopado ao pedido reutilizado): repetir o
+          // re-checkout não devolve duas vezes nem toca reservas alheias.
+          await releaseReservations(svc, prevItems);
           for (const it of prevItems) {
-            try {
-              await svc.entities.SalesLot.updateMany(
-                { id: it.lot_id, quantity_reserved: { $gte: 1 } },
-                { $inc: { quantity_reserved: -1 } }
-              );
-            } catch {}
             try { await svc.entities.OrderItem.update(it.id, { is_deleted: true }); } catch {}
           }
           // Trail — deixa rastro do carrinho anterior invalidado no re-checkout.
@@ -245,27 +251,30 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
-    // Atomically reserve quantities per lot with a $lte guard.
-    const reservedLots: string[] = [];
-    for (const lotId of Object.keys(demandByLot)) {
-      const lot = lotById[lotId];
-      const qty = demandByLot[lotId];
-      // Guard: quantity_reserved must stay <= (total - sold - qty) after increment.
-      const threshold = (lot.quantity_total || 0) - (lot.quantity_sold || 0) - qty;
-      const res = await svc.entities.SalesLot.updateMany(
-        { id: lotId, quantity_reserved: { $lte: threshold } },
-        { $inc: { quantity_reserved: qty } }
-      );
-      if (!res || !res.updated) {
-        // Race — rollback reservations already made and abort.
-        for (const rid of reservedLots) {
-          const rq = demandByLot[rid];
-          await svc.entities.SalesLot.updateMany({ id: rid }, { $inc: { quantity_reserved: -rq } });
-        }
-        await releaseCheckoutLock(svc, buyerPersonId, eventId);
-        return Response.json({ error: `Lote "${lot.name}" esgotou enquanto você finalizava. Tente novamente.` }, { status: 409 });
+    // ===== F4-01 (AUD-01) — reserva IDENTIFICÁVEL e compensável =====
+    // Cada lote reservado grava a quantidade E o token da tentativa na MESMA
+    // escrita atômica (updateMany com $lte + $inc + $addToSet), com um registro
+    // durável (StockReservation) criado ANTES da escrita. Qualquer falha aqui
+    // devolve, por token, o que já foi reservado nesta tentativa — nada fica
+    // preso e nenhuma unidade de outro checkout é tocada.
+    const reservation = await reserveStockForCheckout(svc, {
+      checkoutToken,
+      eventId,
+      userId: user.id,
+      demandByLot,
+      lotById,
+    });
+    if (!reservation.ok) {
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
+      if (reservation.reason === "lot_unavailable") {
+        return Response.json({
+          error: `Lote "${lotById[reservation.failedLot]?.name || reservation.failedLot}" esgotou enquanto você finalizava. Tente novamente.`,
+        }, { status: 409 });
       }
-      reservedLots.push(lotId);
+      console.error('[createPaymentIntent] reserva de estoque não identificada:', reservation.reason);
+      return Response.json({
+        error: 'Não foi possível reservar o estoque deste checkout. Nenhuma cobrança foi criada — tente novamente em instantes.',
+      }, { status: 503 });
     }
 
     // Build cart lines for total calc.
@@ -300,10 +309,8 @@ export default async function(req: Request): Promise<Response> {
     }
     const totals = calculateCart(lines, coupon, now);
     if (couponCode && !totals.coupon_valid) {
-      // release reservations
-      for (const lotId of reservedLots) {
-        await svc.entities.SalesLot.updateMany({ id: lotId }, { $inc: { quantity_reserved: -demandByLot[lotId] } });
-      }
+      // F4-01 — devolve as reservas desta tentativa POR TOKEN (idempotente).
+      await releaseCheckoutReservations(svc, checkoutToken, "coupon_invalid");
       await releaseCheckoutLock(svc, buyerPersonId, eventId);
       return Response.json({ error: totals.coupon_message || 'Cupom inválido.' }, { status: 400 });
     }
@@ -318,9 +325,8 @@ export default async function(req: Request): Promise<Response> {
     if (coupon && Number(coupon.max_uses) > 0) {
       const reserved = await reserveCouponUse(svc, coupon);
       if (!reserved) {
-        for (const lotId of reservedLots) {
-          try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
-        }
+        // F4-01 — devolve as reservas desta tentativa POR TOKEN (idempotente).
+        await releaseCheckoutReservations(svc, checkoutToken, "coupon_exhausted");
         await releaseCheckoutLock(svc, buyerPersonId, eventId);
         return Response.json({ error: 'Cupom esgotado — o limite de utilizações foi atingido enquanto você finalizava a compra.' }, { status: 409 });
       }
@@ -340,6 +346,9 @@ export default async function(req: Request): Promise<Response> {
       total: totals.total,
       coupon_id: coupon?.id || '',
       coupon_code: coupon?.code || '',
+      // F4-01 — token da tentativa no pedido: liga pedido ↔ reservas e permite
+      // à reconciliação encontrar reservas de uma tentativa que morreu antes.
+      checkout_token: checkoutToken,
       // FIN-002 — marker da reserva atômica feita no checkout (o fulfillment
       // NÃO conta de novo: fulfills marcam o uso apenas para pedidos legados
       // criados antes da reserva em checkout).
@@ -367,9 +376,9 @@ export default async function(req: Request): Promise<Response> {
         pendingNow.sort(deterministicCompare);
         const survivor = pendingNow[0];
         if (survivor.id !== order.id) {
-          for (const lotId of Object.keys(demandByLot)) {
-            try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
-          }
+          // F4-01 — o perdedor devolve SUAS reservas por token (nunca as do
+          // checkout vencedor).
+          await releaseCheckoutReservations(svc, checkoutToken, "concurrent_checkout");
           await releaseCouponUse(svc, order);
           await svc.entities.Order.updateMany(
             { id: order.id, status: 'pending' },
@@ -385,6 +394,11 @@ export default async function(req: Request): Promise<Response> {
     // o recheckout sabe a qual pedido o lock pertence e o TTL acompanha a
     // janela renovada do pedido.
     await attachCheckoutLock(svc, buyerPersonId, eventId, order.id);
+
+    // F4-01 — associa as reservas desta tentativa ao pedido (reuso ou novo):
+    // a reconciliação passa a encontrar a reserva pelo pedido e consegue
+    // distinguir reserva órfã (sem pedido) de reserva de compra em andamento.
+    await attachReservationsToOrder(svc, checkoutToken, order.id);
 
     // Create OrderItems.
     const orderItems = [];
@@ -440,9 +454,9 @@ export default async function(req: Request): Promise<Response> {
         details: JSON.stringify(checkoutDetails),
       });
     } catch (auditErr: any) {
-      for (const lotId of reservedLots) {
-        try { await svc.entities.SalesLot.updateMany({ id: lotId, quantity_reserved: { $gte: 1 } }, { $inc: { quantity_reserved: -demandByLot[lotId] } }); } catch {}
-      }
+      // F4-01 — sem trilha não há cobrança: devolve as reservas desta tentativa
+      // por token antes de encerrar o pedido.
+      await releaseCheckoutReservations(svc, checkoutToken, "audit_unavailable");
       await releaseCouponUse(svc, order);
       try { await svc.entities.Order.update(order.id, { status: "cancelled", error_reason: "Trilha de auditoria indisponível." }); } catch {}
       await releaseCheckoutLock(svc, buyerPersonId, eventId);
@@ -566,10 +580,8 @@ export default async function(req: Request): Promise<Response> {
       }
       if (!intent) throw new Error('Stripe devolveu um PaymentIntent inválido após as retentativas.');
     } catch (err: any) {
-      // Rollback: release reservations + coupon use + cancel order.
-      for (const lotId of reservedLots) {
-        await svc.entities.SalesLot.updateMany({ id: lotId }, { $inc: { quantity_reserved: -demandByLot[lotId] } });
-      }
+      // Rollback: release reservations (por token) + coupon use + cancel order.
+      await releaseCheckoutReservations(svc, checkoutToken, "provider_error");
       await releaseCouponUse(svc, order);
       await svc.entities.Order.update(order.id, { status: 'cancelled', error_reason: err?.message });
       console.error('[createPaymentIntent] Stripe error:', err?.message || err);

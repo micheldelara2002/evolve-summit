@@ -18,6 +18,7 @@ import { retrieveChargeWithBalance } from "./stripeClient.ts";
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { deterministicCompare } from "./deterministicSurvivor.ts";
 import { applyConfirmedRefundCents } from "./refundLedger.ts";
+import { releaseReservationsForOrderItem, consumeOrderReservations } from "./stockReservation.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
@@ -274,6 +275,14 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       }
     }
 
+    // F4-01 (AUD-01) — a venda está confirmada: as reservas identificadas do
+    // pedido passam a 'consumed' (estado terminal) e os tokens saem do lote.
+    // Nenhuma reconciliação pode devolver esse estoque depois. Best-effort: se
+    // falhar, a reconciliação encontra o pagamento confirmado e consolida.
+    try { await consumeOrderReservations(svc, order.id); } catch (err: any) {
+      console.error("[fulfillOrder] consumo das reservas falhou:", err?.message || err);
+    }
+
     // Mark order fulfilled.
     await svc.entities.Order.update(order.id, { status: "paid", fulfillment_status: "fulfilled" });
     await svc.entities.Payment.update(payment.id, { status: "succeeded", fulfillment_status: "fulfilled", succeeded_at: new Date().toISOString() });
@@ -327,9 +336,18 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
 }
 
 // Release reserved lot quantities (on payment failure/abandon/expire).
+//
+// F4-01 (AUD-01) — LIBERAÇÃO POR TOKEN: quando o item tem reserva identificada
+// (StockReservation com token), a devolução é o CAS por token do módulo
+// stockReservation — devolve exatamente a quantidade daquele checkout, nunca
+// duas vezes e nunca a reserva de outro. Só o caminho LEGADO (pedidos criados
+// antes da reserva identificada, sem registro) usa o decremento guardado por
+// item, preservando o comportamento anterior sem enfraquecer nada.
 export async function releaseReservations(svc: any, orderItems: any[]): Promise<void> {
   for (const item of orderItems) {
     try {
+      const handledByToken = await releaseReservationsForOrderItem(svc, item, "order_released");
+      if (handledByToken) continue;
       await svc.entities.SalesLot.updateMany(
         { id: item.lot_id, quantity_reserved: { $gte: 1 } },
         { $inc: { quantity_reserved: -1 } }

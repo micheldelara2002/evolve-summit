@@ -48,6 +48,13 @@
       "default": 0,
       "description": "Quantidade efetivamente vendida (paga)"
     },
+    "reservation_tokens": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "F4-01 (AUD-01) \u2014 Tokens das reservas VIVAS deste lote (um por tentativa de checkout). Gravados NA MESMA escrita at\u00f4mica que incrementa quantity_reserved ($inc + $addToSet), ent\u00e3o o token \u00e9 a prova de que aquela quantidade pertence \u00e0quela tentativa. A libera\u00e7\u00e3o \u00e9 um CAS por token ($inc \u2212qty + $pull token): exatamente um decremento por token, repetir \u00e9 no-op e nenhum checkout libera a reserva de outro. O token sai do array quando a reserva \u00e9 liberada ou quando o estoque vira vendido (fulfillment). Lotes legados n\u00e3o t\u00eam o campo (a libera\u00e7\u00e3o legada por item continua valendo para eles)."
+    },
     "stock_returned_ticket_ids": {
       "type": "array",
       "items": {

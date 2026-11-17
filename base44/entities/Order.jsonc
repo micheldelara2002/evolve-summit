@@ -62,6 +62,10 @@
       "default": false,
       "description": "P2 \u2014 Marker at\u00f4mico: o uso do cupom deste pedido j\u00e1 foi contabilizado no Coupon.uses_count (no fulfillment do pagamento confirmado \u2014 nunca na cria\u00e7\u00e3o do pedido). Retentativas de fulfillment n\u00e3o contam duas vezes; o estorno integral reseta o marker e devolve o uso."
     },
+    "checkout_token": {
+      "type": "string",
+      "description": "F4-01 (AUD-01) \u2014 Token da tentativa de checkout que criou/reutilizou este pedido. Liga o pedido \u00e0s reservas de estoque (StockReservation.checkout_token) e permite \u00e0 reconcilia\u00e7\u00e3o encontrar reservas \u00f3rf\u00e3s de uma tentativa que n\u00e3o chegou a criar pedido. Re-checkout gera NOVO token; as reservas da tentativa anterior s\u00e3o liberadas por token."
+    },
     "currency": {
       "type": "string",
       "default": "BRL"
