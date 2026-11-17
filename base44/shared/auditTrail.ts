@@ -69,8 +69,45 @@ export function auditHash(value: unknown): string {
 
 async function findAuditByKey(svc: any, key: string): Promise<any | null> {
   const rows = await svc.entities.AuditLog.filter({ audit_key: key });
-  if (!rows || rows.length === 0) return null;
+  // F3-15 — resposta que não é LISTA (página/objeto inesperado) não é ausência:
+  // tratá-la como "não encontrado" faria a trilha obrigatória gravar um segundo
+  // registro sobre um já existente. Vira indisponibilidade (fail-closed).
+  if (!Array.isArray(rows)) {
+    throw new Error("Leitura de trilha retornou resposta não confiável.");
+  }
+  if (rows.length === 0) return null;
   return [...rows].sort(deterministicCompare)[0];
+}
+
+// F3-15 (2026-11-17) — LEITURA TRIPARTITE da trilha por chave.
+//
+// Quem promete idempotência não pode confundir "não existe" com "não consegui
+// ler". Este helper separa, sem ambiguidade:
+//   'found'       → leitura concluída e o registro existe  → NÃO gravar de novo;
+//   'absent'      → leitura concluída e o registro não existe → gravar é seguro;
+//   'unavailable' → timeout, erro de permissão ou resposta inválida → NADA pode
+//                   ser gravado, porque não se sabe se a trilha já existe.
+// Nunca lança: a ausência de prova é devolvida como estado explícito.
+export async function readAuditByKey(
+  svc: any,
+  key: string,
+): Promise<{ state: "found" | "absent" | "unavailable"; row?: any; error?: string }> {
+  const auditKey = String(key || "");
+  if (!auditKey) return { state: "unavailable", error: "Chave de trilha ausente." };
+  try {
+    const rows = await svc.entities.AuditLog.filter({ audit_key: auditKey });
+    if (!Array.isArray(rows)) {
+      return { state: "unavailable", error: "Leitura de trilha retornou resposta não confiável." };
+    }
+    if (rows.length === 0) return { state: "absent" };
+    const survivor = [...rows].sort(deterministicCompare)[0];
+    if (!survivor?.id) {
+      return { state: "unavailable", error: "Trilha encontrada sem identificador." };
+    }
+    return { state: "found", row: survivor };
+  } catch (err: any) {
+    return { state: "unavailable", error: err?.message || String(err) };
+  }
 }
 
 // Grava e CONFIRMA a trilha obrigatória. Lança AuditUnavailableError quando

@@ -369,3 +369,183 @@ Nenhuma alteração de RLS existente, autenticação, dependências, AwardCatego
 | Validação em ambiente real | P2 | **P2 — pendente** (homologação) |
 
 **P1 = 0 é declarado apenas para os dois defeitos apontados na revisão**, e condicionado à revisão independente. A Fase 3 permanece aberta até essa revisão e até a homologação dos critérios 5, 7 e 8.
+
+---
+
+## L. Rodada de fechamento F3-15 — evidência, idempotência e titularidade (2026-11-17)
+
+Fecha as três lacunas apontadas pela revisão independente do HEAD `8a00fe6`. Não houve nova
+auditoria ampla nem refatoração de módulos fora dos caminhos de acesso.
+
+### L.1 Causa raiz dos três problemas
+
+**P1-a — Evidência presa em `started`.** A ordem era: (1) evidência `started`; (2) mutação do
+`Participant`; (3) `markEvidence('applied')`; (4) `AuditLog`. `markEvidence` engolia a exceção.
+Com a mutação efetivada e a atualização da evidência falhando, o papel mudava e a evidência
+permanecia `started` — estado que `recoverRoleAudit` recusava. Resultado: papel alterado sem
+caminho de trilha. A causa profunda era **não existir prova durável de que a escrita aconteceu**:
+o estado do registro era lido como se fosse a própria prova.
+
+**P1-b — Leitura do `AuditLog` não era fail-closed.** Em `recoverRoleAudit` a consulta da trilha
+estava em `try/catch` com `catch` vazio e o fluxo seguia para a escrita. Timeout, erro de
+permissão ou resposta inválida eram tratados como "registro não encontrado" — a operação que
+promete idempotência podia duplicar a trilha. `findAuditByKey` (usado por `writeMandatoryAudit`)
+também assumia lista: uma resposta em formato de página retornava "ausente".
+
+**P1-c — Titularidade do reviewer vinha do corpo.** No ramo de reativação, `targetEmail` era
+`membership.user_email || email`, e `email` podia ser `body.user_email`. Não havia confirmação de
+que o `user_id` do vínculo pertencesse à `person_id` do vínculo, nem validação de `person_id`
+divergente. O corpo podia substituir a identidade.
+
+### L.2 Decisões de implementação
+
+1. **Token de ocorrência como prova de mutação** (`Participant.last_role_change_occurrence`).
+   O token é gerado no servidor e gravado **na mesma escrita** que altera `role_in_event`, seguido
+   de confirmação por leitura. `reconcileRoleEvidence` passa a classificar a ocorrência:
+   - token da própria ocorrência + papel == `new_value` → **mutação aplicada** (recuperável, inclusive `started`);
+   - sem token → `nao_aplicada` (nada prova a escrita);
+   - token de ocorrência **posterior** → `superada_por_ocorrencia_posterior`;
+   - token da ocorrência com papel divergente → `estado_divergente`;
+   - evidência já marcada como aplicada → exige papel correspondente.
+   Uma segunda alteração legítima sobrescreve o token: a ocorrência anterior deixa de ser
+   inferível e a recuperação é **recusada**, nunca recebendo `old/new` por suposição.
+2. **Seleção da ocorrência pelo estado**, não por horário: com token, a evidência selecionada é a
+   que o próprio registro aponta. `evidence_id` só seleciona — se não pertencer ao participante
+   do evento, é recusado.
+3. **Leitura tripartite da trilha** (`readAuditByKey` em `shared/auditTrail.ts`):
+   `found` / `absent` / `unavailable`. `recoverRoleAudit` grava **somente** com `absent`
+   confirmado; `unavailable` responde 503 sem qualquer escrita (nem pendência).
+   `findAuditByKey` passou a rejeitar resposta não-lista, então `writeMandatoryAudit` também fica
+   fail-closed (indisponibilidade, nunca ausência).
+4. **Titularidade derivada só do servidor** (`resolveMembershipHolder`): `person_id` do vínculo →
+   `Person` → conta confirmada. Com `user_id`, a conta precisa pertencer à pessoa (e-mail da conta
+   igual ao `contact_email` da pessoa ou ao snapshot do vínculo). Sem `user_id`, a conta é
+   resolvida pelo e-mail **persistido** da pessoa; sem identidade suficiente, a reativação é
+   recusada (409) e exige novo fluxo de concessão/convite. `body.person_id` divergente → 409;
+   `body.user_email` é ignorado. O `person_id` do corpo deixou de ser obrigatório **apenas** na
+   reativação (a concessão continua exigindo pessoa).
+5. **No-op continua sem trilha**: repetir o papel atual não gera evidência nem registro (HTTP-23).
+
+### L.3 Arquivos alterados
+
+| Arquivo | Mudança |
+|---|---|
+| `base44/entities/Participant.jsonc` | campo `last_role_change_occurrence` (token de prova; aditivo, sem alteração de RLS) |
+| `base44/functions/manageParticipant/entry.ts` | token na mesma escrita + confirmação por leitura; reconciliação de `started`; seleção por token; leitura fail-closed; `resolveMembershipHolder`; validação de `person_id` do corpo |
+| `base44/shared/auditTrail.ts` | `readAuditByKey` (found/absent/unavailable); `findAuditByKey` rejeita resposta não-lista |
+| `base44/shared/accessAudit.ts` | comentário de compatibilidade com a idempotência fail-closed (sem mudança de comportamento) |
+| `tests/unit/fase3-http-audit.test.mjs` | banco falso com novas injeções de falha; HTTP-38..47 e SR-7..13; HTTP-33 e HTTP-35 reespecificados |
+| `docs/FASE-3-RELATORIO-CONSOLIDADO-FINAL.md` | esta seção |
+
+Caminhos revisados sem alteração de contrato: `manageEventRole`, `shared/eventInvites.ts`,
+`manageSubmission`, `associateEventPartner` — todos já auditam por `recordAccessChange`/
+`auditRoleChange` com chave determinística, pendência verificada e `audit_state` exposto; a
+leitura prévia passou a ser fail-closed por `findAuditByKey`, sem mudança nos seus fluxos.
+
+### L.4 Comportamento em cada cenário de falha
+
+| Cenário | Comportamento |
+|---|---|
+| Evidência criada, mutação falha | 500 (erro da escrita), papel inalterado, evidência `started`, **nenhuma trilha**; recuperação recusa (`nao_aplicada`) |
+| Mutação aplicada, atualização da evidência falha | token persistido; recuperação classifica `mutacao_aplicada_evidencia_nao_atualizada` e grava a trilha com o ator original |
+| Evidência `started` sem mutação | 409 `nao_aplicada`; nada gravado |
+| Evidência `started` com mutação comprovada | 200, trilha gravada com `old/new` da evidência |
+| Segunda alteração legítima antes da recuperação | 409 `superada_por_ocorrencia_posterior` para a antiga; a nova é a vigente; nunca `old/new` inventados |
+| Estado contraditório (token + papel divergente) | 409 `estado_divergente`; fail-closed |
+| Evidência de outro evento/participante | 409; nenhuma trilha |
+| Duas reconciliações simultâneas | uma única trilha (chave determinística + dedupe pós-leitura) |
+| Retry após sucesso | `already_recorded`, nenhuma duplicidade |
+| Autor original desconhecido | autoria `system` / "Autor original desconhecido"; recuperador registrado como tal |
+| Leitura da trilha indisponível | 503 `unavailable`, **sem gravação e sem pendência**; retry usa a mesma chave |
+| Resposta de leitura inconclusiva (página/objeto) | 503; nunca "não encontrado" |
+| Falha principal + pendência ok | `pending` (pendência relida por leitura), evidência `audit_pending` |
+| Falha principal + pendência falha | `unavailable` (503 quando aplicável); nada declarado auditado |
+| Leitura ok com trilha existente | apenas confirma; nenhum registro adicional |
+| Reativação legítima | 200, vínculo ativo com `user_id`/`user_email` da pessoa |
+| Titularidade divergente / usuário de outra pessoa | 409 `identity_mismatch`; vínculo intocado; nenhuma trilha |
+| Identidade incompleta (sem pessoa) | 409 `membership_without_person` |
+| Sem conta confirmada | 409 `account_not_linked` |
+| `person_id` do corpo divergente | 409 `person_id_mismatch` |
+| E-mail do corpo diferente do persistido | ignorado; vale a identidade persistida |
+| Vínculo de outro evento | 404 antes de qualquer efeito |
+| Repetição de operação já ativa | `already_active`, mesma chave, sem duplicidade |
+
+### L.5 Testes executados e resultados
+
+Suítes (chaves npm): `test:unit:certhttp` **50** (33 anteriores + 17 novos), `test:unit:refund`
+115, `test:unit:security` 9, `test:unit:migration` 25, `test:unit:authz` 13, `test:unit:fase3` 35,
+`test:unit:csv` 12, `test:unit:access` 7 → **266 testes únicos, 0 falhas**.
+A suíte financeira foi repetida porque `writeMandatoryAudit` é compartilhado por check-out,
+estorno e certificados; a alteração em `findAuditByKey` toca essas garantias.
+
+Novos cenários HTTP (funções reais + banco falso + injeção de falha):
+
+| Teste | Cenário | ✅ |
+|---|---|---|
+| HTTP-38 | evidência criada, mutação falha → sem trilha, recuperação recusa | ✅ |
+| HTTP-39 | mutação aplicada com evidência presa em `started` → reconciliação segura, ator original, retry idempotente | ✅ |
+| HTTP-40 | `started` só recupera com o token da própria ocorrência | ✅ |
+| HTTP-41 | segunda alteração legítima antes da recuperação → sem `old/new` por suposição | ✅ |
+| HTTP-42 | evidência de outro evento → recusada | ✅ |
+| HTTP-43 | duas reconciliações simultâneas de `started` → uma trilha | ✅ |
+| HTTP-44 | leitura indisponível → 503 sem gravação; retry na mesma chave | ✅ |
+| HTTP-45 | resposta inconclusiva → 503 (nunca ausência) | ✅ |
+| HTTP-46 | falha principal + pendência → `pending`; retry grava uma única trilha | ✅ |
+| HTTP-47 | leitura ok com trilha existente → apenas confirma | ✅ |
+| SR-7 | vínculo sem `user_id` → conta resolvida pela Person persistida | ✅ |
+| SR-8 | vínculo sem `user_email` → titularidade e snapshot regravados da Person | ✅ |
+| SR-9 | `person_id` divergente → 409, nada muda | ✅ |
+| SR-10 | `user_id` de outra pessoa → 409, vínculo intocado | ✅ |
+| SR-11 | vínculo sem pessoa → 409 | ✅ |
+| SR-12 | e-mail/ator do corpo ignorados | ✅ |
+| SR-13 | pessoa sem conta → 409 | ✅ |
+
+As asserções verificam estado final de `Participant`/`EventMembership`/`AccessChangeEvidence`,
+a trilha persistida (`audit_key`, `action`, `entity_type`, `entity_id`, `event_id`, `user_id`),
+o `old/new` gravado, a contagem de pendências e a **ausência** de registros indevidos.
+
+HTTP-33 e HTTP-35 foram reespecificados: antes dependiam de inferência por horário e de recusa
+incondicional de `started`; agora testam, respectivamente, estado contraditório por token e
+ausência de prova de mutação.
+
+### L.6 Evidências de idempotência
+
+Chave determinística `role_change|<occurrence>` (ocorrência gerada no servidor) mantida em
+todos os retries; recuperação simultânea testada (HTTP-43); retry após sucesso sem novo registro
+(HTTP-39/47); pendência com chave própria `|pending` e recheck por leitura; nenhuma gravação sem
+`absent` confirmado (HTTP-44/45).
+
+### L.7 Evidências de titularidade e autoria
+
+Titularidade derivada de `EventMembership.person_id → Person → conta` (SR-7/8), recusa em
+divergência (SR-9/10) e em identidade insuficiente (SR-11/13); corpo ignorado (SR-12). Autoria
+sempre do ator original da evidência, com `recovered_by_user_id` separado (HTTP-39 e HTTP-34).
+
+### L.8 Limitações e riscos residuais
+
+1. **Participantes com alteração de papel anterior à F3-15 não têm token**: ocorrências antigas
+   em `started` continuam não recuperáveis por inferência — exigem conferência manual. Evidências
+   `applied`/`audit_*` anteriores seguem o critério anterior (papel == `new_value`).
+2. **Alterações de papel fora de `manageParticipant`** (ex.: reversão de palestrante na curadoria)
+   não gravam o token; se ocorrerem entre a escrita e a reconciliação, a classificação é
+   `superada`/`estado_divergente`, nunca trilha inventada.
+3. **Ambiente real não exercitado nesta rodada**: E2E autenticado por perfil, concorrência em banco
+   real e carga continuam em P2 (inalterado). Nada foi executado contra dados de produção.
+4. **Retenção** de `AccessChangeEvidence` e `AuditLog` segue indefinida (decisão jurídica D-02).
+
+### L.9 Classificação de risco revisada
+
+| Item | Antes | Depois |
+|---|---|---|
+| Evidência presa em `started` sem caminho de recuperação | P1 | **Encerrado** (token na mesma escrita + reconciliação; HTTP-38/39/40) |
+| Leitura do `AuditLog` tratada como ausência | P1 | **Encerrado** (`found`/`absent`/`unavailable`; HTTP-44/45) |
+| Titularidade do reviewer derivada do corpo | P1 | **Encerrado** (`resolveMembershipHolder`; SR-7..13) |
+| Inferência de `old/new` por horário | P1 | **Encerrado** (seleção por token + `superada`; HTTP-41) |
+| Ocorrências anteriores à F3-15 sem token | — | **Risco aceito e documentado** (L.8.1) |
+| Alterações de papel fora do módulo Pessoas sem token | — | **P3 — documentado** (L.8.2; falha fechada) |
+| Validação em ambiente real / carga | P2 | **P2 — pendente** (homologação) |
+
+**P1 = 0 nesta rodada significa**: nenhum dos três defeitos apontados permanece reproduzível nos
+testes adversariais e no código revisado. Não há declaração de ausência geral de riscos; os itens
+P2/P3 acima continuam abertos e a Fase 3 permanece condicionada à revisão independente e à
+homologação em ambiente real.

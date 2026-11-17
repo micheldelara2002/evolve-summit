@@ -14,7 +14,7 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
 import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
-import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified } from "../../shared/auditTrail.ts";
+import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified, readAuditByKey } from "../../shared/auditTrail.ts";
 import { recordAccessChange } from "../../shared/accessAudit.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 // (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
@@ -115,6 +115,115 @@ function evidenceStateFor(auditState) {
   if (auditState === 'recorded') return 'audit_recorded';
   if (auditState === 'pending') return 'audit_pending';
   return 'audit_unavailable';
+}
+
+// F3-15 (2026-11-17) — PROVA DE MUTAÇÃO no próprio participante.
+//
+// A evidência sozinha não prova que a escrita aconteceu: 'started' é gravado
+// ANTES da mutação e a atualização para 'applied' é reforço de observabilidade.
+// Quando essa atualização falha, o papel mudou e a recuperação recusava a
+// ocorrência — um estado sem saída. O TOKEN DE OCORRÊNCIA fecha a lacuna: ele é
+// gravado NA MESMA escrita que altera o papel, então o estado persistido passa a
+// provar QUAL operação aplicou o papel atual.
+// Consequência necessária: se uma segunda alteração legítima vier depois, o
+// token passa a ser o da segunda e a primeira deixa de ser inferível — a
+// classificação devolve 'superada' em vez de atribuir old/new errados.
+const ROLE_TOKEN_FIELD = 'last_role_change_occurrence';
+
+// Reconciliação EVIDÊNCIA × ESTADO PERSISTIDO. NÃO considera 'started' como
+// prova de mutação: consulta o token gravado pela própria escrita.
+//   • token da ocorrência + papel == new_value → mutação aplicada (recuperável);
+//   • sem token                              → nada prova a escrita (recusa);
+//   • token de ocorrência posterior           → superada (não inferir);
+//   • token da ocorrência com papel divergente → estado contraditório (recusa);
+//   • evidência já marcada como aplicada       → papel precisa corresponder.
+function reconcileRoleEvidence(participant, evidence) {
+  const token = String(participant?.[ROLE_TOKEN_FIELD] || '');
+  const occurrence = String(evidence?.occurrence || '');
+  const persistedRole = String(participant?.role_in_event || '');
+  const expectedRole = String(evidence?.new_value || '');
+  const state = String(evidence?.state || '');
+
+  if (state === 'started') {
+    if (!token) return { applied: false, classification: 'nao_aplicada' };
+    if (token !== occurrence) return { applied: false, classification: 'superada_por_ocorrencia_posterior' };
+    if (persistedRole !== expectedRole) return { applied: false, classification: 'estado_divergente' };
+    return { applied: true, classification: 'mutacao_aplicada_evidencia_nao_atualizada' };
+  }
+  if (persistedRole !== expectedRole) return { applied: false, classification: 'estado_divergente' };
+  return { applied: true, classification: 'mutacao_aplicada' };
+}
+
+// F3-15 — TITULARIDADE do vínculo de avaliador. A identidade sai EXCLUSIVAMENTE
+// de registros do servidor: person_id do vínculo → Person → conta confirmada.
+// O corpo da requisição não participa (nem como fallback).
+async function resolveMembershipHolder(base44, membership) {
+  const svc = base44.asServiceRole;
+  const personId = String(membership?.person_id || '');
+  if (!personId) {
+    return {
+      ok: false,
+      reason: 'membership_without_person',
+      message: 'Este vínculo de avaliador não tem pessoa associada. Conceda o acesso novamente pelo fluxo de convite.',
+    };
+  }
+  const persons = await svc.entities.Person.filter({ id: personId });
+  const person = persons?.[0] || null;
+  if (!person) {
+    return {
+      ok: false,
+      reason: 'person_not_found',
+      message: 'A pessoa deste vínculo não está disponível. Conceda o acesso novamente pelo fluxo de convite.',
+    };
+  }
+  const personEmail = normalizeParticipantEmail(person.contact_email || '');
+  const snapshotEmail = normalizeParticipantEmail(membership.user_email || '');
+  const membershipUserId = String(membership.user_id || '');
+
+  if (membershipUserId) {
+    const users = await svc.entities.User.filter({ id: membershipUserId });
+    const account = users?.[0] || null;
+    if (!account || account.account_status === 'deleted') {
+      return {
+        ok: false,
+        reason: 'account_unavailable',
+        message: 'A conta vinculada a este avaliador não está disponível. Conceda o acesso novamente pelo fluxo de convite.',
+      };
+    }
+    const accountEmail = normalizeParticipantEmail(account.email || '');
+    // A conta vinculada precisa ser a da PESSOA do vínculo (ou o snapshot do
+    // próprio vínculo) — user_id apontando para outra pessoa é recusado.
+    const belongs = !!accountEmail && (accountEmail === personEmail || accountEmail === snapshotEmail);
+    if (!belongs) {
+      return {
+        ok: false,
+        reason: 'identity_mismatch',
+        message: 'A conta vinculada não pertence à pessoa deste vínculo. Conceda o acesso novamente pelo fluxo de convite.',
+      };
+    }
+    return { ok: true, email: accountEmail, user_id: membershipUserId };
+  }
+
+  // Sem user_id: resolve pela identidade PERSISTIDA da pessoa, nunca pelo corpo.
+  const source = personEmail || snapshotEmail;
+  if (!source) {
+    return {
+      ok: false,
+      reason: 'identity_missing',
+      message: 'O vínculo não tem identidade suficiente para determinar o titular. Conceda o acesso novamente pelo fluxo de convite.',
+    };
+  }
+  const account = await findAccountByEmail(svc, source);
+  const accountId = String(account?.id || '');
+  const accountEmail = normalizeParticipantEmail(account?.email || '');
+  if (!accountId || !accountEmail || accountEmail !== source) {
+    return {
+      ok: false,
+      reason: 'account_not_linked',
+      message: 'Não há conta confirmada para a pessoa deste vínculo. Conceda o acesso de avaliador pelo fluxo de convite.',
+    };
+  }
+  return { ok: true, email: accountEmail, user_id: accountId };
 }
 
 function pickFields(data) {
@@ -412,7 +521,36 @@ export default async function(req) {
         }
       }
 
-      const updated = await svc.entities.Participant.update(participantId, data);
+      // F3-15 — a escrita do papel carrega o TOKEN DA OCORRÊNCIA na MESMA
+      // atualização: é o que prova depois qual operação aplicou o papel atual.
+      const updated = await svc.entities.Participant.update(
+        participantId,
+        changesRole ? { ...data, [ROLE_TOKEN_FIELD]: occurrence } : data,
+      );
+
+      // Confirmação por LEITURA: resposta otimista do SDK não prova escrita.
+      if (changesRole) {
+        const persistedRows = await svc.entities.Participant.filter({ id: participantId, event_id: eventId });
+        const persisted = persistedRows?.[0] || null;
+        const proven = !!persisted
+          && String(persisted[ROLE_TOKEN_FIELD] || '') === occurrence
+          && String(persisted.role_in_event || '') === String(data.role_in_event || '');
+        if (!proven) {
+          console.error('[manageParticipant] mutação de papel não comprovada por leitura:', occurrence);
+          return Response.json({
+            error: 'Não foi possível confirmar a alteração de papel no estado persistido. A evidência foi preservada e a operação pode ser conciliada.',
+            audit_state: 'unavailable',
+            applied: false,
+            evidence_id: evidence?.id || '',
+            recovery: {
+              op: 'recoverRoleAudit',
+              participant_id: participantId,
+              event_id: eventId,
+              evidence_id: evidence?.id || '',
+            },
+          }, { status: 503 });
+        }
+      }
 
       // F3-08/F3-10 — papel alterado é auditado aqui (operação crítica), com
       // trilha obrigatória. Sem trilha confirmada e sem pendência persistida a
@@ -473,9 +611,11 @@ export default async function(req) {
     // atual do participante, sozinho, não prova alteração nem autoria.
     // Regras:
     //   • sem evidência → nenhuma trilha é criada (409), nada é inventado;
-    //   • o papel persistido precisa corresponder ao papel novo da evidência;
-    //   • a evidência precisa indicar operação APLICADA ('started' = mutação não
-    //     concluída → recusa);
+    //   • 'started' NÃO é prova de mutação: a reconciliação exige o token de
+    //     ocorrência gravado pela própria escrita (F3-15);
+    //   • ocorrência posterior supera a anterior: nada é inferido do estado atual;
+    //   • a leitura do AuditLog é FAIL-CLOSED: sem saber se a trilha existe, nada
+    //     é gravado (F3-15);
     //   • ocorrência e chave vêm da evidência, então retry e recuperações
     //     simultâneas convergem para um único registro;
     //   • autoria = ator ORIGINAL da evidência; desconhecida → registrada como
@@ -515,40 +655,72 @@ export default async function(req) {
         }, { status: 409 });
       }
 
-      // Ocorrência mais recente ainda sem trilha; se só houver auditadas, a mais recente.
+      // F3-15 — SELEÇÃO da ocorrência. Com token persistido, a ocorrência é a que
+      // o PRÓPRIO estado aponta; nunca "a mais recente" por horário.
+      const tokenMarker = String(current[ROLE_TOKEN_FIELD] || '');
       const sorted = [...evidences].sort((a, b) => String(b.created_date || '').localeCompare(String(a.created_date || '')));
-      const evidence = sorted.find((e) => String(e.state) !== 'audit_recorded') || sorted[0];
-
-      // Correspondência evidência × estado efetivamente persistido.
-      if (String(current.role_in_event || '') !== String(evidence.new_value || '')) {
-        return Response.json({
-          error: 'O papel atual deste participante não corresponde à evidência registrada. A trilha não foi reconstruída.',
-          recovered: false,
-          evidence_id: evidence.id,
-        }, { status: 409 });
+      let evidence = null;
+      if (requestedEvidenceId) {
+        evidence = evidences.find((e) => String(e.id) === requestedEvidenceId) || null;
+      } else if (tokenMarker) {
+        evidence = sorted.find((e) => String(e.occurrence || '') === tokenMarker) || null;
+      } else {
+        evidence = sorted.find((e) => String(e.state) !== 'audit_recorded') || sorted[0];
       }
-      // 'audit_recorded' entra aqui apenas para CONFIRMAR a trilha existente
-      // (idempotência); se o registro tiver desaparecido, é regravado com a
-      // mesma chave da evidência.
-      if (!['applied', 'audit_pending', 'audit_unavailable', 'audit_recorded'].includes(String(evidence.state))) {
+      if (!evidence) {
         return Response.json({
-          error: 'A evidência indica que a alteração de papel não foi concluída. Nada a reconstruir.',
+          error: 'Não há evidência correspondente ao estado atual deste participante. A trilha não foi reconstruída: exige conferência manual.',
           recovered: false,
-          evidence_id: evidence.id,
+          audit_state: 'inconclusive',
+          reconciliation: 'evidencia_nao_corresponde_ao_estado',
         }, { status: 409 });
       }
 
-      // Trilha já existe para esta ocorrência → apenas confirma (idempotência).
-      try {
-        const existing = await svc.entities.AuditLog.filter({ audit_key: evidence.audit_key });
-        if (Array.isArray(existing) && existing.length > 0) {
-          await markEvidence(svc, evidence.id, { state: 'audit_recorded', audit_state: 'recorded' });
-          return Response.json({
-            ok: true, audit_state: 'recorded', recovered: false, already_recorded: true, evidence_id: evidence.id,
-          });
-        }
-      } catch {
-        // Leitura indisponível: segue para a escrita com a mesma chave (idempotente).
+      // RECONCILIAÇÃO evidência × estado persistido: 'started' só entra com prova
+      // de que a escrita aconteceu (token da própria ocorrência no participante).
+      const reconciliation = reconcileRoleEvidence(current, evidence);
+      if (!reconciliation.applied) {
+        const reasons = {
+          superada_por_ocorrencia_posterior:
+            'Esta evidência foi superada por uma ocorrência posterior. A trilha não é inferida a partir do estado atual.',
+          estado_divergente:
+            'O estado persistido diverge da evidência registrada. A trilha não foi reconstruída.',
+          nao_aplicada:
+            'A evidência não comprova que a alteração de papel foi concluída. Nada a reconstruir; exige conferência manual.',
+        };
+        return Response.json({
+          error: reasons[reconciliation.classification] || reasons.nao_aplicada,
+          recovered: false,
+          evidence_id: evidence.id,
+          reconciliation: reconciliation.classification,
+        }, { status: 409 });
+      }
+
+      // F3-15 — LEITURA FAIL-CLOSED da trilha. Leitura indisponível (timeout,
+      // permissão, resposta inválida) NÃO é ausência de registro: sem poder
+      // verificar, nada é gravado, e o retry mantém a mesma chave.
+      const auditKey = String(evidence.audit_key || buildAuditKey('role_change', evidence.occurrence));
+      const existingTrail = await readAuditByKey(svc, auditKey);
+      if (existingTrail.state === 'unavailable') {
+        return Response.json({
+          error: 'Não foi possível verificar a trilha existente (leitura indisponível). Nada foi gravado; repita a recuperação.',
+          recovered: false,
+          audit_state: 'unavailable',
+          evidence_id: evidence.id,
+          reconciliation: reconciliation.classification,
+        }, { status: 503 });
+      }
+      // Existência CONFIRMADA por leitura → apenas confirma (idempotência).
+      if (existingTrail.state === 'found') {
+        await markEvidence(svc, evidence.id, { state: 'audit_recorded', audit_state: 'recorded' });
+        return Response.json({
+          ok: true,
+          audit_state: 'recorded',
+          recovered: false,
+          already_recorded: true,
+          evidence_id: evidence.id,
+          reconciliation: reconciliation.classification,
+        });
       }
 
       // Autoria ORIGINAL — da evidência, nunca do operador da recuperação.
@@ -584,6 +756,7 @@ export default async function(req) {
           audit_state: 'unavailable',
           recovered: false,
           evidence_id: evidence.id,
+          reconciliation: reconciliation.classification,
         }, { status: 503 });
       }
 
@@ -594,6 +767,7 @@ export default async function(req) {
         already_recorded: false,
         evidence_id: evidence.id,
         original_actor_known: originalActorKnown,
+        reconciliation: reconciliation.classification,
       });
     }
 
@@ -652,19 +826,26 @@ export default async function(req) {
         }
       }
 
-      if (!personId) return Response.json({ error: 'person_id ausente.' }, { status: 400 });
+      // F3-15 — na REATIVAÇÃO o person_id do corpo é opcional (só confere
+      // titularidade); a concessão continua exigindo pessoa.
+      if (!personId && !membershipId) return Response.json({ error: 'person_id ausente.' }, { status: 400 });
 
-      let email = normalizeParticipantEmail(body.user_email || '');
-      if (!email) {
-        const persons = await base44.asServiceRole.entities.Person.filter({ id: personId });
-        email = normalizeParticipantEmail(persons?.[0]?.contact_email || '');
-      }
-      if (!email) {
-        const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: eventId, person_id: personId, is_deleted: false });
-        email = normalizeParticipantEmail(parts?.[0]?.email || '');
-      }
-      if (!email) {
-        return Response.json({ error: 'Informe o e-mail da pessoa para designá-la avaliadora.' }, { status: 400 });
+      // Resolução por e-mail pertence apenas à CONCESSÃO. A reativação usa a
+      // identidade persistida do vínculo e não aceita e-mail do corpo.
+      let email = '';
+      if (!membershipId) {
+        email = normalizeParticipantEmail(body.user_email || '');
+        if (!email) {
+          const persons = await base44.asServiceRole.entities.Person.filter({ id: personId });
+          email = normalizeParticipantEmail(persons?.[0]?.contact_email || '');
+        }
+        if (!email) {
+          const parts = await base44.asServiceRole.entities.Participant.filter({ event_id: eventId, person_id: personId, is_deleted: false });
+          email = normalizeParticipantEmail(parts?.[0]?.email || '');
+        }
+        if (!email) {
+          return Response.json({ error: 'Informe o e-mail da pessoa para designá-la avaliadora.' }, { status: 400 });
+        }
       }
 
       // Vínculo já existente (mesmo desativado): reativa em vez de duplicar.
@@ -687,11 +868,33 @@ export default async function(req) {
             error: 'Este vínculo de avaliador está em estado inconsistente. Conceda o acesso novamente pelo fluxo de convite.',
           }, { status: 409 });
         }
+        // O corpo NÃO substitui a identidade do vínculo: person_id divergente é
+        // recusado (não é o titular deste vínculo).
+        const bodyPersonId = String(body.person_id || '');
+        if (bodyPersonId && bodyPersonId !== String(membership.person_id || '')) {
+          return Response.json({
+            error: 'A pessoa informada não é a titular deste vínculo de avaliador.',
+            status: 'identity_mismatch',
+            reason: 'person_id_mismatch',
+          }, { status: 409 });
+        }
 
         const alreadyActive = membership.is_active === true && membership.is_deleted === false;
-        // O titular NUNCA vem do corpo: sai do próprio vínculo ou do e-mail.
-        const targetEmail = normalizeParticipantEmail(membership.user_email || email);
-        const userId = String(membership.user_id || '') || await resolveUserIdByEmail(base44, targetEmail);
+        // F3-15 — TITULARIDADE derivada EXCLUSIVAMENTE de registros do servidor.
+        // Antes: `membership.user_email || email`, e `email` podia vir do corpo.
+        // Agora: person_id do vínculo → Person → conta confirmada da pessoa;
+        // a conta vinculada precisa pertencer à pessoa. Sem identidade suficiente
+        // a reativação é recusada e um novo fluxo de convite é exigido.
+        const holder = await resolveMembershipHolder(base44, membership);
+        if (!holder.ok) {
+          return Response.json({
+            error: holder.message,
+            status: 'identity_unresolved',
+            reason: holder.reason,
+          }, { status: 409 });
+        }
+        const targetEmail = holder.email;
+        const userId = holder.user_id;
 
         let saved = membership;
         if (!alreadyActive) {

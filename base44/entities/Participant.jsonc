@@ -117,6 +117,10 @@
       "default": true,
       "description": "Elegibilidade para NOVAS audi\u00eancias/notifica\u00e7\u00f5es. true (default) = eleg\u00edvel. false = conta do usu\u00e1rio foi exclu\u00edda \u2014 o Participant permanece para hist\u00f3rico (pontos, ranking, m\u00e9tricas) mas N\u00c3O \u00e9 selecionado em novas campanhas. Resolvers de audi\u00eancia filtram com { is_eligible: { $ne: false } } para incluir registros legados sem o campo (undefined != false)."
     },
+    "last_role_change_occurrence": {
+      "type": "string",
+      "description": "F3-15 (2026-11-17) \u2014 TOKEN DA OCORR\u00caNCIA da \u00faltima altera\u00e7\u00e3o de papel aplicada, gravado NA MESMA escrita que altera role_in_event (manageParticipant). \u00c9 a prova dur\u00e1vel de que a muta\u00e7\u00e3o aconteceu: a evid\u00eancia AccessChangeEvidence nasce 'started' ANTES da escrita e pode falhar ao ser atualizada, ent\u00e3o o estado persistido precisa provar qual opera\u00e7\u00e3o aplicou o papel atual. Fun\u00e7\u00e3o exclusiva de reconcilia\u00e7\u00e3o da trilha de auditoria: n\u00e3o \u00e9 exibido na UI nem \u00e9 fonte de permiss\u00e3o. Uma segunda altera\u00e7\u00e3o leg\u00edtima sobrescreve o token e a ocorr\u00eancia anterior deixa de ser infer\u00edvel (recusa controlada), nunca recebendo old/new por suposi\u00e7\u00e3o."
+    },
     "lead_partner_ids": {
       "type": "array",
       "items": {

@@ -16,6 +16,13 @@
 //   • nada persistido                         → 'unavailable' (o chamador informa).
 // A identidade vem sempre do ator autenticado passado pelo backend; nunca do
 // corpo da requisição.
+//
+// F3-15 (2026-11-17) — compatibilidade com a idempotência FAIL-CLOSED: a trilha
+// principal só é gravada por `writeMandatoryAudit`, cuja checagem prévia trata
+// leitura indisponível/resposta inválida como indisponibilidade (nunca como
+// "não existe"). Por isso este módulo também nunca declara 'recorded' sem
+// confirmação: se a leitura falhou, a pendência é gravada e RELIDA, e o retorno
+// é 'pending' ou 'unavailable' — jamais 'recorded' por suposição.
 
 import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified } from "./auditTrail.ts";
 

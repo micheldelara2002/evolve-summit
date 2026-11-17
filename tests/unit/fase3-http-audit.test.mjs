@@ -32,7 +32,15 @@ function matches(row, query = {}) {
 function fixture() {
   const state = {
     seq: 0,
-    faults: { mainAudit: false, anyAudit: false, auditRead: false, evidenceWrite: false },
+    faults: {
+      mainAudit: false,
+      anyAudit: false,
+      auditRead: false,
+      auditReadShape: false,
+      evidenceWrite: false,
+      evidenceUpdate: false,
+      participantWrite: false,
+    },
     users: [{
       id: "user_1",
       full_name: "Gerente Teste",
@@ -65,6 +73,26 @@ function fixture() {
     }, {
       // Vínculo de avaliador de OUTRO evento.
       id: "mem_other", event_id: OTHER_EVENT, person_id: "person_2", role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-15 — vínculo sem user_id (conta resolvida pela Person persistida).
+      id: "mem_no_user", event_id: EVENT, person_id: "person_2", role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-15 — vínculo sem user_email (titularidade vem da Person).
+      id: "mem_no_email", event_id: EVENT, person_id: "person_2", user_id: "user_2", role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-15 — user_id aponta para conta de OUTRA pessoa.
+      id: "mem_wrong_user", event_id: EVENT, person_id: "person_2", user_id: "user_1", role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-15 — vínculo sem pessoa (identidade insuficiente).
+      id: "mem_no_person", event_id: EVENT, role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-15 — pessoa sem conta confirmada no app.
+      id: "mem_no_account", event_id: EVENT, person_id: "person_3", role: "reviewer",
       is_active: false, is_deleted: true,
     }],
     participants: [
@@ -99,6 +127,8 @@ function entity(name, rows, state) {
   return {
     filter: async (query = {}) => {
       if (name === "AuditLog" && state.faults.auditRead) throw new Error("leitura de auditoria indisponível");
+      // F3-15 — resposta inconclusiva (página em vez de lista) não é ausência.
+      if (name === "AuditLog" && state.faults.auditReadShape) return { items: [], has_more: false };
       return rows.filter((row) => matches(row, query)).map((row) => ({ ...row }));
     },
     get: async (id) => {
@@ -108,6 +138,9 @@ function entity(name, rows, state) {
     create: async (data = {}) => {
       if (name === "AccessChangeEvidence" && state.faults.evidenceWrite) {
         throw new Error("evidência indisponível");
+      }
+      if (name === "Participant" && state.faults.participantWrite) {
+        throw new Error("escrita de participante indisponível");
       }
       if (name === "AuditLog") {
         const isPending = String(data.audit_key || "").endsWith("|pending");
@@ -119,6 +152,12 @@ function entity(name, rows, state) {
       return { ...row };
     },
     update: async (id, data = {}) => {
+      if (name === "AccessChangeEvidence" && state.faults.evidenceUpdate) {
+        throw new Error("evidência indisponível");
+      }
+      if (name === "Participant" && state.faults.participantWrite) {
+        throw new Error("escrita de participante indisponível");
+      }
       const index = rows.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("registro não encontrado");
       rows[index] = { ...rows[index], ...data, updated_date: nextStamp(state) };
@@ -401,7 +440,7 @@ function recoverBody(overrides = {}) {
 }
 
 function setReviewerBody(overrides = {}) {
-  return { op: "setReviewer", event_id: EVENT, enable: true, person_id: "person_1", ...overrides };
+  return { op: "setReviewer", event_id: EVENT, enable: true, person_id: "person_2", ...overrides };
 }
 
 function evidenceOf(state, participantId = "part_1") {
@@ -559,23 +598,25 @@ test("HTTP-32 — participante sem alteração de papel: recuperação NEGADA, n
   assert.equal(f.state.evidence.length, 0);
 });
 
-test("HTTP-33 — estado persistido incompatível com a evidência é recusado", async () => {
+test("HTTP-33 — estado contraditório (token da ocorrência com papel divergente) é recusado", async () => {
   const f = fixture();
-  f.state.faults.anyAudit = true;
-  await invoke(f.state, manageParticipant, roleBody());
-  f.state.faults.anyAudit = false;
-
-  // Papel alterado por fora depois da operação (não corresponde à evidência).
-  await invoke(f.state, manageParticipant, {
-    op: "update", event_id: EVENT, participant_id: "part_1", data: { role_in_event: "attendee" },
+  // O próprio estado afirma qual ocorrência aplicou o papel, mas o papel
+  // persistido não corresponde ao new_value: estado impossível → fail-closed.
+  f.state.participants[0].last_role_change_occurrence = "occ_div";
+  seedEvidence(f.state, {
+    occurrence: "occ_div",
+    audit_key: "role_change|occ_div",
+    state: "started",
+    old_value: "attendee",
+    new_value: "speaker",
   });
-  f.state.audits.length = 0;
 
   const res = await invoke(f.state, manageParticipant, recoverBody());
 
   assert.equal(res.status, 409);
   assert.equal(res.data.recovered, false);
-  assert.equal(f.state.audits.length, 0);
+  assert.equal(res.data.reconciliation, "estado_divergente");
+  assert.equal(f.state.audits.length, 0, "nenhuma trilha inferida de estado contraditório");
 });
 
 test("HTTP-34 — autor original desconhecido: sistema, nunca o operador da recuperação", async () => {
@@ -603,7 +644,8 @@ test("HTTP-35 — evidência de operação NÃO aplicada não gera trilha", asyn
   const res = await invoke(f.state, manageParticipant, recoverBody());
 
   assert.equal(res.status, 409);
-  assert.match(res.data.error, /não foi concluída/i);
+  assert.equal(res.data.reconciliation, "nao_aplicada");
+  assert.match(res.data.error, /não comprova/i);
   assert.equal(f.state.audits.length, 0);
 });
 
@@ -742,4 +784,348 @@ test("SR-6 — concessão e revogação de avaliador devolvem trilha consistente
   assert.equal(granted.status, 200);
   assert.equal(granted.data.audit_state, "recorded");
   assert.equal(accessAudits(f.state, "role_grant|").length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// F3-15 — EVIDÊNCIA 'started': reconciliação com PROVA de mutação
+//
+// O token de ocorrência é gravado NA MESMA escrita que altera o papel. Sem ele,
+// 'started' não prova nada e a recuperação é recusada.
+// ---------------------------------------------------------------------------
+const TOKEN_FIELD = "last_role_change_occurrence";
+
+function participantToken(state, id = "part_1") {
+  return String(state.participants.find((p) => p.id === id)?.[TOKEN_FIELD] || "");
+}
+
+function roleOf(state, id = "part_1") {
+  return state.participants.find((p) => p.id === id)?.role_in_event;
+}
+
+test("HTTP-38 — evidência criada e mutação falha: nenhuma trilha e nada aplicado", async () => {
+  const f = fixture();
+  f.state.faults.participantWrite = true;
+
+  const res = await invoke(f.state, manageParticipant, roleBody());
+
+  assert.equal(res.status, 500);
+  assert.equal(roleOf(f.state), "attendee");
+  assert.equal(roleAudits(f.state).length, 0);
+  assert.equal(f.state.evidence.length, 1, "a evidência da ocorrência é preservada");
+  assert.equal(evidenceOf(f.state).state, "started");
+  assert.equal(participantToken(f.state), "", "sem token: a escrita não aconteceu");
+
+  f.state.faults.participantWrite = false;
+  const rec = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(rec.status, 409);
+  assert.equal(rec.data.reconciliation, "nao_aplicada");
+  assert.equal(roleAudits(f.state).length, 0, "mutação não comprovada não gera trilha");
+});
+
+test("HTTP-39 — mutação aplicada com evidência presa em 'started': reconciliação segura", async () => {
+  const f = fixture();
+  // A escrita do papel funciona; a ATUALIZAÇÃO da evidência e a trilha falham.
+  f.state.faults.evidenceUpdate = true;
+  f.state.faults.anyAudit = true;
+
+  const failed = await invoke(f.state, manageParticipant, roleBody());
+
+  assert.equal(failed.status, 503);
+  assert.equal(failed.data.applied, true, "a mutação foi efetivada e comprovada por leitura");
+  assert.equal(roleOf(f.state), "speaker");
+  assert.equal(evidenceOf(f.state).state, "started", "evidência presa em started");
+  assert.equal(roleAudits(f.state).length, 0);
+  assert.ok(participantToken(f.state), "o token da ocorrência está persistido");
+
+  f.state.faults.evidenceUpdate = false;
+  f.state.faults.anyAudit = false;
+
+  const rec = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(rec.status, 200);
+  assert.equal(rec.data.recovered, true);
+  assert.equal(rec.data.audit_state, "recorded");
+  assert.equal(rec.data.reconciliation, "mutacao_aplicada_evidencia_nao_atualizada");
+  assert.equal(rec.data.original_actor_known, true);
+
+  const trails = roleAudits(f.state);
+  assert.equal(trails.length, 1);
+  assert.equal(trails[0].user_id, "user_1", "autoria ORIGINAL preservada");
+  const details = JSON.parse(trails[0].details);
+  assert.equal(details.old_value, "attendee");
+  assert.equal(details.new_value, "speaker");
+  assert.equal(evidenceOf(f.state).state, "audit_recorded");
+
+  // Retry após sucesso: mesma chave, nenhuma duplicidade.
+  const retry = await invoke(f.state, manageParticipant, recoverBody());
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.already_recorded, true);
+  assert.equal(retry.data.recovered, false);
+  assert.equal(roleAudits(f.state).length, 1);
+});
+
+test("HTTP-40 — evidência 'started' só recupera com o token da PRÓPRIA ocorrência", async () => {
+  const f = fixture();
+  f.state.participants[0].role_in_event = "speaker";
+  f.state.participants[0][TOKEN_FIELD] = "occ_prova";
+  seedEvidence(f.state, {
+    occurrence: "occ_prova",
+    audit_key: "role_change|occ_prova",
+    state: "started",
+    old_value: "attendee",
+    new_value: "speaker",
+  });
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 200);
+  assert.equal(res.data.reconciliation, "mutacao_aplicada_evidencia_nao_atualizada");
+  assert.equal(roleAudits(f.state).length, 1);
+  assert.equal(roleAudits(f.state)[0].audit_key, "role_change|occ_prova");
+});
+
+test("HTTP-41 — segunda alteração legítima antes da recuperação: old/new não são atribuídos por suposição", async () => {
+  const f = fixture();
+  f.state.faults.evidenceUpdate = true;
+  f.state.faults.anyAudit = true;
+  await invoke(f.state, manageParticipant, roleBody()); // attendee → speaker (evidência 1 presa)
+  f.state.faults.evidenceUpdate = false;
+  f.state.faults.anyAudit = false;
+
+  const firstEvidenceId = f.state.evidence[0].id;
+  // Segunda alteração LEGÍTIMA e auditada: speaker → attendee.
+  const second = await invoke(f.state, manageParticipant, roleBody({ data: { role_in_event: "attendee" } }));
+  assert.equal(second.status, 200);
+  assert.equal(roleAudits(f.state).length, 1);
+  assert.equal(JSON.parse(roleAudits(f.state)[0].details).new_value, "attendee");
+
+  // A ocorrência ANTIGA foi superada: nada é inferido do estado atual.
+  const first = await invoke(f.state, manageParticipant, recoverBody({ evidence_id: firstEvidenceId }));
+
+  assert.equal(first.status, 409);
+  assert.equal(first.data.reconciliation, "superada_por_ocorrencia_posterior");
+  assert.equal(roleAudits(f.state).length, 1, "nenhuma trilha com old/new inventados");
+
+  // Sem evidence_id, a ocorrência selecionada é a do estado persistido.
+  const byState = await invoke(f.state, manageParticipant, recoverBody());
+  assert.equal(byState.status, 200);
+  assert.equal(byState.data.already_recorded, true);
+  assert.equal(roleAudits(f.state).length, 1);
+});
+
+test("HTTP-42 — evidência de outro evento é recusada", async () => {
+  const f = fixture();
+  f.state.participants[0].role_in_event = "speaker";
+  seedEvidence(f.state, { event_id: OTHER_EVENT, occurrence: "occ_outro", audit_key: "role_change|occ_outro" });
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 409);
+  assert.match(res.data.error, /Não há evidência/i);
+  assert.equal(f.state.audits.length, 0);
+});
+
+test("HTTP-43 — duas reconciliações simultâneas de 'started' produzem UMA única trilha", async () => {
+  const f = fixture();
+  f.state.participants[0].role_in_event = "speaker";
+  f.state.participants[0][TOKEN_FIELD] = "occ_conc";
+  seedEvidence(f.state, { occurrence: "occ_conc", audit_key: "role_change|occ_conc", state: "started" });
+
+  const [a, b] = await Promise.all([
+    invoke(f.state, manageParticipant, recoverBody()),
+    invoke(f.state, manageParticipant, recoverBody()),
+  ]);
+
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  const trails = roleAudits(f.state);
+  assert.equal(trails.length, 1, "uma única trilha apesar da concorrência");
+  assert.equal(new Set(trails.map((t) => t.audit_key)).size, 1);
+  assert.equal(trails[0].audit_key, "role_change|occ_conc");
+});
+
+// ---------------------------------------------------------------------------
+// F3-15 — LEITURA DO AUDITLOG FAIL-CLOSED
+// ---------------------------------------------------------------------------
+function startedWithProof(state) {
+  state.participants[0].role_in_event = "speaker";
+  state.participants[0][TOKEN_FIELD] = "occ_read";
+  seedEvidence(state, { occurrence: "occ_read", audit_key: "role_change|occ_read", state: "started" });
+}
+
+test("HTTP-44 — leitura do AuditLog indisponível: 503 e NENHUMA gravação", async () => {
+  const f = fixture();
+  startedWithProof(f.state);
+  f.state.faults.auditRead = true;
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 503);
+  assert.equal(res.data.audit_state, "unavailable");
+  assert.equal(f.state.audits.length, 0, "sem verificação não há trilha nem pendência");
+  assert.equal(evidenceOf(f.state).state, "started", "evidência intacta para o retry");
+
+  f.state.faults.auditRead = false;
+  const retry = await invoke(f.state, manageParticipant, recoverBody());
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.audit_state, "recorded");
+  assert.equal(roleAudits(f.state).length, 1);
+  assert.equal(roleAudits(f.state)[0].audit_key, "role_change|occ_read");
+});
+
+test("HTTP-45 — resposta inconclusiva da leitura não é tratada como ausência", async () => {
+  const f = fixture();
+  startedWithProof(f.state);
+  f.state.faults.auditReadShape = true;
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 503);
+  assert.equal(res.data.audit_state, "unavailable");
+  assert.equal(f.state.audits.length, 0, "página/objeto inesperado nunca vira 'não encontrado'");
+});
+
+test("HTTP-46 — trilha principal falha com pendência persistida: 'pending' e retry idempotente", async () => {
+  const f = fixture();
+  startedWithProof(f.state);
+  f.state.faults.mainAudit = true;
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 200);
+  assert.equal(res.data.audit_state, "pending");
+  assert.equal(res.data.recovered, true);
+  assert.equal(f.state.audits.filter((a) => a.status === "pending").length, 1);
+  assert.equal(evidenceOf(f.state).state, "audit_pending");
+
+  f.state.faults.mainAudit = false;
+  const retry = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.audit_state, "recorded");
+  const recorded = roleAudits(f.state).filter((a) => a.status !== "pending");
+  assert.equal(recorded.length, 1, "a mesma chave não duplica a trilha");
+  assert.equal(recorded[0].audit_key, "role_change|occ_read");
+  assert.equal(f.state.audits.filter((a) => a.status === "pending").length, 1);
+});
+
+test("HTTP-47 — leitura bem-sucedida com trilha existente apenas confirma", async () => {
+  const f = fixture();
+  startedWithProof(f.state);
+  f.state.audits.push({
+    id: "AuditLog_pre",
+    audit_key: "role_change|occ_read",
+    action: "role_change",
+    entity_type: "Participant",
+    entity_id: "part_1",
+    user_id: "user_1",
+    event_id: EVENT,
+    mandatory: true,
+    status: "recorded",
+    created_date: "2026-01-01T00:00:05.000Z",
+  });
+
+  const res = await invoke(f.state, manageParticipant, recoverBody());
+
+  assert.equal(res.status, 200);
+  assert.equal(res.data.already_recorded, true);
+  assert.equal(f.state.audits.length, 1, "nenhum registro adicional");
+  assert.equal(evidenceOf(f.state).state, "audit_recorded");
+});
+
+// ---------------------------------------------------------------------------
+// F3-15 — TITULARIDADE na reativação de reviewer
+// ---------------------------------------------------------------------------
+function reviewerBody(overrides = {}) {
+  return { op: "setReviewer", event_id: EVENT, enable: true, person_id: "person_2", ...overrides };
+}
+
+test("SR-7 — vínculo sem user_id: conta resolvida pela Person PERSISTIDA", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, reviewerBody({ membership_id: "mem_no_user" }));
+
+  assert.equal(res.status, 200);
+  assert.equal(res.data.status, "linked");
+  const membership = f.state.memberships.find((m) => m.id === "mem_no_user");
+  assert.equal(membership.is_active, true);
+  assert.equal(membership.user_id, "user_2", "conta da pessoa, nunca do corpo");
+  assert.equal(membership.user_email, "rev@teste.dev");
+  assert.equal(accessAudits(f.state, "reviewer_reactivation|").length, 1);
+});
+
+test("SR-8 — vínculo sem user_email: titularidade vem da Person e o snapshot é regravado", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, reviewerBody({ membership_id: "mem_no_email" }));
+
+  assert.equal(res.status, 200);
+  const membership = f.state.memberships.find((m) => m.id === "mem_no_email");
+  assert.equal(membership.is_active, true);
+  assert.equal(membership.user_id, "user_2");
+  assert.equal(membership.user_email, "rev@teste.dev");
+  const trail = accessAudits(f.state, "reviewer_reactivation|")[0];
+  assert.equal(JSON.parse(trail.details).reviewer_email, "rev@teste.dev");
+});
+
+test("SR-9 — person_id divergente no corpo é recusado e nada muda", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, reviewerBody({ membership_id: "mem_rev", person_id: "person_1" }));
+
+  assert.equal(res.status, 409);
+  assert.equal(res.data.reason, "person_id_mismatch");
+  assert.equal(f.state.memberships.find((m) => m.id === "mem_rev").is_active, false);
+  assert.equal(accessAudits(f.state, "reviewer_reactivation|").length, 0);
+});
+
+test("SR-10 — user_id de OUTRA pessoa: titularidade divergente é recusada", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, reviewerBody({ membership_id: "mem_wrong_user" }));
+
+  assert.equal(res.status, 409);
+  assert.equal(res.data.reason, "identity_mismatch");
+  const membership = f.state.memberships.find((m) => m.id === "mem_wrong_user");
+  assert.equal(membership.is_active, false, "nada é reativado");
+  assert.equal(membership.user_id, "user_1", "o vínculo não é reescrito");
+  assert.equal(accessAudits(f.state, "reviewer_reactivation|").length, 0);
+});
+
+test("SR-11 — vínculo sem pessoa: identidade insuficiente exige novo convite", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, {
+    op: "setReviewer", event_id: EVENT, enable: true, membership_id: "mem_no_person",
+  });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.data.reason, "membership_without_person");
+  assert.equal(f.state.memberships.find((m) => m.id === "mem_no_person").is_active, false);
+  assert.equal(accessAudits(f.state, "reviewer_reactivation|").length, 0);
+});
+
+test("SR-12 — e-mail do corpo é ignorado: vale a identidade persistida", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, reviewerBody({
+    membership_id: "mem_rev",
+    user_email: "atacante@evil.dev",
+    actor: "atacante",
+  }));
+
+  assert.equal(res.status, 200);
+  const membership = f.state.memberships.find((m) => m.id === "mem_rev");
+  assert.equal(membership.user_email, "rev@teste.dev", "o corpo não reescreve a identidade");
+  assert.equal(membership.user_id, "user_2");
+  const trail = accessAudits(f.state, "reviewer_reactivation|")[0];
+  assert.equal(JSON.parse(trail.details).reviewer_email, "rev@teste.dev");
+  assert.equal(trail.user_id, "user_1", "ator vem do contexto autenticado");
+});
+
+test("SR-13 — pessoa sem conta confirmada: reativação recusada", async () => {
+  const f = fixture();
+  const res = await invoke(f.state, manageParticipant, {
+    op: "setReviewer", event_id: EVENT, enable: true, membership_id: "mem_no_account",
+  });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.data.reason, "account_not_linked");
+  assert.equal(f.state.memberships.find((m) => m.id === "mem_no_account").is_active, false);
+  assert.equal(accessAudits(f.state, "reviewer_reactivation|").length, 0);
 });
