@@ -549,3 +549,104 @@ sempre do ator original da evidência, com `recovered_by_user_id` separado (HTTP
 testes adversariais e no código revisado. Não há declaração de ausência geral de riscos; os itens
 P2/P3 acima continuam abertos e a Fase 3 permanece condicionada à revisão independente e à
 homologação em ambiente real.
+
+---
+
+## M. F3-16 — Porta de integridade do papel e vínculo reviewer ↔ conta ↔ Person (2026-11-18)
+
+### M.1 Defeitos corrigidos
+
+**P1-A — perda de evidência por sobrescrita do token.** A ocorrência A era aplicada e a trilha
+falhava; B era aplicada antes da recuperação de A e sobrescrevia `last_role_change_occurrence`.
+A recuperação de A devolvia `superada_por_ocorrencia_posterior` — correto para não inventar a
+transição, mas A ficava efetivada e sem trilha **para sempre**, e nenhuma nova tentativa resolvia.
+
+**P1-B — titularidade do reviewer provada por e-mail.** A conta era localizada e o titular
+"provado" por igualdade de e-mail (`account.email == Person.contact_email` ou o snapshot do
+vínculo). E-mail é dado mutável e reutilizável: com vínculos inconsistentes ou desatualizados a
+coincidência não prova que a conta pertence à Pessoa, e um e-mail reaproveitado reativava acesso
+de avaliador para a pessoa errada.
+
+### M.2 Mudanças de código
+
+- `Participant` — novos campos: `role_change_locked` (claim da alteração em andamento) e
+  `role_audit_pending` (ocorrência aplicada cuja trilha ainda não foi confirmada por leitura).
+  Nenhum dos dois é fonte de permissão nem aparece na UI.
+- `manageParticipant`:
+  - `roleChangeGate` roda **antes** de qualquer escrita: sem pendência → `clear`; pendência com
+    trilha ausente → `blocked` (409); leitura indisponível → `unavailable` (503, fail-closed);
+    pendência com trilha encontrada → libera o claim por CAS da própria ocorrência e segue.
+  - claim + mutação do papel + token da ocorrência + pendência de auditoria na **mesma escrita
+    condicional** (`updateMany` com `{ role_change_locked: { $ne: true } }`), confirmada por
+    leitura — em concorrência exatamente um escritor casa o filtro.
+  - perdedor da corrida: evidência encerrada em `not_applied` (nunca recuperável, nunca
+    bloqueante) e resposta 409 `role_change_concurrent`.
+  - liberação do claim apenas por CAS atrelado ao token pendente e confirmada por leitura;
+    `pending` **não** libera (pendência registrada não é trilha gravada).
+  - `resolveMembershipHolder`: a prova passou a ser `account.person_id === membership.person_id`.
+    E-mail e `user_id` do corpo servem apenas para localizar a conta; sem vínculo confirmado a
+    reativação é recusada (`account_person_link_missing`) e a regularização é reconceder o acesso
+    pelo fluxo de convite; e-mail coincidente com `person_id` divergente é `identity_mismatch`.
+- `AccessChangeEvidence` — novo estado `not_applied` para a tentativa que perdeu o claim.
+
+### M.3 Evidências de teste
+
+- `tests/unit/fase3-role-audit-integrity.test.mjs` (novo, HTTP ponta a ponta com banco falso):
+  - **P1-A**: HTTP-48 (A sem auditoria bloqueia B), HTTP-49 (concorrência: um vencedor, um 409),
+    HTTP-50 (retry não "sucede"), HTTP-51 (recuperação libera e B passa), HTTP-52 (consulta de
+    evidência indisponível → fail-closed), HTTP-53 (trilha apenas pendente não libera; a porta se
+    recupera quando a varredura grava a trilha), HTTP-54 (pendência não bloqueia outro
+    participante), HTTP-55 (nenhuma ocorrência efetivada fica sem trilha ou pendência),
+    HTTP-56 (falha de escrita não deixa mutação nem trilha).
+  - **P1-B**: SR-14 (e-mail coincidente com vínculo de outra pessoa), SR-15 (snapshot divergente
+    não invalida vínculo comprovado), SR-16 (corpo não é prova), SR-17 (conta sem vínculo),
+    SR-18 (vínculo de outro evento), SR-19 (retry de reativação converge na mesma trilha).
+- `tests/unit/fase3-http-audit.test.mjs`: fixture ganhou CAS (`updateMany`), injeção de falha de
+  escrita do participante e de consulta de evidência; HTTP-38 e HTTP-41 foram reespecificados
+  para a porta (mutação não comprovada → 503; ocorrência pendente bloqueia a seguinte).
+
+### M.4 Resultados da rodada
+
+| Verificação | Resultado |
+|---|---|
+| `test:unit:certhttp` (base + integridade) | 65/65 |
+| `test:unit:fase3` | 35/35 |
+| `test:unit:access` | 7/7 |
+| `test:unit:authz` | 13/13 |
+| `test:unit:migration` | 25/25 |
+| `test:unit:security` | 9/9 |
+| `test:unit:refund` | 115/115 |
+| `test:unit:csv` | 12/12 |
+| `vite build` | exit 0 |
+| `lint` | 0 problemas (6 imports órfãos removidos) |
+| `typecheck` | falha **pré-existente** em `src/pages/ValidaCertificado.jsx` (props não tipadas em `Button`), fora do escopo desta correção |
+
+### M.5 Limitações e riscos residuais
+
+1. **Sem transação entre documentos** na plataforma: a garantia é a atomicidade do CAS de um único
+   documento somada à confirmação por leitura. Um crash entre a escrita do participante e a
+   gravação da trilha deixa a ocorrência **pendente** e bloqueia novas alterações até a
+   recuperação/varredura — falha fechada, nunca perda silenciosa.
+2. **Desbloqueio operacional**: enquanto a trilha não aparecer, novas alterações de papel do mesmo
+   participante são recusadas (`recoverRoleAudit` ou a varredura de manutenção, com a mesma chave
+   determinística, liberam sozinhas).
+3. **Contas legadas sem `person_id`** não podem ter o vínculo de avaliador reativado; exigem
+   reconcessão pelo fluxo de convite (que grava User↔Person).
+4. **Validação em ambiente real** (E2E autenticado por perfil, concorrência em banco real e carga)
+   permanece não exercitada — itens P2 inalterados. Nada foi executado contra dados de produção.
+5. **Retenção** de `AccessChangeEvidence` e `AuditLog` segue indefinida (decisão jurídica D-02).
+
+### M.6 Classificação de risco revisada
+
+| Item | Antes | Depois |
+|---|---|---|
+| Sobrescrita do token de ocorrência / evidência perdida | P1 | **Encerrado** (gate + CAS; HTTP-48/49/51/53) |
+| Reviewer reativado por e-mail coincidente | P1 | **Encerrado** (`person_id` como prova; SR-14..17) |
+| Conta legada sem vínculo User↔Person | — | **Falha fechada** com caminho de regularização (SR-17) |
+| Alteração de papel bloqueada aguardando auditoria | — | **Risco operacional aceito e documentado** (M.5.1/2) |
+| Validação em ambiente real / carga | P2 | **P2 — pendente** (homologação) |
+
+**P1 = 0 nesta rodada** significa: os dois defeitos apontados não são mais reproduzíveis nos testes
+adversariais nem no código revisado. Não é declaração de ausência geral de riscos: os itens P2 e os
+riscos operacionais acima permanecem abertos, e a Fase 3 continua condicionada à revisão
+independente e à homologação em ambiente real.

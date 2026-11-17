@@ -11,7 +11,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { manageAttendance } from "@/lib/personApi";
 import { processAction } from "@/lib/scoringEngine";
-import { Button } from "@/components/ui/button";
 import {
   X, MessageCircleQuestion, Star, Download, Lock, CheckCircle2, Clock, MapPin, UserCheck, BookOpen,
 } from "lucide-react";

@@ -346,8 +346,13 @@ test("HTTP-53 — trilha apenas PENDENTE não libera; a porta se recupera quando
   assert.equal(b2.status, 200, "a porta detectou a trilha por leitura e liberou");
   assert.equal(b2.data.audit_state, "recorded");
   assert.equal(roleOf(f.state), "attendee");
-  const keys = roleAudits(f.state).map((x) => x.audit_key);
-  assert.equal(new Set(keys).size, 2, "a trilha anterior não é duplicada");
+  // A pendência vive em chave própria ('...|pending'); a trilha GRAVADA de A não
+  // é reescrita e a de B tem chave distinta — nenhuma duplicidade.
+  const recorded = roleAudits(f.state)
+    .map((x) => String(x.audit_key))
+    .filter((k) => !k.endsWith("|pending"));
+  assert.equal(new Set(recorded).size, 2);
+  assert.equal(recorded.filter((k) => k === `role_change|${pending}`).length, 1);
 });
 
 test("HTTP-54 — pendência de um participante não bloqueia outro", async () => {

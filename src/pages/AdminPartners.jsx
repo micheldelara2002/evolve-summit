@@ -6,22 +6,20 @@ import { filterPartnersByAccess, canManagePartner, isAdmin, canAccessPartnerAdmi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Building2, Search, Plus, MoreVertical, Pencil, UserPlus,
-  UserCheck, UserX, Star, Trash2, Upload, Mail,
+  UserCheck, UserX, Star, Trash2, Mail,
 } from "lucide-react";
 import { toast } from "sonner";
-import { sanitizeText } from "@/utils/sanitize";
-import { incPartnersCounter, decPartnersCounter } from "@/lib/businessCounters";
+import { decPartnersCounter } from "@/lib/businessCounters";
 import PageHeader from "@/components/layout/PageHeader";
 import PartnerFormDialog from "@/components/admin/partners/PartnerFormDialog";
 
