@@ -21,6 +21,10 @@ import {
   attachReservationsToOrder,
   consumeOrderReservations,
   reconcileStockReservations,
+  convertReservedToSoldOnce,
+  resumeOrderStockConversion,
+  assessOrderPaymentState,
+  isPaymentProtected,
 } from "../../base44/shared/stockReservation.ts";
 
 function lot(id, over = {}) {
@@ -61,6 +65,14 @@ function reservedOf(db, id = "lot_1") {
 
 function tokensOf(db, id = "lot_1") {
   return db.salesLots.find((l) => l.id === id).reservation_tokens || [];
+}
+
+function soldOf(db, id = "lot_1") {
+  return db.salesLots.find((l) => l.id === id).quantity_sold;
+}
+
+function markersOf(db, id = "lot_1") {
+  return db.salesLots.find((l) => l.id === id).stock_converted_order_item_ids || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +261,7 @@ test("F4-01/10 — reserva dentro da validade NÃO é liberada pela reconciliaç
   assert.equal(db.stockReservations[0].state, "active");
 });
 
-test("F4-01/11 — pagamento confirmado antes da compensação: NUNCA devolve estoque", async () => {
+test("F4-01/11 + F4-02/P2-1 — pagamento confirmado SEM ingresso emitido: reserva fica VIVA", async () => {
   const db = makeDb([lot("lot_1")], {
     orders: [{ id: "ord_1", event_id: "ev_1", status: "paid", checkout_token: "T", is_deleted: false }],
     payments: [{ id: "pay_1", order_id: "ord_1", event_id: "ev_1", status: "succeeded", is_deleted: false }],
@@ -262,8 +274,13 @@ test("F4-01/11 — pagamento confirmado antes da compensação: NUNCA devolve es
 
   assert.equal(out.released, 0);
   assert.equal(out.kept, 1);
+  assert.equal(out.pending, 1, "conversão incompleta é reportada (não é venda consolidada)");
   assert.equal(reservedOf(db), 2, "estoque de compra paga preservado");
-  assert.equal(db.stockReservations[0].state, "consumed", "reserva consolidada como venda");
+  assert.deepEqual(tokensOf(db), [token], "token permanece: nenhuma unidade foi convertida");
+  assert.equal(
+    db.stockReservations[0].state, "active",
+    "F4-02/P2 — pagamento confirmado não basta: a reserva só encerra com o lote convertido",
+  );
 });
 
 test("F4-01/12 — pedido pendente dentro da janela de pagamento não é liberado", async () => {
@@ -351,9 +368,13 @@ test("F4-01/15 — liberação por item é escopada ao pedido daquele item", asy
   assert.deepEqual(tokensOf(db), [tokenB]);
 });
 
-test("F4-01/16 — venda confirmada consome a reserva: token sai do lote e o estado é terminal", async () => {
+test("F4-01/16 — venda confirmada encerra a reserva SÓ com o lote integralmente convertido", async () => {
   const db = makeDb([lot("lot_1", { quantity_reserved: 2, reservation_tokens: ["T"] })], {
     orders: [{ id: "ord_1", event_id: "ev_1", status: "paid", checkout_token: "T", is_deleted: false }],
+    orderItems: [
+      { id: "it_1", order_id: "ord_1", lot_id: "lot_1", is_deleted: false },
+      { id: "it_2", order_id: "ord_1", lot_id: "lot_1", is_deleted: false },
+    ],
   });
   await db.svc.entities.StockReservation.create({
     event_id: "ev_1",
@@ -367,14 +388,30 @@ test("F4-01/16 — venda confirmada consome a reserva: token sai do lote e o est
     is_deleted: false,
   });
 
+  // Nada convertido: a reserva NÃO pode ser encerrada (F4-02/P2).
+  const before = await consumeOrderReservations(db.svc, "ord_1");
+  assert.equal(before.consumed, 0);
+  assert.equal(before.pending, 1);
+
+  // Conversão parcial (1 de 2 unidades): ainda não encerra.
+  await convertReservedToSoldOnce(db.svc, db.orderItems[0]);
+  const partial = await consumeOrderReservations(db.svc, "ord_1");
+  assert.equal(partial.consumed, 0);
+  assert.equal(db.stockReservations[0].state, "active");
+
+  // Conversão completa: agora sim, terminal.
+  await convertReservedToSoldOnce(db.svc, db.orderItems[1]);
   const out = await consumeOrderReservations(db.svc, "ord_1");
 
   assert.equal(out.consumed, 1);
   assert.equal(db.stockReservations[0].state, "consumed");
   assert.deepEqual(tokensOf(db), [], "token removido do lote");
+  assert.equal(reservedOf(db), 0, "reservado→vendido, sem devolução");
+  assert.equal(soldOf(db), 2, "as duas unidades viraram venda");
 
   // Depois de consumida, uma liberação não devolve nada.
   const late = await releaseCheckoutReservations(db.svc, "T", "late_release");
   assert.equal(late.released, 0);
-  assert.equal(reservedOf(db), 2);
+  assert.equal(reservedOf(db), 0);
+  assert.equal(soldOf(db), 2, "nenhuma devolução de estoque de compra paga");
 });

@@ -18,7 +18,12 @@ import { retrieveChargeWithBalance } from "./stripeClient.ts";
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { deterministicCompare } from "./deterministicSurvivor.ts";
 import { applyConfirmedRefundCents } from "./refundLedger.ts";
-import { releaseReservationsForOrderItem, consumeOrderReservations } from "./stockReservation.ts";
+import {
+  releaseReservationsForOrderItem,
+  consumeOrderReservations,
+  resumeOrderStockConversion,
+  convertReservedToSoldOnce,
+} from "./stockReservation.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
@@ -217,11 +222,15 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         // Link ticket back to the order item.
         await svc.entities.OrderItem.update(item.id, { ticket_id: ticket.id });
 
-        // Confirm lot: reserved → sold (atomic).
-        await svc.entities.SalesLot.updateMany(
-          { id: item.lot_id },
-          { $inc: { quantity_reserved: -1, quantity_sold: 1 } }
-        );
+        // Confirm lot: reserved → sold EXATAMENTE UMA VEZ (F4-02/P2). O marcador
+        // do item entra na MESMA escrita do `$inc`, então um retry não duplica
+        // `quantity_sold` e uma conversão interrompida é retomável. Falha de
+        // escrita não é engolida: o fulfillment fica 'pending_retry' (visível na
+        // aba de transações) em vez de concluir com estoque não convertido.
+        const conversion = await convertReservedToSoldOnce(svc, item);
+        if (!conversion.converted && conversion.reason !== "ja_convertido" && conversion.reason !== "lote_inexistente") {
+          throw new Error(`Conversão de estoque não aplicada (${conversion.reason})`);
+        }
       }
       createdTickets.push(ticket);
 
@@ -275,11 +284,21 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       }
     }
 
-    // F4-01 (AUD-01) — a venda está confirmada: as reservas identificadas do
-    // pedido passam a 'consumed' (estado terminal) e os tokens saem do lote.
-    // Nenhuma reconciliação pode devolver esse estoque depois. Best-effort: se
-    // falhar, a reconciliação encontra o pagamento confirmado e consolida.
-    try { await consumeOrderReservations(svc, order.id); } catch (err: any) {
+    // F4-01 (AUD-01) + F4-02 (P2) — a venda está confirmada. Primeiro RETOMA
+    // qualquer conversão interrompida (CAS por item, sem duplicar vendas);
+    // depois encerra as reservas do pedido APENAS quando as unidades do lote já
+    // viraram vendidas. Pagamento confirmado com fulfillment incompleto mantém
+    // a reserva VIVA — nunca é devolvida e nunca perde o token.
+    try {
+      const resumed = await resumeOrderStockConversion(svc, order.id);
+      const consumed = await consumeOrderReservations(svc, order.id);
+      if (consumed.pending > 0 || resumed.pending > 0) {
+        console.warn(
+          "[fulfillOrder] reservas aguardando conversão completa:",
+          "consumo_pendente=", consumed.pending, "itens_sem_ingresso=", resumed.pending,
+        );
+      }
+    } catch (err: any) {
       console.error("[fulfillOrder] consumo das reservas falhou:", err?.message || err);
     }
 

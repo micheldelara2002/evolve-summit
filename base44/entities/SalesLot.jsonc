@@ -62,6 +62,13 @@
       },
       "description": "P1 (patch Fase 1, 2026-11-12) \u2014 REGISTRO IDEMPOTENTE da devolu\u00e7\u00e3o de estoque: IDs dos ingressos cuja unidade j\u00e1 voltou para o lote. \u00c9 o guarda da opera\u00e7\u00e3o de devolu\u00e7\u00e3o, gravado na MESMA escrita at\u00f4mica que decrementa quantity_sold ($inc + $addToSet condicionados a este ingresso n\u00e3o estar aqui) \u2014 a plataforma n\u00e3o tem transa\u00e7\u00e3o entre documentos, e um marcador em outra entidade deixaria janela de duplicidade ou de perda. Repetir a devolu\u00e7\u00e3o \u00e9 no-op (nenhum decremento), e a recupera\u00e7\u00e3o ap\u00f3s interrup\u00e7\u00e3o n\u00e3o depende de mem\u00f3ria da execu\u00e7\u00e3o anterior. Crescimento limitado ao estoque vendido do lote (um id por ingresso estornado, \u224824 bytes). Lotes legados n\u00e3o t\u00eam o campo; ele \u00e9 criado na primeira devolu\u00e7\u00e3o."
     },
+    "stock_converted_order_item_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "F4-02 (P2) \u2014 REGISTRO IDEMPOTENTE da convers\u00e3o reservado\u2192vendido: IDs dos itens de pedido cuja unidade deste lote j\u00e1 foi convertida. Gravado na MESMA escrita at\u00f4mica que incrementa quantity_sold e decrementa quantity_reserved ($inc + $addToSet condicionados a este item ainda n\u00e3o estar aqui), porque a plataforma n\u00e3o tem transa\u00e7\u00e3o entre documentos \u2014 um marcador em outra entidade deixaria janela de venda duplicada ou de estoque preso em reserved. Repetir a convers\u00e3o \u00e9 no-op (nenhum segundo incremento) e a retomada ap\u00f3s interrup\u00e7\u00e3o n\u00e3o depende de mem\u00f3ria da execu\u00e7\u00e3o anterior. \u00c9 o que permite ao fulfillment incompleto ser retomado pela reconcilia\u00e7\u00e3o sem duplicar quantity_sold, e o que autoriza (somente com a convers\u00e3o do lote COMPLETA) o encerramento da StockReservation como venda. Crescimento limitado ao estoque vendido do lote (um id por unidade vendida). Lotes legados n\u00e3o t\u00eam o campo; ele \u00e9 criado na primeira convers\u00e3o."
+    },
     "is_active": {
       "type": "boolean",
       "default": true

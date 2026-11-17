@@ -316,3 +316,110 @@ test("F4-02/12 — ingresso cancelado/estornado continua bloqueado sem tocar o p
   assert.equal(ticketOf(state).status, "refunded");
   assert.equal(participantOf(state).checkin_status, "pending");
 });
+// ===========================================================================
+// F4-02 (P3) — INTEGRIDADE CONJUNTA: estado confirmado E timestamp gravado.
+// Participante confirmado sem `checkin_at` era considerado sincronizado (o CAS
+// olhava só o status) e o carimbo ficava ausente para sempre.
+// ===========================================================================
+function usedTicket(over = {}) {
+  return {
+    id: "tk_used", event_id: "ev_1", hash_code: "HASHUSED", holder_name: "Já Entrou",
+    ticket_type_name: "Geral", status: "used", used_at: "2026-01-01T10:00:00.000Z",
+    participant_id: "part_conf", is_deleted: false, ...over,
+  };
+}
+
+function stateWithConfirmedParticipant(over = {}) {
+  const state = fixture();
+  state.tickets.push(usedTicket());
+  state.participants.push({
+    id: "part_conf", event_id: "ev_1", full_name: "Já Entrou", email: "entrou@teste.dev",
+    checkin_status: "confirmed", checkin_at: null, checked_in_by_user_id: "user_origem",
+    registration_status: "confirmed", is_deleted: false,
+    ...over,
+  });
+  return state;
+}
+
+test("F4-02/P3-1 — confirmado SEM timestamp é reparado com o instante do ingresso", async () => {
+  const state = stateWithConfirmedParticipant();
+  const res = await invoke(state, { code: "HASHUSED" });
+
+  const part = participantOf(state, "part_conf");
+  assert.equal(res.data.status, "used", "entrada continua bloqueada");
+  assert.equal(res.data.participant_sync, "sincronizado");
+  assert.equal(res.data.repaired, true);
+  assert.equal(part.checkin_at, "2026-01-01T10:00:00.000Z", "timestamp reparado com o instante persistido do ingresso");
+  assert.equal(part.checked_in_by_user_id, "user_origem", "autoria original preservada");
+  assert.equal(state.audits.filter((a) => String(a.details || "").includes("ticket_checkin_repaired")).length, 1);
+});
+
+test("F4-02/P3-2 — retry da reparação é idempotente", async () => {
+  const state = stateWithConfirmedParticipant();
+  await invoke(state, { code: "HASHUSED" });
+  const stamp = participantOf(state, "part_conf").checkin_at;
+
+  const again = await invoke(state, { code: "HASHUSED" });
+
+  assert.equal(again.data.participant_sync, "sincronizado");
+  assert.equal(again.data.repaired, false, "nada mais a reparar");
+  assert.equal(participantOf(state, "part_conf").checkin_at, stamp);
+  assert.equal(
+    state.audits.filter((a) => String(a.details || "").includes("ticket_checkin_repaired")).length, 1,
+    "uma única reparação registrada",
+  );
+});
+
+test("F4-02/P3-3 — timestamp e autoria corretos NÃO são sobrescritos", async () => {
+  const state = stateWithConfirmedParticipant({
+    checkin_at: "2025-12-31T23:59:00.000Z",
+    checked_in_by_user_id: "user_original",
+  });
+  const res = await invoke(state, { code: "HASHUSED" });
+
+  const part = participantOf(state, "part_conf");
+  assert.equal(res.data.participant_sync, "sincronizado");
+  assert.equal(res.data.repaired, false);
+  assert.equal(part.checkin_at, "2025-12-31T23:59:00.000Z", "instante do check-in original intacto");
+  assert.equal(part.checked_in_by_user_id, "user_original", "autoria original intacta");
+});
+
+test("F4-02/P3-4 — timestamp legado vazio é reparado sem tocar a autoria", async () => {
+  const state = stateWithConfirmedParticipant({ checkin_at: "" });
+  const res = await invoke(state, { code: "HASHUSED" });
+
+  const part = participantOf(state, "part_conf");
+  assert.equal(res.data.participant_sync, "sincronizado");
+  assert.equal(part.checkin_at, "2026-01-01T10:00:00.000Z");
+  assert.equal(part.checked_in_by_user_id, "user_origem");
+});
+
+test("F4-02/P3-5 — autoria desconhecida não é atribuída a quem reparou", async () => {
+  const state = stateWithConfirmedParticipant({ checked_in_by_user_id: null });
+  const res = await invoke(state, { code: "HASHUSED" });
+
+  const part = participantOf(state, "part_conf");
+  assert.equal(res.data.participant_sync, "sincronizado");
+  assert.equal(part.checkin_at, "2026-01-01T10:00:00.000Z", "timestamp reparado");
+  assert.ok(!part.checked_in_by_user_id, "autoria permanece desconhecida (não vira user_1)");
+});
+
+test("F4-02/P3-6 — falha na reparação: 503 explícito e nova tentativa conclui", async () => {
+  const state = stateWithConfirmedParticipant();
+  state.faults.participantWrite = true;
+
+  const blocked = await invoke(state, { code: "HASHUSED" });
+  assert.equal(blocked.status, 503);
+  assert.equal(blocked.data.retry_sync, true);
+  assert.equal(participantOf(state, "part_conf").checkin_at, null, "nada foi gravado");
+
+  state.faults.participantWrite = false;
+  const retry = await invoke(state, { code: "HASHUSED" });
+
+  assert.equal(retry.data.participant_sync, "sincronizado");
+  assert.equal(participantOf(state, "part_conf").checkin_at, "2026-01-01T10:00:00.000Z");
+  assert.equal(
+    state.audits.filter((a) => String(a.details || "").includes("ticket_checkin_sync_failed")).length, 1,
+    "falha registrada na trilha",
+  );
+});

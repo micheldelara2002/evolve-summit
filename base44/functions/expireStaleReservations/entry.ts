@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
 import { releaseCheckoutLock } from "../../shared/checkoutLock.ts";
-import { cancelPaymentIntent, retrievePaymentIntent, retrieveRefundWithCharge, createRefund, listRefundsForIntent } from "../../shared/stripeClient.ts";
+import { cancelPaymentIntent, retrieveRefundWithCharge, createRefund, listRefundsForIntent } from "../../shared/stripeClient.ts";
 import { releaseReservations, releaseCouponUse, fulfillOrder, FULFILLING_STALE_MS, applyConfirmedStripeRefund, unlockTicketsForRefund, lockTicketsForRefund } from "../../shared/commerceFulfillment.ts";
 import { associateRefundToRequest, evaluateLockOwnership, isTrustedRefundRequest, resolveRefundAmountCents, validateRefundRelations } from "../../shared/refundGuards.ts";
 import { releaseRefundReservation } from "../../shared/refundLedger.ts";
@@ -9,7 +9,7 @@ import { dispatchCampaignCore } from "../../shared/campaignDispatch.ts";
 import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../../shared/campaignAuth.ts";
 import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
 import { buildAuditKey, resolvePendingTrails, writeMandatoryAudit } from "../../shared/auditTrail.ts";
-import { reconcileStockReservations } from "../../shared/stockReservation.ts";
+import { reconcileStockReservations, assessOrderPaymentState, isPaymentProtected } from "../../shared/stockReservation.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -219,30 +219,47 @@ export default async function(req: Request): Promise<Response> {
 
       const pendingPayments = allPayments.filter((p: any) => p.status === 'pending');
 
+      // F4-02 (P1) — PROTEÇÃO DO PAGAMENTO COMPARTILHADA com a reconciliação de
+      // estoque: pago, processando ou provedor INDETERMINADO mantêm o pedido de
+      // pé. A consulta ao provedor era feita aqui de forma independente e o
+      // reconciler de estoque, no MESMO run, liberava a reserva por só enxergar
+      // o estado local do Payment. Agora os dois usam a MESMA decisão.
+      const paymentGuard = await assessOrderPaymentState(svc, order);
       let keepAlive = false;
-      for (let j = 0; j < pendingPayments.length; j++) {
+      if (isPaymentProtected(paymentGuard.verdict)) {
+        keepAlive = true;
+        try {
+          await svc.entities.AuditLog.create({
+            action: 'status_change',
+            entity_type: 'Order',
+            entity_id: order.id,
+            details: JSON.stringify({
+              type: 'stale_reservation_kept_payment_state',
+              verdict: paymentGuard.verdict,
+              reason: paymentGuard.reason,
+              intent_statuses: paymentGuard.pending_intents.map((i: any) => i.status),
+            }),
+            event_id: order.event_id,
+            user_id: order.buyer_user_id,
+          });
+        } catch {}
+      }
+      for (let j = 0; !keepAlive && j < pendingPayments.length; j++) {
         const p = pendingPayments[j];
-        const isFree = String(p.intent_id || '').startsWith('free_');
-        if (!isFree) {
-          let intentStatus = '';
-          try { intentStatus = String((await retrievePaymentIntent(p.intent_id))?.status || ''); } catch {}
-          // Não conseguiu verificar, pagou agora ou ainda processando → não expira.
-          if (!intentStatus || intentStatus === 'succeeded' || intentStatus === 'processing') {
+        const intentInfo = paymentGuard.pending_intents.find((i: any) => i.payment_id === p.id) || null;
+        // Somente intent do provedor ainda NÃO cancelado precisa de cancelamento
+        // (pagamento gratuito não tem intent; já cancelado está encerrado).
+        if (intentInfo && intentInfo.provider === 'stripe' && intentInfo.status !== 'canceled') {
+          try {
+            await cancelPaymentIntent(p.intent_id);
+          } catch (err: any) {
+            // CRÍTICO — cancelamento NÃO confirmado (Pix confirmado e em
+            // 'processing' segundos antes, falha de rede, erro imprevisto):
+            // o intent ainda pode ser pago. NÃO marca o pagamento nem
+            // encerra o pedido — mantém tudo para a próxima varredura.
+            console.error('[expireStaleReservations] cancel intent failed, keeping order alive:', err?.message || err);
             keepAlive = true;
             break;
-          }
-          if (intentStatus !== 'canceled') {
-            try {
-              await cancelPaymentIntent(p.intent_id);
-            } catch (err: any) {
-              // CRÍTICO — cancelamento NÃO confirmado (Pix confirmado e em
-              // 'processing' segundos antes, falha de rede, erro imprevisto):
-              // o intent ainda pode ser pago. NÃO marca o pagamento nem
-              // encerra o pedido — mantém tudo para a próxima varredura.
-              console.error('[expireStaleReservations] cancel intent failed, keeping order alive:', err?.message || err);
-              keepAlive = true;
-              break;
-            }
           }
         }
         // Expiração do pagamento via CAS (vale para free e Stripe): só marca
@@ -339,14 +356,18 @@ export default async function(req: Request): Promise<Response> {
     // A devolução é o CAS por token — uma única vez por reserva.
     let stockReservationsReleased = 0;
     let stockReservationsChecked = 0;
+    // F4-02 (P2) — pagamento confirmado com estoque ainda NÃO convertido: a
+    // reserva fica viva (visível no resumo) até o fulfillment concluir.
+    let stockReservationsPending = 0;
     try {
       const stock = await reconcileStockReservations(svc, 50);
       stockReservationsChecked = stock.examined;
       stockReservationsReleased = stock.released;
+      stockReservationsPending = stock.pending || 0;
       if (stock.examined > 0) {
         console.log(
-          '[expireStaleReservations] reservas de estoque: examinadas=%d liberadas=%d mantidas=%d falhas=%d',
-          stock.examined, stock.released, stock.kept, stock.failed,
+          '[expireStaleReservations] reservas de estoque: examinadas=%d liberadas=%d mantidas=%d pendentes=%d falhas=%d',
+          stock.examined, stock.released, stock.kept, stock.pending || 0, stock.failed,
         );
       }
     } catch (stockErr: any) {
@@ -1096,6 +1117,7 @@ export default async function(req: Request): Promise<Response> {
       // F4-01 — reservas de estoque identificadas (AUD-01).
       stock_reservations_checked: stockReservationsChecked,
       stock_reservations_released: stockReservationsReleased,
+      stock_reservations_pending: stockReservationsPending,
     };
     if (maintenanceSetting) {
       try {

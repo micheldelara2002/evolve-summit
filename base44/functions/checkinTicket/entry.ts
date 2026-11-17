@@ -47,22 +47,45 @@ async function syncParticipantCheckin(svc: any, ticket: any, user: any): Promise
   }
   if (!part) return { status: "participante_inexistente" };
   if (part.registration_status === "cancelled") return { status: "participante_cancelado", participant: part };
-  if (part.checkin_status === "confirmed" && part.checkin_at) {
+
+  // F4-02 (P3) — INTEGRIDADE CONJUNTA: estado E timestamp. Participante
+  // confirmado SEM `checkin_at` NÃO estava sincronizado, mas era tratado como
+  // pronto (o CAS olhava só o status, então a escrita nunca casava e o
+  // timestamp ficava ausente para sempre).
+  const statusConfirmed = part.checkin_status === "confirmed";
+  if (statusConfirmed && part.checkin_at) {
     return { status: "sincronizado", participant: part, repaired: false };
   }
 
+  // Instante do check-in: o persistido do INGRESSO é a fonte preferencial.
   const stamp = ticket.used_at || new Date().toISOString();
   try {
-    await svc.entities.Participant.updateMany(
-      { id: part.id, event_id: ticket.event_id, checkin_status: { $ne: "confirmed" } },
-      {
-        $set: {
-          checkin_status: "confirmed",
-          checkin_at: part.checkin_at || stamp,
-          checked_in_by_user_id: part.checked_in_by_user_id || user.id,
+    if (!statusConfirmed) {
+      // Transição completa (primeira sincronização / reparo de status).
+      await svc.entities.Participant.updateMany(
+        { id: part.id, event_id: ticket.event_id, checkin_status: { $ne: "confirmed" } },
+        {
+          $set: {
+            checkin_status: "confirmed",
+            checkin_at: part.checkin_at || stamp,
+            checked_in_by_user_id: part.checked_in_by_user_id || user.id,
+          },
         },
-      },
-    );
+      );
+    } else {
+      // Estado já confirmado com timestamp AUSENTE: repara só o carimbo. A
+      // autoria original NUNCA é reescrita — quando desconhecida, permanece
+      // desconhecida em vez de ser atribuída a quem executou a reparação.
+      await svc.entities.Participant.updateMany(
+        { id: part.id, event_id: ticket.event_id, checkin_status: "confirmed", checkin_at: { $exists: false } },
+        { $set: { checkin_at: stamp } },
+      );
+      // Registros legados com valor nulo/vazio também são reparados.
+      await svc.entities.Participant.updateMany(
+        { id: part.id, event_id: ticket.event_id, checkin_status: "confirmed", checkin_at: { $in: [null, ""] } },
+        { $set: { checkin_at: stamp } },
+      );
+    }
   } catch (err: any) {
     console.error("[checkinTicket] sincronização do participante falhou:", err?.message || err);
     return { status: "falha_escrita" };
@@ -76,7 +99,9 @@ async function syncParticipantCheckin(svc: any, ticket: any, user: any): Promise
     console.error("[checkinTicket] confirmação da sincronização falhou:", err?.message || err);
     return { status: "falha_leitura" };
   }
-  if (fresh && fresh.checkin_status === "confirmed") {
+  // A verificação exige os DOIS lados da integridade: estado confirmado E
+  // timestamp gravado (F4-02/P3).
+  if (fresh && fresh.checkin_status === "confirmed" && fresh.checkin_at) {
     return { status: "sincronizado", participant: fresh, repaired: true };
   }
   return { status: "divergente", participant: fresh };
