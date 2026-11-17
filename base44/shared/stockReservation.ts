@@ -289,8 +289,16 @@ export async function convertReservedToSoldOnce(
 
   let updated = 0;
   try {
+    // F4-03 — a escrita exige, no MESMO filtro, que o item ainda não esteja
+    // convertido E que exista unidade RESERVADA a converter. Sem a segunda
+    // condição, um lote com `quantity_reserved` zerado (ou ausente) iria a
+    // negativo e `quantity_sold` subiria sem reserva correspondente.
     const res = await svc.entities.SalesLot.updateMany(
-      { id: lotId, stock_converted_order_item_ids: { $ne: itemId } },
+      {
+        id: lotId,
+        stock_converted_order_item_ids: { $ne: itemId },
+        quantity_reserved: { $gte: 1 },
+      },
       { $inc: { quantity_reserved: -1, quantity_sold: 1 }, $addToSet: { stock_converted_order_item_ids: itemId } },
     );
     updated = res && res.updated ? res.updated : 0;
@@ -300,8 +308,9 @@ export async function convertReservedToSoldOnce(
   }
   if (updated) return { converted: true, reason: "convertido" };
 
-  // Zero atualização não prova nada: o item pode já ter sido convertido (retry)
-  // ou o lote pode não existir. A confirmação vem da LEITURA do lote.
+  // Zero atualização não prova nada: o item pode já ter sido convertido (retry),
+  // o lote pode não existir ou pode não haver estoque reservado. A confirmação
+  // vem da LEITURA do lote — nunca da resposta do update.
   let lot: any = null;
   try {
     lot = (await svc.entities.SalesLot.filter({ id: lotId }))[0] || null;
@@ -310,7 +319,19 @@ export async function convertReservedToSoldOnce(
   }
   if (!lot) return { converted: false, reason: "lote_inexistente" };
   const marked = Array.isArray(lot.stock_converted_order_item_ids) && lot.stock_converted_order_item_ids.includes(itemId);
-  return marked ? { converted: false, reason: "ja_convertido" } : { converted: false, reason: "conversao_nao_aplicada" };
+  if (marked) return { converted: false, reason: "ja_convertido" };
+  if ((Number(lot.quantity_reserved) || 0) < 1) return { converted: false, reason: "reservado_insuficiente" };
+  return { converted: false, reason: "conversao_nao_aplicada" };
+}
+
+// F4-03 — o pedido tem reserva de estoque IDENTIFICADA? Decide se uma falha de
+// conversão bloqueia o fulfillment (lote inexistente incluso). Leitura
+// indisponível LANÇA: tratar erro como "pedido legado" concluiria o pedido com
+// estoque não convertido — o chamador fica em pending_retry e retoma.
+export async function orderTracksStockReservations(svc: any, orderId: string): Promise<boolean> {
+  if (!orderId) return false;
+  const rows = await svc.entities[ENTITY].filter({ order_id: orderId, is_deleted: false });
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function listOrderReservations(svc: any, orderId: string, states?: string[]): Promise<any[]> {

@@ -23,11 +23,35 @@ import {
   consumeOrderReservations,
   resumeOrderStockConversion,
   convertReservedToSoldOnce,
+  orderTracksStockReservations,
 } from "./stockReservation.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
 export const FULFILLING_STALE_MS = 10 * 60 * 1000;
+
+// F4-03 — UMA FALHA DE CONVERSÃO BLOQUEIA O FULFILLMENT?
+//   • Pedido com reserva IDENTIFICADA (StockReservation): bloqueia. Lote
+//     inexistente é falha recuperável como qualquer outra — o pedido fica em
+//     'pending_retry', o pagamento permanece confirmado e a reserva segue VIVA
+//     para a reconciliação. Nunca se declara fulfillment concluído sem estoque
+//     convertido, nem se devolve estoque de pagamento confirmado.
+//   • Pedido LEGADO (sem StockReservation): comportamento anterior preservado —
+//     ausência de lote ou de estoque reservado não impede o fulfillment. A
+//     conversão simplesmente não acontece: nenhuma venda fantasma é criada e
+//     `quantity_reserved` nunca fica negativo.
+//   • Item já convertido é sempre sucesso (retry idempotente).
+export function blocksFulfillment(
+  conversion: { converted: boolean; reason: string },
+  tracked: boolean,
+): boolean {
+  if (conversion?.converted) return false;
+  if (conversion?.reason === "ja_convertido") return false;
+  if (!tracked && (conversion?.reason === "lote_inexistente" || conversion?.reason === "reservado_insuficiente")) {
+    return false;
+  }
+  return true;
+}
 
 // Resolve or create a Person by contact_email (companion may not have an account yet).
 // Dedup com reativação: Person inativa com o mesmo e-mail é REATIVADA (a
@@ -194,6 +218,11 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
   }
 
   try {
+    // F4-03 — decidido UMA vez, antes da emissão: pedido com reserva
+    // identificada trata falha de conversão como bloqueante (recuperável);
+    // pedido legado mantém o comportamento anterior. Leitura indisponível lança
+    // e o pedido vai para 'pending_retry' — nunca é confundido com legado.
+    const stockTracked = await orderTracksStockReservations(svc, order.id);
     for (const item of orderItems) {
       // Idempotency per item: skip if ticket already issued AND participant linked.
       const existingTicket = await svc.entities.Ticket.filter({ order_item_id: item.id, is_deleted: false });
@@ -228,8 +257,16 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         // escrita não é engolida: o fulfillment fica 'pending_retry' (visível na
         // aba de transações) em vez de concluir com estoque não convertido.
         const conversion = await convertReservedToSoldOnce(svc, item);
-        if (!conversion.converted && conversion.reason !== "ja_convertido" && conversion.reason !== "lote_inexistente") {
+        // F4-03 — lote inexistente NÃO é sucesso em pedido com reserva
+        // identificada: bloqueia e o pedido fica recuperável (pending_retry).
+        if (blocksFulfillment(conversion, stockTracked)) {
           throw new Error(`Conversão de estoque não aplicada (${conversion.reason})`);
+        }
+        if (!conversion.converted && conversion.reason !== "ja_convertido") {
+          console.warn(
+            "[fulfillOrder] conversão de estoque não aplicada (pedido sem reserva identificada):",
+            item.id, conversion.reason,
+          );
         }
       }
       createdTickets.push(ticket);
