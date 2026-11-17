@@ -650,3 +650,37 @@ de avaliador para a pessoa errada.
 adversariais nem no código revisado. Não é declaração de ausência geral de riscos: os itens P2 e os
 riscos operacionais acima permanecem abertos, e a Fase 3 continua condicionada à revisão
 independente e à homologação em ambiente real.
+
+---
+
+## N. F4-02 — reservas pagas, conversão idempotente e check-in (2026-11-17)
+
+Fecha os três defeitos da auditoria F4: reserva de compra PAGA liberada pelo reconciliador (P1),
+conversão reservado→vendido não idempotente (P2) e participante confirmado sem `checkin_at` (P3).
+
+**Causas raiz.** (a) O expirador consultava o provedor e o reconciliador de estoque decidia sozinho
+pelo `Payment` local: no mesmo run, o pedido era mantido e a reserva devolvida. Erro de consulta e
+intent ainda pagável eram tratados como ausência de pagamento. (b) `quantity_sold` era incrementado a
+cada execução do fulfillment, sem marcador por item; a reserva encerrava mesmo com o lote
+incompleto. (c) A sincronização olhava só o status, então `confirmed` sem timestamp nunca era
+reparado.
+
+**Correções.** Decisão única `assessOrderPaymentState` (pago / processando / indeterminado / intent
+ainda pagável / nenhum pagamento vivo) compartilhada pelos dois reconciliadores, com re-checagem
+local imediatamente antes de liberar; conversão exatamente uma vez por item de pedido
+(`SalesLot.stock_converted_order_item_ids` na mesma escrita do `$inc`), encerramento da reserva
+somente com o lote integralmente convertido e retomada pela reconciliação; check-in validando estado
+E timestamp, reparando o carimbo com o instante do ingresso sem reescrever a autoria e respondendo
+503 com `retry_sync` quando a sincronização não conclui.
+
+**Evidências.** `test:unit:f4` **41/41** (17 novos: 7 de decisão de pagamento, P2-1 de reserva paga
+sem ingresso, 6 de reparação de timestamp). Regressão 0 falhas: refund 115, certhttp 65, fase3 35,
+migration 25, authz 13, csv 12, security 9, access 7 — **322 testes únicos**. Build exit 0, lint 0 nos
+arquivos alterados, typecheck com os 1.814 erros preexistentes (nenhum nos arquivos tocados).
+
+**Riscos residuais.** Sem transação entre documentos: a garantia é CAS de um documento + confirmação
+por leitura, com fail-closed quando o provedor está indisponível (estoque pode ficar retido até a
+próxima rodada, nunca vendido duas vezes). Concorrência em banco real, E2E autenticado por perfil e
+carga continuam não executados (P2 — homologação). Retenção de `StockReservation` indefinida (D-02).
+
+Detalhamento completo em `docs/F4-02-HARDENING-2026-11-17.md`.

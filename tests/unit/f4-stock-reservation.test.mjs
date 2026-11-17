@@ -415,3 +415,131 @@ test("F4-01/16 — venda confirmada encerra a reserva SÓ com o lote integralmen
   assert.equal(reservedOf(db), 0);
   assert.equal(soldOf(db), 2, "nenhuma devolução de estoque de compra paga");
 });
+
+// ---------------------------------------------------------------------------
+// F4-02 (P1) — decisão de pagamento única antes de devolver estoque
+// ---------------------------------------------------------------------------
+function staleOrderWithPendingIntent(over = {}) {
+  const past = new Date(Date.now() - 60 * 1000).toISOString();
+  return makeDb([lot("lot_1")], {
+    orders: [{
+      id: "ord_1", event_id: "ev_1", status: "pending",
+      checkout_token: "T", reserved_until: past, is_deleted: false,
+    }],
+    payments: [{
+      id: "pay_1", order_id: "ord_1", event_id: "ev_1", status: "pending",
+      intent_id: "pi_1", provider: "stripe", is_deleted: false,
+      ...over,
+    }],
+  });
+}
+
+async function expiredReservationOn(db) {
+  const token = "T";
+  await reserve(db, token, { lot_1: 1 }, { ttlMs: -1000 });
+  await attachReservationsToOrder(db.svc, token, "ord_1");
+  return token;
+}
+
+test("F4-02/P1-1 — provedor 'processing': reserva mantida e nada liberado", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+  const retrieveIntent = async () => ({ status: "processing" });
+
+  const guard = await assessOrderPaymentState(db.svc, "ord_1", { retrieveIntent });
+  assert.equal(guard.verdict, "processando");
+  assert.equal(isPaymentProtected(guard), true);
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+
+  assert.equal(out.released, 0, "processando pode virar pago");
+  assert.equal(out.kept, 1);
+  assert.equal(reservedOf(db), 1, "estoque preservado");
+  assert.equal(db.stockReservations[0].state, "active");
+});
+
+test("F4-02/P1-2 — provedor 'succeeded' com pagamento local pendente: nada é devolvido", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+  const retrieveIntent = async () => ({ status: "succeeded" });
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+
+  assert.equal(out.released, 0, "pagamento confirmado nunca devolve estoque");
+  assert.equal(out.kept, 1);
+  assert.equal(out.pending, 1, "reserva segue viva até a conversão completar");
+  assert.equal(reservedOf(db), 1);
+  assert.deepEqual(tokensOf(db), ["T"]);
+});
+
+test("F4-02/P1-3 — provedor indisponível: fail-closed, nenhuma liberação", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+  const retrieveIntent = async () => { throw new Error("timeout do provedor"); };
+
+  const guard = await assessOrderPaymentState(db.svc, "ord_1", { retrieveIntent });
+  assert.equal(guard.verdict, "indeterminado");
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+
+  assert.equal(out.released, 0);
+  assert.equal(reservedOf(db), 1, "sem resposta do provedor nada é devolvido");
+  assert.equal(db.stockReservations[0].state, "active");
+});
+
+test("F4-02/P1-4 — consulta inconclusiva (sem status): fail-closed", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent: async () => ({}) });
+
+  assert.equal(out.released, 0);
+  assert.equal(out.kept, 1);
+  assert.equal(reservedOf(db), 1);
+});
+
+test("F4-02/P1-5 — intent ainda pagável no provedor: reserva mantida", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+  const retrieveIntent = async () => ({ status: "requires_payment_method" });
+
+  const guard = await assessOrderPaymentState(db.svc, "ord_1", { retrieveIntent });
+  assert.equal(guard.verdict, "ativo_no_provedor");
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+
+  assert.equal(out.released, 0, "o comprador ainda pode concluir o pagamento");
+  assert.equal(reservedOf(db), 1);
+});
+
+test("F4-02/P1-6 — intent cancelado no provedor: liberação por token uma única vez", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+  const retrieveIntent = async () => ({ status: "canceled" });
+
+  const first = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+  assert.equal(first.released, 1);
+  assert.equal(reservedOf(db), 0);
+  assert.equal(db.stockReservations[0].state, "released");
+
+  const second = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+  assert.equal(second.released, 0, "reconciliação repetida não devolve de novo");
+});
+
+test("F4-02/P1-7 — webhook concorrente entre a consulta e a liberação: estoque preservado", async () => {
+  const db = staleOrderWithPendingIntent();
+  await expiredReservationOn(db);
+
+  // A consulta ao provedor (antiga) diz 'cancelado', mas o pagamento é
+  // confirmado no banco enquanto a reserva está prestes a ser liberada.
+  const retrieveIntent = async () => {
+    await db.svc.entities.Payment.update("pay_1", { status: "succeeded" });
+    return { status: "canceled" };
+  };
+
+  const out = await reconcileStockReservations(db.svc, 10, { retrieveIntent });
+
+  assert.equal(out.released, 0, "re-checagem local antes de liberar");
+  assert.equal(reservedOf(db), 1);
+  assert.equal(db.stockReservations[0].state, "active");
+});
