@@ -1,0 +1,119 @@
+{
+  "name": "AccessChangeEvidence",
+  "type": "object",
+  "description": "F3-14 (2026-11-16) \u2014 EVID\u00caNCIA DUR\u00c1VEL de uma altera\u00e7\u00e3o de acesso, gravada pelo backend ANTES da muta\u00e7\u00e3o ou no in\u00edcio dela. Existe porque o estado atual de um Participant (role_in_event, updated_date) n\u00e3o comprova que houve altera\u00e7\u00e3o de papel nem quem a executou: reconstruir a trilha a partir do estado permitia criar role_change fict\u00edcio e atribuir a autoria ao operador da recupera\u00e7\u00e3o. A recupera\u00e7\u00e3o (manageParticipant op recoverRoleAudit) l\u00ea SOMENTE esta evid\u00eancia e confere a correspond\u00eancia com o estado persistido; sem evid\u00eancia, nenhuma trilha \u00e9 criada. Escrita exclusivamente por backend (service role); RLS admin-only. state: started (muta\u00e7\u00e3o iniciada, ainda n\u00e3o aplicada), applied (muta\u00e7\u00e3o efetiva, trilha pendente), audit_recorded, audit_pending, audit_unavailable. actor_user_id/actor_name s\u00e3o o ATOR ORIGINAL (contexto autenticado da altera\u00e7\u00e3o), nunca o operador da recupera\u00e7\u00e3o; vazio = autoria original desconhecida.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento em que a altera\u00e7\u00e3o ocorreu (escopo de isolamento entre eventos)."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "Participant",
+        "EventMembership"
+      ],
+      "enumColors": [
+        "blue",
+        "purple"
+      ],
+      "default": "Participant",
+      "description": "Entidade cujo acesso foi alterado."
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID do registro alterado (participante ou v\u00ednculo)."
+    },
+    "operation": {
+      "type": "string",
+      "default": "role_change",
+      "description": "Opera\u00e7\u00e3o registrada (role_change, reviewer_reactivation). Componente da chave de auditoria."
+    },
+    "occurrence": {
+      "type": "string",
+      "description": "Token determin\u00edstico da OCORR\u00caNCIA, gerado no servidor no in\u00edcio da opera\u00e7\u00e3o (nunca vindo do cliente). Junto com operation forma a chave da trilha \u2014 retry, replay e recupera\u00e7\u00f5es simult\u00e2neas convergem para um \u00fanico registro."
+    },
+    "old_value": {
+      "type": "string",
+      "description": "Valor anterior comprovado pela opera\u00e7\u00e3o (ex.: papel anterior)."
+    },
+    "new_value": {
+      "type": "string",
+      "description": "Valor novo comprovado pela opera\u00e7\u00e3o (ex.: papel novo). A recupera\u00e7\u00e3o exige que o estado persistido corresponda a este valor."
+    },
+    "actor_user_id": {
+      "type": "string",
+      "description": "ATOR ORIGINAL da altera\u00e7\u00e3o (usu\u00e1rio autenticado que executou). Vazio = desconhecido; a trilha recuperada \u00e9 ent\u00e3o registrada como sistema, sem atribuir autoria a quem recuperou."
+    },
+    "actor_name": {
+      "type": "string",
+      "description": "Nome do ator original (snapshot)."
+    },
+    "audit_key": {
+      "type": "string",
+      "description": "Chave determin\u00edstica da trilha (operation|occurrence). \u00c9 a mesma usada na tentativa original e na recupera\u00e7\u00e3o."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "started",
+        "applied",
+        "audit_recorded",
+        "audit_pending",
+        "audit_unavailable"
+      ],
+      "enumColors": [
+        "gray",
+        "blue",
+        "green",
+        "yellow",
+        "red"
+      ],
+      "default": "started",
+      "description": "Estado da opera\u00e7\u00e3o e da auditoria. 'started' = muta\u00e7\u00e3o iniciada e n\u00e3o conclu\u00edda (a recupera\u00e7\u00e3o recusa); 'applied' = muta\u00e7\u00e3o efetiva com trilha pendente; os demais refletem o desfecho da trilha."
+    },
+    "audit_state": {
+      "type": "string",
+      "description": "Espelho do desfecho da tentativa de trilha (recorded, pending, unavailable)."
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Motivo t\u00e9cnico quando a trilha n\u00e3o p\u00f4de ser confirmada na recupera\u00e7\u00e3o."
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "entity_type",
+    "entity_id",
+    "operation",
+    "occurrence",
+    "new_value",
+    "state"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

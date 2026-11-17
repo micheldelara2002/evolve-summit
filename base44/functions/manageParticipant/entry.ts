@@ -15,6 +15,7 @@ import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shar
 import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
 import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified } from "../../shared/auditTrail.ts";
+import { recordAccessChange } from "../../shared/accessAudit.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 // (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
 
@@ -73,6 +74,47 @@ async function auditRoleChange(svc, user, eventId, { entityType = 'Participant',
     });
     return pending ? 'pending' : 'unavailable';
   }
+}
+
+// F3-14 (2026-11-16) — EVIDÊNCIA DURÁVEL da alteração de acesso.
+//
+// A recuperação da trilha NÃO pode ser reconstruída a partir do estado atual do
+// participante: `role_in_event` e `updated_date` não provam que houve alteração
+// nem quem a executou — reconstruir daí permitia criar um role_change fictício e
+// atribuir a autoria ao operador da recuperação. Antes de mutar, o servidor grava
+// em AccessChangeEvidence o que a trilha precisará provar (evento, entidade,
+// ocorrência, valor anterior, valor novo e o ATOR ORIGINAL do contexto
+// autenticado). A recuperação lê apenas essa evidência e confere a
+// correspondência com o estado persistido; sem evidência, nenhuma trilha é
+// criada. A ocorrência é gerada no SERVIDOR — nada disso vem do cliente.
+const EVIDENCE_ENTITY = 'AccessChangeEvidence';
+
+function newOccurrence(prefix) {
+  const token = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}:${token}`;
+}
+
+async function createEvidence(svc, data) {
+  const created = await svc.entities[EVIDENCE_ENTITY].create({ ...data, is_deleted: false });
+  if (!created?.id) throw new Error('evidência não confirmou a gravação');
+  return created;
+}
+
+// O estado da evidência é reforço de leitura (observabilidade/reconciliação);
+// a verdade da trilha é o AuditLog com a mesma chave.
+async function markEvidence(svc, evidenceId, patch) {
+  if (!evidenceId) return;
+  try {
+    await svc.entities[EVIDENCE_ENTITY].update(evidenceId, patch);
+  } catch (err: any) {
+    console.error('[manageParticipant] falha ao atualizar evidência:', err?.message || err);
+  }
+}
+
+function evidenceStateFor(auditState) {
+  if (auditState === 'recorded') return 'audit_recorded';
+  if (auditState === 'pending') return 'audit_pending';
+  return 'audit_unavailable';
 }
 
 function pickFields(data) {
@@ -335,31 +377,77 @@ export default async function(req) {
           return Response.json({ error: 'Não é possível alterar o papel: esta pessoa possui sessão associada. Edite a sessão primeiro.' }, { status: 409 });
         }
       }
-      const updated = await base44.asServiceRole.entities.Participant.update(participantId, data);
+      const svc = base44.asServiceRole;
+
+      // F3-14 — EVIDÊNCIA DURÁVEL antes da mutação. Sem ela não há como provar
+      // depois que a alteração existiu (nem quem a fez), e a recuperação da
+      // trilha seria uma invenção a partir do estado atual.
+      let occurrence = '';
+      let evidence = null;
+      if (changesRole) {
+        occurrence = newOccurrence(`participant:${participantId}`);
+        try {
+          evidence = await createEvidence(svc, {
+            event_id: eventId,
+            entity_type: 'Participant',
+            entity_id: participantId,
+            operation: 'role_change',
+            occurrence,
+            old_value: String(current.role_in_event || ''),
+            new_value: String(data.role_in_event || ''),
+            actor_user_id: user.id,
+            actor_name: user.full_name || user.email || '',
+            audit_key: buildAuditKey('role_change', occurrence),
+            state: 'started',
+          });
+        } catch (err: any) {
+          // Fail-closed: sem evidência a operação NÃO acontece. Alterar
+          // privilégio sem possibilidade de trilha é pior do que não alterar.
+          console.error('[manageParticipant] evidência de papel não gravada:', err?.message || err);
+          return Response.json({
+            error: 'Não foi possível registrar a evidência da alteração de papel. Nada foi alterado; tente novamente.',
+            audit_state: 'unavailable',
+            applied: false,
+          }, { status: 503 });
+        }
+      }
+
+      const updated = await svc.entities.Participant.update(participantId, data);
+
       // F3-08/F3-10 — papel alterado é auditado aqui (operação crítica), com
       // trilha obrigatória. Sem trilha confirmada e sem pendência persistida a
       // resposta é 503: a alteração existe, mas não é declarada concluída.
       if (changesRole) {
-        const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
+        await markEvidence(svc, evidence?.id, { state: 'applied' });
+        const auditState = await auditRoleChange(svc, user, eventId, {
           entityId: participantId,
-          occurrence: `participant:${participantId}:${updated?.updated_date || ''}`,
+          occurrence,
           details: {
             field: 'role_in_event',
             old_value: current.role_in_event,
             new_value: data.role_in_event,
             participant_email: current.email || '',
+            evidence_id: evidence?.id || '',
           },
         });
+        await markEvidence(svc, evidence?.id, { state: evidenceStateFor(auditState), audit_state: auditState });
         if (auditState === 'unavailable') {
           return Response.json({
-            error: 'Papel alterado, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+            error: 'Papel alterado, mas a trilha de auditoria não pôde ser registrada. A evidência foi preservada: repita a recuperação para concluir a auditoria.',
             participant: updated,
             audit_state: 'unavailable',
-            // F3-13 — caminho de recuperação da trilha da alteração já efetivada.
-            recovery: { op: 'recoverRoleAudit', participant_id: participantId, event_id: eventId },
+            applied: true,
+            // F3-13/F3-14 — recuperação da trilha da alteração já efetivada, agora
+            // ancorada na evidência gravada antes da mutação.
+            recovery: {
+              op: 'recoverRoleAudit',
+              participant_id: participantId,
+              event_id: eventId,
+              evidence_id: evidence?.id || '',
+            },
           }, { status: 503 });
         }
-        return Response.json({ participant: updated, audit_state: auditState });
+        return Response.json({ participant: updated, audit_state: auditState, evidence_id: evidence?.id || '' });
       }
       return Response.json({ participant: updated });
     }
@@ -380,65 +468,133 @@ export default async function(req) {
       return Response.json({ ok: true });
     }
 
-    // F3-13 (2026-11-12) — RECUPERAÇÃO da trilha de uma alteração de papel JÁ
-    // EFETIVADA. Sem isto, a falha total (principal + pendência) deixava a
-    // alteração permanentemente sem trilha: na repetição `changesRole` é falso
-    // (o papel já mudou) e nada é tentado de novo.
-    // Regras: o papel NOVO vem do estado persistido (nunca do corpo); autor e
-    // evento vêm do contexto autenticado e do gate; a chave é determinística pela
-    // ocorrência (`updated_date` do participante), então repetir não duplica e a
-    // trilha é marcada como reconstruída — não como uma alteração nova.
+    // F3-13/F3-14 (2026-11-16) — RECUPERAÇÃO da trilha de uma alteração de papel
+    // JÁ EFETIVADA. A autoridade é a EVIDÊNCIA gravada ANTES da mutação; o estado
+    // atual do participante, sozinho, não prova alteração nem autoria.
+    // Regras:
+    //   • sem evidência → nenhuma trilha é criada (409), nada é inventado;
+    //   • o papel persistido precisa corresponder ao papel novo da evidência;
+    //   • a evidência precisa indicar operação APLICADA ('started' = mutação não
+    //     concluída → recusa);
+    //   • ocorrência e chave vêm da evidência, então retry e recuperações
+    //     simultâneas convergem para um único registro;
+    //   • autoria = ator ORIGINAL da evidência; desconhecida → registrada como
+    //     sistema/desconhecida, nunca atribuída a quem recuperou.
+    // Nada do corpo (papéis, ator, evento, entidade) é autoridade.
     if (op === 'recoverRoleAudit') {
       const participantId = String(body.participant_id || '');
       if (!participantId) return Response.json({ error: 'participant_id ausente.' }, { status: 400 });
-      const found = await base44.asServiceRole.entities.Participant.filter({ id: participantId, event_id: eventId });
+      const svc = base44.asServiceRole;
+
+      const found = await svc.entities.Participant.filter({ id: participantId, event_id: eventId });
       if (!found.length) return Response.json({ error: 'Participante não encontrado neste evento.' }, { status: 404 });
       const current = found[0];
 
-      // Conferência apenas: se a tela informa o papel atual, ele precisa bater
-      // com o banco. O valor informado nunca é gravado nem auditado.
-      if (body.role_in_event !== undefined && String(body.role_in_event) !== String(current.role_in_event)) {
+      const rows = await svc.entities[EVIDENCE_ENTITY].filter({
+        event_id: eventId,
+        entity_type: 'Participant',
+        entity_id: participantId,
+        operation: 'role_change',
+        is_deleted: false,
+      });
+      const evidences = Array.isArray(rows) ? rows : [];
+      if (evidences.length === 0) {
         return Response.json({
-          error: 'O papel atual deste participante não confere com a tela. Recarregue antes de recuperar a trilha.',
+          error: 'Não há evidência registrada de alteração de papel para este participante. A recuperação não cria trilha sem evidência.',
+          recovered: false,
+          audit_state: 'not_applicable',
         }, { status: 409 });
       }
 
-      const occurrence = `participant:${participantId}:${current.updated_date || current.created_date || ''}`;
-      const trailKey = buildAuditKey('role_change', occurrence);
+      // `evidence_id` só seleciona; se não pertencer ao participante, recusa.
+      const requestedEvidenceId = String(body.evidence_id || '');
+      if (requestedEvidenceId && !evidences.some((e) => String(e.id) === requestedEvidenceId)) {
+        return Response.json({
+          error: 'A evidência informada não pertence a este participante. Nada foi reconstruído.',
+          recovered: false,
+        }, { status: 409 });
+      }
 
-      // Já existe trilha para esta ocorrência? Então nada é gravado de novo.
-      let alreadyRecorded = false;
+      // Ocorrência mais recente ainda sem trilha; se só houver auditadas, a mais recente.
+      const sorted = [...evidences].sort((a, b) => String(b.created_date || '').localeCompare(String(a.created_date || '')));
+      const evidence = sorted.find((e) => String(e.state) !== 'audit_recorded') || sorted[0];
+
+      // Correspondência evidência × estado efetivamente persistido.
+      if (String(current.role_in_event || '') !== String(evidence.new_value || '')) {
+        return Response.json({
+          error: 'O papel atual deste participante não corresponde à evidência registrada. A trilha não foi reconstruída.',
+          recovered: false,
+          evidence_id: evidence.id,
+        }, { status: 409 });
+      }
+      // 'audit_recorded' entra aqui apenas para CONFIRMAR a trilha existente
+      // (idempotência); se o registro tiver desaparecido, é regravado com a
+      // mesma chave da evidência.
+      if (!['applied', 'audit_pending', 'audit_unavailable', 'audit_recorded'].includes(String(evidence.state))) {
+        return Response.json({
+          error: 'A evidência indica que a alteração de papel não foi concluída. Nada a reconstruir.',
+          recovered: false,
+          evidence_id: evidence.id,
+        }, { status: 409 });
+      }
+
+      // Trilha já existe para esta ocorrência → apenas confirma (idempotência).
       try {
-        const existing = await base44.asServiceRole.entities.AuditLog.filter({ audit_key: trailKey });
-        alreadyRecorded = Array.isArray(existing) && existing.length > 0;
-      } catch {
-        alreadyRecorded = false;
-      }
-
-      if (!alreadyRecorded) {
-        const auditState = await auditRoleChange(base44.asServiceRole, user, eventId, {
-          entityId: participantId,
-          occurrence,
-          details: {
-            field: 'role_in_event',
-            old_value: null,
-            new_value: current.role_in_event,
-            participant_email: current.email || '',
-            recovered: true,
-            recovery_source: 'estado_persistido',
-          },
-        });
-        if (auditState === 'unavailable') {
+        const existing = await svc.entities.AuditLog.filter({ audit_key: evidence.audit_key });
+        if (Array.isArray(existing) && existing.length > 0) {
+          await markEvidence(svc, evidence.id, { state: 'audit_recorded', audit_state: 'recorded' });
           return Response.json({
-            error: 'A trilha de auditoria não pôde ser registrada. Tente novamente para concluir a auditoria.',
-            audit_state: 'unavailable',
-            recovered: false,
-          }, { status: 503 });
+            ok: true, audit_state: 'recorded', recovered: false, already_recorded: true, evidence_id: evidence.id,
+          });
         }
-        return Response.json({ ok: true, audit_state: auditState, recovered: true, already_recorded: false });
+      } catch {
+        // Leitura indisponível: segue para a escrita com a mesma chave (idempotente).
       }
 
-      return Response.json({ ok: true, audit_state: 'recorded', recovered: false, already_recorded: true });
+      // Autoria ORIGINAL — da evidência, nunca do operador da recuperação.
+      const originalActorKnown = !!String(evidence.actor_user_id || '');
+      const originalActor = originalActorKnown
+        ? { id: String(evidence.actor_user_id), full_name: String(evidence.actor_name || ''), email: '' }
+        : { id: 'system', full_name: 'Autor original desconhecido', email: '' };
+
+      const auditState = await auditRoleChange(svc, originalActor, eventId, {
+        entityId: participantId,
+        occurrence: evidence.occurrence,
+        details: {
+          field: 'role_in_event',
+          old_value: evidence.old_value === undefined ? null : evidence.old_value,
+          new_value: evidence.new_value,
+          participant_email: current.email || '',
+          recovered: true,
+          recovery_source: 'evidencia_persistida',
+          evidence_id: evidence.id,
+          original_actor_known: originalActorKnown,
+          recovered_by_user_id: user.id,
+        },
+      });
+      await markEvidence(svc, evidence.id, {
+        state: evidenceStateFor(auditState),
+        audit_state: auditState,
+        failure_reason: auditState === 'unavailable' ? 'trilha indisponível na recuperação' : '',
+      });
+
+      if (auditState === 'unavailable') {
+        return Response.json({
+          error: 'A trilha de auditoria não pôde ser registrada. A evidência permanece preservada e a recuperação pode ser repetida.',
+          audit_state: 'unavailable',
+          recovered: false,
+          evidence_id: evidence.id,
+        }, { status: 503 });
+      }
+
+      return Response.json({
+        ok: true,
+        audit_state: auditState,
+        recovered: true,
+        already_recorded: false,
+        evidence_id: evidence.id,
+        original_actor_known: originalActorKnown,
+      });
     }
 
     if (op === 'getSessions') {
@@ -486,8 +642,8 @@ export default async function(req) {
       if (!enable) {
         if (!membershipId) return Response.json({ error: 'membership_id ausente para desativar avaliador.' }, { status: 400 });
         try {
-          await revokeEventRole(base44, { eventId, role: 'reviewer', membershipId, actor: user });
-          return Response.json({ ok: true });
+          const revoked: any = await revokeEventRole(base44, { eventId, role: 'reviewer', membershipId, actor: user });
+          return Response.json({ ok: true, audit_state: revoked?.auditState });
         } catch (error: any) {
           if (error?.message === 'not_found') {
             return Response.json({ error: 'Vínculo de avaliador não encontrado neste evento.' }, { status: 404 });
@@ -512,18 +668,76 @@ export default async function(req) {
       }
 
       // Vínculo já existente (mesmo desativado): reativa em vez de duplicar.
+      // F3-14 — a REATIVAÇÃO passa pelo mecanismo CENTRAL de auditoria de acesso
+      // (recordAccessChange). Antes ela devolvia is_deleted:false/is_active:true
+      // e concedia acesso de avaliador sem qualquer trilha.
       if (membershipId) {
-        const rows = await base44.asServiceRole.entities.EventMembership.filter({ id: membershipId, event_id: eventId, role: 'reviewer' });
-        if (!rows?.length) return Response.json({ error: 'Vínculo de avaliador não encontrado neste evento.' }, { status: 404 });
-        let userId = String(body.user_id || '');
-        if (!userId) userId = await resolveUserIdByEmail(base44, email);
-        await base44.asServiceRole.entities.EventMembership.update(membershipId, {
-          is_deleted: false,
-          is_active: true,
-          user_id: userId,
-          user_email: email,
+        const svc = base44.asServiceRole;
+        const rows = await svc.entities.EventMembership.filter({ id: membershipId });
+        const membership = rows?.[0];
+        // Escopo e papel conferidos no servidor: vínculo de outro evento (ou de
+        // outro papel) não é reativado por esta rota.
+        if (!membership || String(membership.event_id) !== eventId || String(membership.role) !== 'reviewer') {
+          return Response.json({ error: 'Vínculo de avaliador não encontrado neste evento.' }, { status: 404 });
+        }
+        // Estado contraditório (ativo e excluído ao mesmo tempo): não reativa no
+        // escuro — a concessão precisa passar de novo pelo fluxo de convite.
+        if (membership.is_active === true && membership.is_deleted === true) {
+          return Response.json({
+            error: 'Este vínculo de avaliador está em estado inconsistente. Conceda o acesso novamente pelo fluxo de convite.',
+          }, { status: 409 });
+        }
+
+        const alreadyActive = membership.is_active === true && membership.is_deleted === false;
+        // O titular NUNCA vem do corpo: sai do próprio vínculo ou do e-mail.
+        const targetEmail = normalizeParticipantEmail(membership.user_email || email);
+        const userId = String(membership.user_id || '') || await resolveUserIdByEmail(base44, targetEmail);
+
+        let saved = membership;
+        if (!alreadyActive) {
+          saved = await svc.entities.EventMembership.update(membershipId, {
+            is_deleted: false,
+            is_active: true,
+            user_id: userId,
+            user_email: targetEmail,
+          });
+        }
+
+        // Chave determinística = (evento, vínculo, versão do vínculo). Repetir a
+        // reativação (já ativo) recalcula a MESMA chave, então nem retry nem
+        // repetição duplicam a trilha — e um retry após falha de auditoria a
+        // recupera em vez de deixá-la silenciosa.
+        const auditState = await recordAccessChange(svc, {
+          eventId,
+          entityType: 'EventMembership',
+          entityId: membershipId,
+          actor: user,
+          operation: 'reviewer_reactivation',
+          reference: `${eventId}:${membershipId}:${saved?.updated_date || membership.updated_date || ''}`,
+          details: {
+            role: 'reviewer',
+            outcome: alreadyActive ? 'already_active' : 'reactivated',
+            reviewer_user_id: userId,
+            reviewer_email: targetEmail,
+            person_id: membership.person_id || personId,
+          },
         });
-        return Response.json({ ok: true, status: userId ? 'linked' : 'invited' });
+
+        if (auditState === 'unavailable') {
+          return Response.json({
+            error: 'Acesso de avaliador ativo, mas a trilha de auditoria não pôde ser registrada. Repita a operação para concluir a auditoria.',
+            status: userId ? 'linked' : 'invited',
+            audit_state: auditState,
+            already_active: alreadyActive,
+            recovery: { op: 'setReviewer', event_id: eventId, membership_id: membershipId, enable: true, person_id: personId },
+          }, { status: 503 });
+        }
+        return Response.json({
+          ok: true,
+          status: userId ? 'linked' : 'invited',
+          audit_state: auditState,
+          already_active: alreadyActive,
+        });
       }
 
       try {
@@ -534,7 +748,9 @@ export default async function(req) {
           role: 'reviewer',
           actor: user,
         });
-        return Response.json({ ok: true, status: result.status });
+        // F3-13 — a concessão é auditada em grantEventRole; o estado da trilha
+        // acompanha a resposta (recorded | pending | unavailable).
+        return Response.json({ ok: true, status: result.status, audit_state: result.auditState });
       } catch (error: any) {
         const map: Record<string, string> = {
           event_not_found: 'Evento não encontrado.',

@@ -1,7 +1,7 @@
 # Evolve Summit — Relatório Consolidado Final da Fase 3
 
-**Data:** 2026-11-12 (America/Sao_Paulo)
-**HEAD inicial desta rodada:** `dd68ae5`
+**Data:** 2026-11-16 (America/Sao_Paulo)
+**HEAD inicial desta rodada:** `5e1235e` (rodada F3-14 — correção da revisão independente)
 **HEAD final:** commit gerado pela plataforma ao salvar esta rodada (o ambiente do builder não executa escrita em git)
 **Escopo:** fechamento das lacunas comprovadas da Fase 3 (segurança, integridade, auditoria, privacidade, performance) e consolidação documental.
 
@@ -34,7 +34,9 @@
 | P1-01 | 3.8 | P1 | `role_change` era best-effort: falha de `AuditLog` não impedia declarar a alteração concluída | Alteração de privilégio sem rastreabilidade | `writeMandatoryAudit` + `recordPendingTrailVerified` + 503 quando nada persiste | `certhttp` HTTP-20…HTTP-26; `fase3` (audit-logger 9) | **Corrigido e validado (simulado)** |
 | P1-02 | 3.8 | P1 | Reemissão de certificado não recuperava trilha ausente | Certificado emitido impossível de auditar | `buildCertificateAuditEntry` reaplicado no caminho de certificado existente + `audit_recovered` | HTTP-1…HTTP-7, HTTP-10; `certificate-audit` 8 | **Corrigido e validado (simulado)** |
 | P1-03 | 3.8 | P1 | Concessão/revogação de acesso fora do `manageParticipant` sem trilha (equipe, gerente, curador, avaliador, palestrante, `partner_rep`, aceite de convite) | Acesso concedido sem registro de quem, quando e a quem | `accessAudit.recordAccessChange` cabeado em `eventInvites`, `manageSubmission`, `associateEventPartner`, `manageEventRole` | `access` ACCESS-1…ACCESS-7 | **Corrigido e validado (unitário)** |
-| P1-04 | 3.8 | P1 | Recuperação da trilha de papel inexistente após falha total | Alteração efetivada e permanentemente não auditada | Op `recoverRoleAudit` (estado persistido, chave determinística, idempotente) | HTTP-27…HTTP-33 | **Corrigido e validado (simulado)** |
+| P1-04 | 3.8 | P1 | Recuperação da trilha de papel inexistente após falha total | Alteração efetivada e permanentemente não auditada | Op `recoverRoleAudit`, agora ancorada em evidência durável (ver P1-05) | HTTP-27…HTTP-37 | **Corrigido e validado (simulado)** |
+| P1-05 | 3.8 | P1 | `recoverRoleAudit` reconstruía a trilha a partir do **estado atual** (`role_in_event` + `updated_date`) | Criava `role_change` fictício para quem nunca teve papel alterado e atribuía a autoria ao operador da recuperação | Entidade `AccessChangeEvidence` gravada **antes** da mutação (evento, entidade, ocorrência, papel anterior/novo, ator original); a recuperação exige evidência, confere a correspondência com o estado e usa a autoria original (ou `system`, quando desconhecida); sem evidência a alteração não é aplicada (fail-closed) | HTTP-27…HTTP-37 | **Corrigido e validado (simulado)** |
+| P1-06 | 3.8 | P1 | `setReviewer` com `membershipId` reativava `EventMembership` (`is_deleted:false`, `is_active:true`) **sem** passar pela auditoria central de acesso | Acesso de avaliador reconcedido sem trilha | Reativação via `recordAccessChange` com chave `reviewer_reactivation\|evento:vínculo:versão`, escopo e papel conferidos no servidor, titular derivado do vínculo, estado contraditório recusado, `audit_state` exposto e recuperação por retry | SR-1…SR-6 | **Corrigido e validado (simulado)** |
 | P2-01 | 3.6 | P2 | CSV/Formula Injection nas exportações | Execução de fórmula na máquina do organizador | `csvCell` neutro p/ `= + - @`, TAB/CR/LF/controle, preserva negativo numérico | `csv` CSV-1…CSV-12 | **Corrigido e validado (unitário)** |
 | P2-02 | 3.6 | P2 | 27 dependências vulneráveis (14 high) | DoS por payload, sanitização, credenciais em redirect | Triagem + plano; atualização não aplicada | `npm audit --omit=dev` | **Identificado — decisão pendente** |
 | P2-03 | 3.6 | P2 | Sem rate limiting de aplicação | Abuso volumétrico/custo | Dependência de infraestrutura; documentado | inspeção | **Identificado — limitação de infraestrutura** |
@@ -49,7 +51,7 @@
 
 ## C. Evidências de testes
 
-**Contagem de testes únicos: 239** (soma de declarações `test(` por arquivo, sem duplicar arquivos reutilizados por scripts). A soma por script é **248**, porque `test:unit:auditlog` reexecuta os 9 testes já incluídos em `test:unit:fase3`.
+**Contagem de testes únicos: 249** (soma de declarações `test(` por arquivo, sem duplicar arquivos reutilizados por scripts). A soma por script é **258**, porque `test:unit:auditlog` reexecuta os 9 testes já incluídos em `test:unit:fase3`.
 
 | Comando | Testes | Resultado |
 |---|---|---|
@@ -59,10 +61,10 @@
 | `npm run test:unit:authz` | 13 | ✅ |
 | `npm run test:unit:fase3` (privacidade 9 + logger 9 + certificado 8 + exclusão 9) | 35 | ✅ |
 | `npm run test:unit:auditlog` | 9 | ✅ (reexecução — não somada) |
-| `npm run test:unit:certhttp` | 23 | ✅ |
+| `npm run test:unit:certhttp` | 33 | ✅ |
 | `npm run test:unit:csv` | 12 | ✅ |
-| **`npm run test:unit:access`** (novo) | **7** | ✅ |
-| **Únicos** | **239** | **0 falhas** |
+| `npm run test:unit:access` | 7 | ✅ |
+| **Únicos** | **249** | **0 falhas** |
 
 **Build:** `npm run build` → exit 0 (apenas aviso de `caniuse-lite` desatualizado).
 **ESLint:** nos 12 arquivos tocados/criados → 0 erros, 0 avisos.
@@ -89,6 +91,7 @@
 | Revogação de papel | `eventInvites.revokeEventRole` | manager/admin (callers) | EventMembership / EventInvite | `accessAudit` | `role_revoke\|<id>` | `audit_state` |
 | Aceite de convite pendente | `eventInvites.linkPendingInvites` | sistema (1º acesso autenticado) | EventInvite | `accessAudit` | `invite_accepted\|<invite>` | `audit_state` |
 | Curador/avaliador (conceder/revogar) | `manageEventRole`, `manageParticipant.setReviewer` | manager/admin | EventMembership | via `eventInvites` | idem | `audit_state` |
+| **Reativação de avaliador** (F3-14) | `manageParticipant.setReviewer` (com `membership_id`) | manager/admin | EventMembership | `recordAccessChange` (`reviewer_reactivation`) | `reviewer_reactivation\|evento:vínculo:updated_date` | 503 + `audit_state: unavailable` + retry idempotente |
 | Promoção a palestrante | `manageSubmission` (`approve`) | curadoria/gestão do evento | Participant | `accessAudit` | `role_change\|participant:<id>:<ocorrência>` | `audit_state` (não derruba aprovação) |
 | Rebaixamento a *attendee* | `manageSubmission` (`cancel`) | curadoria/gestão | Participant | `accessAudit` | idem | `audit_state` |
 | `partner_rep` por associação de parceiro | `associateEventPartner` | manager/admin do evento | Participant | `accessAudit` | `role_change\|participant:<id>:<ocorrência>` | `audit_state` |
@@ -250,7 +253,7 @@
 |---|---|---|
 | **3.6 — Segurança contra ataques** | **Parcialmente validada** | Vetores analisados com evidência estática; CSV corrigido e testado; SSRF e segredos sem achado. Rate limiting e exploração dinâmica não comprovados. |
 | **3.7 — Performance** | **Não concluída** | Somente inspeção; nenhuma métrica de carga medida. |
-| **3.8 — Integridade e auditoria** | **Concluída com limitações documentadas** | Defeitos corrigidos e cobertos por testes HTTP/unitários; validação em banco real pendente. |
+| **3.8 — Integridade e auditoria** | **Concluída com limitações documentadas** (revisão F3-14 aplicada) | Trilha de papel provada por evidência gravada antes da mutação (P1-05) e reativação de avaliador auditada (P1-06); validação em banco real e revisão independente ainda pendentes. |
 | **3.1 — E2E por perfil / RLS real** | **Parcialmente validada** | Estática (RLS e guardas) concluída; E2E e RLS real bloqueados. |
 | **Dependências** | **Concluída com limitações documentadas** (triagem) | Inventário e plano prontos; atualização não aplicada. |
 | **LGPD** | **Concluída com limitações documentadas** (inventário) | Controles mapeados; retenção depende de decisão. |
@@ -273,4 +276,96 @@
 | 11 | Relatório consolidado refletindo o repositório | ✅ |
 | 12 | Sem P0/P1 conhecido sem tratamento | ✅ |
 
-**Conclusão:** **Fase 3 não encerrada.** Os critérios 5, 7 e 8 dependem de ambiente de homologação com identidades sintéticas, dados em volume e banco real — não de correção de código. Encerrar agora equivaleria a declarar aprovado o que foi apenas inspecionado. O código está pronto para a rodada de homologação; os riscos abertos estão classificados e nenhum é P0/P1 conhecido.
+**Conclusão:** **Fase 3 não encerrada.** Os critérios 5, 7 e 8 dependem de ambiente de homologação com identidades sintéticas, dados em volume e banco real — não de correção de código. Encerrar agora equivaleria a declarar aprovado o que foi apenas inspecionado. O código está pronto para a rodada de homologação.
+
+**Sobre P1 = 0 (revisão independente):** os dois P1 apontados na revisão de 2026-11-16 estão corrigidos e cobertos por testes de caminho HTTP (ver seção K). Isso **não** autoriza declarar P1 = 0 por si só: a evidência de auditoria agora comprova a operação original, mas a cobertura de todos os caminhos de reativação de reviewer e a validação em banco real seguem dependendo da revisão independente e da homologação. A Fase 3 permanece **aguardando revisão independente**.
+
+---
+
+## K. Correção final F3-14 — trilha de auditoria de papéis (2026-11-16)
+
+### K.1 Causa raiz
+
+**P1-05 — recuperação sem evidência.** A op `recoverRoleAudit` (F3-13) derivava a trilha do **estado atual** do `Participant`: usava `role_in_event` como "papel novo" e `updated_date` como "ocorrência". Duas consequências:
+
+1. `role_in_event` não é prova de trânsito — qualquer participante tem um papel. Um registro `role_change` podia ser criado para alguém que nunca teve papel alterado (basta chamar a op com o id).
+2. A autoria vinha do **usuário autenticado no momento da recuperação**, não de quem alterou. Quem recupera assumia a autoria de uma operação que não executou.
+
+O defeito era de **modelo de evidência**, não de código defensivo: faltava registrar, no momento da mutação, o que a trilha precisaria provar depois.
+
+**P1-06 — reativação de avaliador fora da auditoria central.** O ramo de `setReviewer` que recebe `membershipId` reativava o vínculo com `EventMembership.update({ is_deleted:false, is_active:true, user_id, user_email })` e retornava sucesso — sem passar por `recordAccessChange`, ao contrário da concessão e da revogação, que já auditavam. Havia ainda dois efeitos colaterais no mesmo ramo: o **titular vinha do corpo** (`body.user_id`) e o vínculo era buscado sem conferir evento/papel no servidor (o filtro incluía `event_id`/`role`, mas a atualização em si não revalidava nada).
+
+### K.2 Solução aplicada
+
+**Evidência durável (nova entidade `AccessChangeEvidence`, RLS admin-only).** Antes de mutar, o backend grava evento, tipo e id da entidade, operação, ocorrência (gerada no servidor), papel anterior, papel novo, **ator original** (do contexto autenticado) e a chave da trilha. Se a evidência não puder ser gravada, a alteração **não acontece** (503, `applied: false`) — fail-closed: privilégio não muda sem possibilidade de trilha. Depois da mutação a evidência passa a `applied` e, ao final, espelha o desfecho da trilha (`audit_recorded` / `audit_pending` / `audit_unavailable`).
+
+**`recoverRoleAudit` reescrita.** Agora:
+
+- exige evidência do evento + participante (sem evidência → 409, nenhuma trilha);
+- confere que o papel persistido **corresponde** ao `new_value` da evidência (divergência → 409);
+- recusa evidência em `started` (mutação não concluída);
+- usa a **ocorrência e a chave da evidência** (retry e recuperações simultâneas convergem para um registro);
+- usa a **autoria original**; se desconhecida, registra `user_id: 'system'` / "Autor original desconhecido", com `recovered_by_user_id` identificando quem recuperou;
+- `evidence_id` serve apenas como seleção; se não pertencer ao participante, recusa;
+- `audit_recorded` apenas confirma (idempotente), inclusive se o registro tiver desaparecido.
+
+**`setReviewer` reativação auditada.** Escopo e papel conferidos no servidor (vínculo de outro evento → 404; estado contraditório `is_active && is_deleted` → 409); titular derivado do vínculo/e-mail, nunca do corpo; reativação via `recordAccessChange` com chave determinística `reviewer_reactivation|evento:vínculo:updated_date`; `already_active` devolve `audit_state` sem regravar; falha de auditoria → 503 com `audit_state: unavailable` e caminho de retry; retry recalcula a mesma chave e recupera a trilha. Concessão e revogação passaram a devolver `audit_state` (antes era descartado).
+
+### K.3 Arquivos alterados
+
+| Arquivo | Alteração |
+|---|---|
+| `base44/entities/AccessChangeEvidence.jsonc` | **novo** — evidência durável da alteração de acesso (RLS admin-only) |
+| `base44/functions/manageParticipant/entry.ts` | evidência antes da mutação (fail-closed); `recoverRoleAudit` reescrita sobre evidência; reativação de avaliador via `recordAccessChange`; `audit_state` em concessão/revogação |
+| `tests/unit/fase3-http-audit.test.mjs` | HTTP-27…HTTP-37 (recuperação por evidência) e SR-1…SR-6 (reativação/concessão/revogação de avaliador) |
+
+Nenhuma alteração de RLS existente, autenticação, dependências, AwardCategory/AwardNomination ou fluxos fora do escopo.
+
+### K.4 Testes executados
+
+**Testes novos (17 no arquivo HTTP, +10 no total único):**
+
+| # | Cenário | Resultado |
+|---|---|---|
+| HTTP-27 | alteração real com trilha pendente → recuperação conclui com o ator original | ✅ |
+| HTTP-28 | retry após recuperação → nenhuma duplicidade | ✅ |
+| HTTP-29 | falha de persistência na recuperação → 503, evidência preservada, repetível | ✅ |
+| HTTP-30 | corpo adulterado (ator/papéis) ignorado; evento diferente → 403 | ✅ |
+| HTTP-31 | duas recuperações simultâneas → uma única trilha | ✅ |
+| HTTP-32 | participante sem alteração → recuperação negada, nada criado | ✅ |
+| HTTP-33 | estado persistido incompatível com a evidência → recusado | ✅ |
+| HTTP-34 | autor original desconhecido → `system`, operador registrado como recuperador | ✅ |
+| HTTP-35 | evidência de operação não aplicada (`started`) → recusado | ✅ |
+| HTTP-36 | sem evidência durável → alteração não aplicada (fail-closed) | ✅ |
+| HTTP-37 | evidência de outro participante → recusada, evidência legítima intacta | ✅ |
+| SR-1 | reativação de vínculo existente → trilha obrigatória | ✅ |
+| SR-2 | reativação repetida → sem duplicidade | ✅ |
+| SR-3 | auditoria indisponível → 503 explícito; retry recupera sem duplicar | ✅ |
+| SR-4 | vínculo de outro evento → 404, nada muda | ✅ |
+| SR-5 | vínculo inexistente → 404; estado contraditório → 409 | ✅ |
+| SR-6 | concessão e revogação → trilha consistente e `audit_state` exposto | ✅ |
+
+**Regressão:** suíte completa — refund 115, security 9, migration 25, authz 13, fase3 35, certhttp 33, csv 12, access 7 → **249 testes únicos, 0 falhas**. Fluxos de concessão, revogação, convite, aceite de convite (HTTP/unitários de `eventInvites`), palestrante (`manageSubmission`) e `partner_rep` (`associateEventPartner`) sem regressão.
+
+**Build:** exit 0 · **Lint:** 0 erros nos arquivos alterados · **Typecheck:** 1.814 erros preexistentes (nenhum novo).
+
+### K.5 Limitações que permanecem
+
+1. **Alterações anteriores à F3-14 não têm evidência** e, por decisão de projeto, **não são recuperáveis**: reconstruí-las exigiria voltar ao estado-como-prova, que é exatamente o defeito corrigido. A trilha dessas operações (se ausente) permanece ausente e documentada como tal.
+2. **Validação em banco real, E2E autenticado por perfil, concorrência real e carga:** não executados (categorias P3-02/P3-03 da seção B, inalteradas).
+3. **Evidência não é trilha**: ela comprova a operação e alimenta a recuperação; a trilha continua sendo o `AuditLog` com chave determinística. Reconciliação de pendências segue por `resolvePendingTrails`.
+4. **Retenção de `AccessChangeEvidence`** não definida (mesma decisão jurídica de `AuditLog`, D-02).
+
+### K.6 Classificação de risco revisada
+
+| Item | Antes | Depois |
+|---|---|---|
+| Reconstrução de trilha sem prova de alteração | P1 | **Encerrado** (sem evidência → sem trilha; evidência obrigatória antes da mutação) |
+| Atribuição indevida de autoria | P1 | **Encerrado** (autoria original da evidência; desconhecida → sistema) |
+| Reativação de avaliador sem trilha | P1 | **Encerrado** (mecanismo central + chave idempotente + retry) |
+| Concessão/revogação sem `audit_state` exposto | P3 | **Encerrado** |
+| Alteração de privilégio sem evidência prévia | — | **Encerrado** (fail-closed, HTTP-36) |
+| Trilha de operações anteriores à F3-14 sem evidência | — | **Risco aceito e documentado** (K.5.1) |
+| Validação em ambiente real | P2 | **P2 — pendente** (homologação) |
+
+**P1 = 0 é declarado apenas para os dois defeitos apontados na revisão**, e condicionado à revisão independente. A Fase 3 permanece aberta até essa revisão e até a homologação dos critérios 5, 7 e 8.
