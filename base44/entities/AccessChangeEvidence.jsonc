@@ -1,7 +1,7 @@
 {
   "name": "AccessChangeEvidence",
   "type": "object",
-  "description": "F3-14 (2026-11-16) \u2014 EVID\u00caNCIA DUR\u00c1VEL de uma altera\u00e7\u00e3o de acesso, gravada pelo backend ANTES da muta\u00e7\u00e3o ou no in\u00edcio dela. Existe porque o estado atual de um Participant (role_in_event, updated_date) n\u00e3o comprova que houve altera\u00e7\u00e3o de papel nem quem a executou: reconstruir a trilha a partir do estado permitia criar role_change fict\u00edcio e atribuir a autoria ao operador da recupera\u00e7\u00e3o. A recupera\u00e7\u00e3o (manageParticipant op recoverRoleAudit) l\u00ea SOMENTE esta evid\u00eancia e confere a correspond\u00eancia com o estado persistido; sem evid\u00eancia, nenhuma trilha \u00e9 criada. Escrita exclusivamente por backend (service role); RLS admin-only. state: started (muta\u00e7\u00e3o iniciada, ainda n\u00e3o aplicada), applied (muta\u00e7\u00e3o efetiva, trilha pendente), audit_recorded, audit_pending, audit_unavailable. actor_user_id/actor_name s\u00e3o o ATOR ORIGINAL (contexto autenticado da altera\u00e7\u00e3o), nunca o operador da recupera\u00e7\u00e3o; vazio = autoria original desconhecida.",
+  "description": "F3-14 (2026-11-16) \u2014 EVID\u00caNCIA DUR\u00c1VEL de uma altera\u00e7\u00e3o de acesso, gravada pelo backend ANTES da muta\u00e7\u00e3o ou no in\u00edcio dela. Existe porque o estado atual de um Participant (role_in_event, updated_date) n\u00e3o comprova que houve altera\u00e7\u00e3o de papel nem quem a executou: reconstruir a trilha a partir do estado permitia criar role_change fict\u00edcio e atribuir a autoria ao operador da recupera\u00e7\u00e3o. A recupera\u00e7\u00e3o (manageParticipant op recoverRoleAudit) l\u00ea SOMENTE esta evid\u00eancia e confere a correspond\u00eancia com o estado persistido; sem evid\u00eancia, nenhuma trilha \u00e9 criada. Escrita exclusivamente por backend (service role); RLS admin-only. state: started (muta\u00e7\u00e3o iniciada, ainda n\u00e3o aplicada), applied (muta\u00e7\u00e3o efetiva, trilha pendente), audit_recorded, audit_pending, audit_unavailable, not_applied (F3-16: a muta\u00e7\u00e3o N\u00c3O foi aplicada porque outra altera\u00e7\u00e3o ocupava o claim \u2014 evid\u00eancia encerrada, nunca recuper\u00e1vel e nunca bloqueante). actor_user_id/actor_name s\u00e3o o ATOR ORIGINAL (contexto autenticado da altera\u00e7\u00e3o), nunca o operador da recupera\u00e7\u00e3o; vazio = autoria original desconhecida.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -60,17 +60,19 @@
         "applied",
         "audit_recorded",
         "audit_pending",
-        "audit_unavailable"
+        "audit_unavailable",
+        "not_applied"
       ],
       "enumColors": [
         "gray",
         "blue",
         "green",
         "yellow",
-        "red"
+        "red",
+        "gray"
       ],
       "default": "started",
-      "description": "Estado da opera\u00e7\u00e3o e da auditoria. 'started' = muta\u00e7\u00e3o iniciada e n\u00e3o conclu\u00edda (a recupera\u00e7\u00e3o recusa); 'applied' = muta\u00e7\u00e3o efetiva com trilha pendente; os demais refletem o desfecho da trilha."
+      "description": "Estado da opera\u00e7\u00e3o e da auditoria. 'started' = muta\u00e7\u00e3o iniciada e n\u00e3o conclu\u00edda (a recupera\u00e7\u00e3o recusa, salvo prova por token); 'applied' = muta\u00e7\u00e3o efetiva com trilha pendente; 'not_applied' = a muta\u00e7\u00e3o N\u00c3O aconteceu porque o claim do participante estava ocupado (F3-16) \u2014 evid\u00eancia encerrada sem trilha, nunca bloqueante; os demais refletem o desfecho da trilha."
     },
     "audit_state": {
       "type": "string",

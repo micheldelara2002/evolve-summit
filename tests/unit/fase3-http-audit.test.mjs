@@ -40,6 +40,7 @@ function fixture() {
       evidenceWrite: false,
       evidenceUpdate: false,
       participantWrite: false,
+      evidenceQuery: false,
     },
     users: [{
       id: "user_1",
@@ -47,10 +48,35 @@ function fixture() {
       email: "gerente@teste.dev",
       role: "user",
       account_status: "active",
+      // F3-16 — vínculo User↔Person do cadastro atômico (usado como prova).
+      person_id: "person_1",
     }, {
       id: "user_2",
       full_name: "Revisor Teste",
       email: "rev@teste.dev",
+      role: "user",
+      account_status: "active",
+      person_id: "person_2",
+    }, {
+      // F3-16 — e-mail IGUAL ao da person_4, mas vínculo aponta para outra pessoa.
+      id: "user_6",
+      full_name: "Conta Alheia",
+      email: "dup@teste.dev",
+      role: "user",
+      account_status: "active",
+      person_id: "person_1",
+    }, {
+      // F3-16 — conta legada, sem vínculo de pessoa confirmado.
+      id: "user_7",
+      full_name: "Conta Legada",
+      email: "legado@teste.dev",
+      role: "user",
+      account_status: "active",
+    }, {
+      // F3-16 — vínculo correto com snapshot de e-mail desatualizado.
+      id: "user_8",
+      full_name: "Revisor Teste",
+      email: "rev.atual@teste.dev",
       role: "user",
       account_status: "active",
       person_id: "person_2",
@@ -94,10 +120,23 @@ function fixture() {
       // F3-15 — pessoa sem conta confirmada no app.
       id: "mem_no_account", event_id: EVENT, person_id: "person_3", role: "reviewer",
       is_active: false, is_deleted: true,
+    }, {
+      // F3-16 — e-mail da Person coincide com o de uma conta de OUTRA pessoa.
+      id: "mem_email_coincident", event_id: EVENT, person_id: "person_4", role: "reviewer",
+      is_active: false, is_deleted: true,
+    }, {
+      // F3-16 — vínculo correto, snapshot de e-mail desatualizado.
+      id: "mem_snapshot_stale", event_id: EVENT, person_id: "person_2", user_id: "user_8",
+      user_email: "antigo@teste.dev", role: "reviewer", is_active: false, is_deleted: true,
+    }, {
+      // F3-16 — conta legada sem vínculo User↔Person.
+      id: "mem_legacy_account", event_id: EVENT, person_id: "person_2", user_id: "user_7",
+      role: "reviewer", is_active: false, is_deleted: true,
     }],
     participants: [
       { id: "part_1", event_id: EVENT, person_id: "person_1", full_name: "Fulano", email: "fulano@teste.dev", role_in_event: "attendee", is_deleted: false, updated_date: "2026-01-01T00:00:00.000Z" },
       { id: "part_2", event_id: OTHER_EVENT, person_id: "person_3", full_name: "Outro", email: "outro@teste.dev", role_in_event: "attendee", is_deleted: false, updated_date: "2026-01-01T00:00:00.000Z" },
+      { id: "part_3", event_id: EVENT, person_id: "person_3", full_name: "Terceiro", email: "terceiro@teste.dev", role_in_event: "attendee", is_deleted: false, updated_date: "2026-01-01T00:00:00.000Z" },
     ],
     sessions: [],
     certificates: [],
@@ -111,6 +150,7 @@ function fixture() {
       { id: "person_1", full_name: "Fulano", contact_email: "fulano@teste.dev", is_active: true },
       { id: "person_2", full_name: "Revisor Teste", contact_email: "rev@teste.dev", is_active: true },
       { id: "person_3", full_name: "Outro", contact_email: "outro@teste.dev", is_active: true },
+      { id: "person_4", full_name: "Duplicada", contact_email: "dup@teste.dev", is_active: true },
     ],
     invites: [],
     awardConfigs: [],
@@ -127,6 +167,8 @@ function entity(name, rows, state) {
   return {
     filter: async (query = {}) => {
       if (name === "AuditLog" && state.faults.auditRead) throw new Error("leitura de auditoria indisponível");
+      // F3-16 — consulta de evidência indisponível (fail-closed na recuperação).
+      if (name === "AccessChangeEvidence" && state.faults.evidenceQuery) throw new Error("consulta de evidência indisponível");
       // F3-15 — resposta inconclusiva (página em vez de lista) não é ausência.
       if (name === "AuditLog" && state.faults.auditReadShape) return { items: [], has_more: false };
       return rows.filter((row) => matches(row, query)).map((row) => ({ ...row }));
@@ -162,6 +204,19 @@ function entity(name, rows, state) {
       if (index < 0) throw new Error("registro não encontrado");
       rows[index] = { ...rows[index], ...data, updated_date: nextStamp(state) };
       return { ...rows[index] };
+    },
+    // F3-16 — CAS de documento único: só os registros que casam o filtro na hora
+    // da escrita são atualizados; é o que garante um único vencedor em corrida.
+    updateMany: async (query = {}, update = {}) => {
+      if (name === "Participant" && state.faults.participantWrite) {
+        throw new Error("escrita de participante indisponível");
+      }
+      const matched = rows.filter((row) => matches(row, query));
+      const set = update.$set || {};
+      for (const row of matched) {
+        Object.assign(row, set, { updated_date: nextStamp(state) });
+      }
+      return { updated: matched.length };
     },
     delete: async (id) => {
       const index = rows.findIndex((r) => r.id === id);
@@ -808,7 +863,10 @@ test("HTTP-38 — evidência criada e mutação falha: nenhuma trilha e nada apl
 
   const res = await invoke(f.state, manageParticipant, roleBody());
 
-  assert.equal(res.status, 500);
+  // F3-16 — a escrita é condicional (updateMany) e a falha é fail-closed (503),
+  // não um erro de execução: nada foi aplicado e a evidência fica 'started'.
+  assert.equal(res.status, 503);
+  assert.equal(res.data.applied, false);
   assert.equal(roleOf(f.state), "attendee");
   assert.equal(roleAudits(f.state).length, 0);
   assert.equal(f.state.evidence.length, 1, "a evidência da ocorrência é preservada");
@@ -885,33 +943,46 @@ test("HTTP-40 — evidência 'started' só recupera com o token da PRÓPRIA ocor
   assert.equal(roleAudits(f.state)[0].audit_key, "role_change|occ_prova");
 });
 
-test("HTTP-41 — segunda alteração legítima antes da recuperação: old/new não são atribuídos por suposição", async () => {
+test("HTTP-41 — ocorrência pendente BLOQUEIA a seguinte: old/new nunca vêm de suposição", async () => {
   const f = fixture();
   f.state.faults.evidenceUpdate = true;
   f.state.faults.anyAudit = true;
-  await invoke(f.state, manageParticipant, roleBody()); // attendee → speaker (evidência 1 presa)
+  const first = await invoke(f.state, manageParticipant, roleBody()); // attendee → speaker
+  assert.equal(first.status, 503);
+  assert.equal(first.data.applied, true);
+  assert.equal(roleOf(f.state), "speaker");
+  const firstEvidenceId = f.state.evidence[0].id;
   f.state.faults.evidenceUpdate = false;
   f.state.faults.anyAudit = false;
 
-  const firstEvidenceId = f.state.evidence[0].id;
-  // Segunda alteração LEGÍTIMA e auditada: speaker → attendee.
+  // F3-16 — a segunda alteração é RECUSADA enquanto a primeira não tem trilha:
+  // o token de A não pode ser sobrescrito (era a perda de evidência original).
+  const blocked = await invoke(f.state, manageParticipant, roleBody({ data: { role_in_event: "attendee" } }));
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.data.role_change_blocked, true);
+  assert.equal(roleOf(f.state), "speaker", "o papel não é sobrescrito antes da auditoria");
+  assert.equal(f.state.evidence.length, 1, "nenhuma evidência de B é criada");
+  assert.equal(roleAudits(f.state).length, 0);
+
+  // Recuperação de A: evidência presa em 'started', mas com prova por token.
+  const rec = await invoke(f.state, manageParticipant, recoverBody({ evidence_id: firstEvidenceId }));
+  assert.equal(rec.status, 200);
+  assert.equal(rec.data.reconciliation, "mutacao_aplicada_evidencia_nao_atualizada");
+  assert.equal(rec.data.role_change_blocked, false);
+  const trails = roleAudits(f.state);
+  assert.equal(trails.length, 1);
+  assert.equal(JSON.parse(trails[0].details).old_value, "attendee");
+  assert.equal(JSON.parse(trails[0].details).new_value, "speaker");
+
+  // Só agora B é permitida — e gera a própria trilha, com old/new reais.
   const second = await invoke(f.state, manageParticipant, roleBody({ data: { role_in_event: "attendee" } }));
   assert.equal(second.status, 200);
-  assert.equal(roleAudits(f.state).length, 1);
-  assert.equal(JSON.parse(roleAudits(f.state)[0].details).new_value, "attendee");
-
-  // A ocorrência ANTIGA foi superada: nada é inferido do estado atual.
-  const first = await invoke(f.state, manageParticipant, recoverBody({ evidence_id: firstEvidenceId }));
-
-  assert.equal(first.status, 409);
-  assert.equal(first.data.reconciliation, "superada_por_ocorrencia_posterior");
-  assert.equal(roleAudits(f.state).length, 1, "nenhuma trilha com old/new inventados");
-
-  // Sem evidence_id, a ocorrência selecionada é a do estado persistido.
-  const byState = await invoke(f.state, manageParticipant, recoverBody());
-  assert.equal(byState.status, 200);
-  assert.equal(byState.data.already_recorded, true);
-  assert.equal(roleAudits(f.state).length, 1);
+  assert.equal(second.data.audit_state, "recorded");
+  assert.equal(roleOf(f.state), "attendee");
+  const after = roleAudits(f.state);
+  assert.equal(after.length, 2);
+  assert.equal(new Set(after.map((t) => t.audit_key)).size, 2);
+  assert.equal(JSON.parse(after[1].details).old_value, "speaker");
 });
 
 test("HTTP-42 — evidência de outro evento é recusada", async () => {
