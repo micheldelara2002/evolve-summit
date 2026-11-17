@@ -334,33 +334,54 @@ export async function orderTracksStockReservations(svc: any, orderId: string): P
   return Array.isArray(rows) && rows.length > 0;
 }
 
-async function listOrderReservations(svc: any, orderId: string, states?: string[]): Promise<any[]> {
-  if (!orderId) return [];
+// F4-05 — LEITURA COM RESULTADO EXPLÍCITO.
+// Antes, qualquer exceção virava `[]`: uma falha de consulta passava a significar
+// "não existem reservas pendentes" e o encerramento era dado como concluído. Aqui
+// a falha é devolvida como `ok: false` (indisponível), nunca como lista vazia, e
+// só uma leitura REALMENTE vazia confirma ausência de reservas.
+async function listOrderReservations(
+  svc: any,
+  orderId: string,
+  states?: string[],
+): Promise<{ ok: boolean; records: any[]; reason?: string }> {
+  if (!orderId) return { ok: false, records: [], reason: "pedido_sem_identidade" };
   const query: any = { order_id: orderId, is_deleted: false };
   if (states && states.length > 0) query.state = { $in: states };
   try {
-    return (await svc.entities[ENTITY].filter(query)) || [];
+    const rows = await svc.entities[ENTITY].filter(query);
+    if (!Array.isArray(rows)) {
+      return { ok: false, records: [], reason: "reservas_ilegiveis:retorno_invalido" };
+    }
+    return { ok: true, records: rows };
   } catch (err: any) {
     console.error("[stockReservation] consulta de reservas do pedido falhou:", err?.message || err);
-    return [];
+    return { ok: false, records: [], reason: `reservas_ilegiveis:${err?.message || err}` };
   }
 }
 
 // Unidades daquele lote/pedido que JÁ foram convertidas (marcador no lote).
-async function convertedUnitsFor(svc: any, orderId: string, lotId: string): Promise<number> {
-  if (!orderId || !lotId) return 0;
+// F4-05 — leitura indisponível é devolvida como tal (`unavailable`), nunca como
+// "zero unidades convertidas", que seria indistinguível de uma conversão real.
+async function convertedUnitsFor(
+  svc: any,
+  orderId: string,
+  lotId: string,
+): Promise<{ count: number; unavailable: boolean; reason?: string }> {
+  if (!orderId || !lotId) {
+    return { count: 0, unavailable: true, reason: "reserva_sem_identidade" };
+  }
   let items: any[] = [];
   let lot: any = null;
   try {
-    items = await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false }) || [];
+    items = (await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false })) || [];
     lot = (await svc.entities.SalesLot.filter({ id: lotId }))[0] || null;
   } catch (err: any) {
     console.error("[stockReservation] verificação de conversão falhou:", orderId, lotId, err?.message || err);
-    return 0;
+    return { count: 0, unavailable: true, reason: `convertidas_ilegiveis:${err?.message || err}` };
   }
   const marked = Array.isArray(lot?.stock_converted_order_item_ids) ? lot.stock_converted_order_item_ids : [];
   const itemIds = (items || []).filter((i: any) => String(i.lot_id || "") === String(lotId)).map((i: any) => String(i.id));
-  return itemIds.filter((id: string) => marked.includes(id)).length;
+  return { count: itemIds.filter((id: string) => marked.includes(id)).length, unavailable: false };
 }
 
 // ENCERRAMENTO por venda confirmada: as unidades JÁ viraram vendidas (conversão
@@ -389,11 +410,38 @@ async function consumeReservationIfFullyConverted(
   svc: any,
   record: any,
   orderId: string,
-): Promise<{ consumed: boolean; converted: number; needed: number }> {
-  const needed = Math.abs(Number(record?.quantity) || 0);
-  const converted = await convertedUnitsFor(svc, orderId || String(record?.order_id || ""), String(record?.lot_id || ""));
-  if (converted < needed) return { consumed: false, converted, needed };
-  return { consumed: await consumeReservation(svc, record), converted, needed };
+): Promise<{
+  consumed: boolean;
+  converted: number;
+  needed: number;
+  unavailable: boolean;
+  reason: string;
+}> {
+  // F4-05 — QUANTIDADE INVÁLIDA/ZERO NÃO AUTORIZA ENCERRAMENTO.
+  // Antes `needed` virava 0 e a comparação `converted < needed` era falsa, então
+  // a reserva era consumida sem nenhuma unidade convertida comprovada. Sem uma
+  // quantidade reservada positiva e legível não há conversão a confirmar
+  // (fail-closed): o registro permanece vivo para a reconciliação.
+  const raw = Number(record?.quantity);
+  const needed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  if (!needed) {
+    return { consumed: false, converted: 0, needed, unavailable: false, reason: "quantidade_invalida" };
+  }
+
+  const read = await convertedUnitsFor(svc, orderId || String(record?.order_id || ""), String(record?.lot_id || ""));
+  if (read.unavailable) {
+    return { consumed: false, converted: 0, needed, unavailable: true, reason: read.reason || "convertidas_ilegiveis" };
+  }
+  if (read.count < needed) {
+    return { consumed: false, converted: read.count, needed, unavailable: false, reason: "conversao_incompleta" };
+  }
+  return {
+    consumed: await consumeReservation(svc, record),
+    converted: read.count,
+    needed,
+    unavailable: false,
+    reason: "",
+  };
 }
 
 // RETOMADA da conversão: para pedidos com reserva identificada, converte o que
@@ -461,17 +509,41 @@ export async function resumeOrderStockConversion(
 
 // Encerra as reservas do pedido — apenas as que já estão integralmente
 // convertidas. As demais continuam vivas (F4-02/P2).
-export async function consumeOrderReservations(svc: any, orderId: string): Promise<{ consumed: number; pending: number }> {
-  if (!orderId) return { consumed: 0, pending: 0 };
-  const records = await listOrderReservations(svc, orderId, ["claiming", "active"]);
+//
+// F4-05 — LISTA VAZIA E CONSULTA INDISPONÍVEL SÃO COISAS DIFERENTES:
+//   • leitura concluída e vazia  → { consumed: 0, pending: 0, unavailable: false }
+//     (confirmação real de que não há reserva a encerrar);
+//   • leitura com falha          → { unavailable: true } — NUNCA `pending: 0`
+//     como se a operação tivesse sido concluída;
+//   • falha ao conferir as unidades convertidas de um registro também marca
+//     `unavailable`, e o registro continua pendente (nunca é encerrado às cegas).
+export async function consumeOrderReservations(
+  svc: any,
+  orderId: string,
+): Promise<{ consumed: number; pending: number; unavailable: boolean; reasons: string[] }> {
+  if (!orderId) {
+    return { consumed: 0, pending: 0, unavailable: true, reasons: ["pedido_sem_identidade"] };
+  }
+  const read = await listOrderReservations(svc, orderId, ["claiming", "active"]);
+  if (!read.ok) {
+    return { consumed: 0, pending: 0, unavailable: true, reasons: [read.reason || "reservas_ilegiveis"] };
+  }
+
   let consumed = 0;
   let pending = 0;
-  for (const rec of records) {
+  let unavailable = false;
+  const reasons: string[] = [];
+  for (const rec of read.records) {
     const out = await consumeReservationIfFullyConverted(svc, rec, orderId);
-    if (out.consumed) consumed++;
-    else pending++;
+    if (out.consumed) {
+      consumed++;
+      continue;
+    }
+    pending++;
+    if (out.unavailable) unavailable = true;
+    reasons.push(`${rec.id}:${out.reason || "nao_confirmada"}`);
   }
-  return { consumed, pending };
+  return { consumed, pending, unavailable, reasons };
 }
 
 async function auditRelease(svc: any, record: any, reason: string, released: boolean) {

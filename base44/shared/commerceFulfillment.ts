@@ -351,9 +351,17 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         );
       }
       const consumed = await consumeOrderReservations(svc, order.id);
+      // F4-05 — CONSULTA INDISPONÍVEL NÃO É AUSÊNCIA DE RESERVA. Antes a falha de
+      // leitura virava lista vazia e o pedido era declarado cumprido sem que se
+      // soubesse se havia reserva por encerrar.
+      if (consumed.unavailable) {
+        throw new Error(
+          `Fulfillment bloqueado: encerramento das reservas de estoque não confirmado (${consumed.reasons.join(", ")}).`,
+        );
+      }
       if (consumed.pending > 0) {
         throw new Error(
-          `Fulfillment bloqueado: ${consumed.pending} reserva(s) de estoque com conversão incompleta (nenhuma unidade devolvida).`,
+          `Fulfillment bloqueado: ${consumed.pending} reserva(s) de estoque com conversão incompleta (${consumed.reasons.join(", ")}).`,
         );
       }
     }
