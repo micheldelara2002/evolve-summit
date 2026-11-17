@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 import { fetchMyParticipants } from "@/lib/participantApi";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import { isAdmin, isPartnerManager } from "@/lib/access";
-import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket, Inbox, CalendarPlus, Gavel } from "lucide-react";
+import { TrendingUp, Calendar, Shield, Bell, Users, Building2, Mic, Handshake, Megaphone, Award, Ticket, Inbox, CalendarPlus, Gavel, ClipboardCheck } from "lucide-react";
 
 const TONE_CLASSES = {
   primary: "bg-primary/10 text-primary",
@@ -50,7 +50,7 @@ const CURATOR_CARD = {
 
 const REVIEWER_CARD = {
   key: "painelAvaliador",
-  icon: Award,
+  icon: ClipboardCheck,
   tone: "success",
   href: "/reviewer-dashboard",
   label: "Painel do Avaliador",
