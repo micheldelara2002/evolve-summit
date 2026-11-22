@@ -14,8 +14,20 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { findActiveDuplicateEmails, normalizeParticipantEmail } from "../../shared/participantDedup.ts";
 import { grantEventRole, revokeEventRole } from "../../shared/eventInvites.ts";
 import { findAccountByEmail, ensurePersonByEmail, inviteToEvent } from "../../shared/accountInvites.ts";
-import { buildAuditKey, writeMandatoryAudit, recordPendingTrailVerified, readAuditByKey } from "../../shared/auditTrail.ts";
+import { buildAuditKey, readAuditByKey } from "../../shared/auditTrail.ts";
 import { recordAccessChange } from "../../shared/accessAudit.ts";
+// P1-04 (AUD-03) — primitiva ÚNICA de alteração/criação com papel. Nenhum
+// caminho deste arquivo escreve `role_in_event` por conta própria.
+import {
+  applyParticipantRole,
+  createParticipantWithRole,
+  auditRoleChange,
+  markEvidence,
+  releaseRoleLock,
+  reconcileRoleEvidence,
+  evidenceStateFor,
+  ROLE_TOKEN_FIELD,
+} from "../../shared/roleChange.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 // (conta: quem não tem User recebe convite de cadastro; vínculo no 1º acesso)
 

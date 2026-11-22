@@ -81,10 +81,12 @@ test("P1-01 — 'fulfilling' recente NUNCA é reportado como fulfilled", async (
 });
 
 test("P1-01 — claim não adquirido com estado não concluído → pending_retry", async () => {
+  // O objeto lido diz 'pending', mas outro processo já levou o pagamento para um
+  // estado fora do claim ('failed'): o CAS não casa e NÃO há prova de conclusão.
   const { db, orderItems, orderRow } = setup({
-    payment: { status: "expired", fulfillment_status: "pending" },
+    payment: { fulfillment_status: "failed" },
   });
-  const out = await fulfillOrder(db.svc, { ...db.payments[0] }, orderRow, orderItems);
+  const out = await fulfillOrder(db.svc, { ...db.payments[0], fulfillment_status: "pending" }, orderRow, orderItems);
 
   assert.equal(out.fulfilled, false);
   assert.equal(out.state, "pending_retry");

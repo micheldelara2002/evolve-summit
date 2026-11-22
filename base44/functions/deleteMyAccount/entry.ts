@@ -141,7 +141,7 @@ export default async function(req) {
       jobPostings: 0,
     };
 
-    const ctx = { svc, user, identity, personIds, personId, counts, dryRun, identity };
+    const ctx = { svc, user, identity, personIds, personId, counts, dryRun };
 
     // ===== DRY-RUN: só leitura, sem job e sem escrita =====
     if (dryRun) {

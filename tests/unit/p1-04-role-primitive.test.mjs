@@ -260,8 +260,12 @@ test("P1-04 — concorrência: A→B e B→C, exatamente um vence e o estado cas
   const appliedEvidence = evidences.find((e) => e.occurrence === participants[0][ROLE_TOKEN_FIELD]);
   assert.ok(appliedEvidence, "token do estado aponta para uma evidência existente");
   assert.equal(appliedEvidence.new_value, finalRole);
-  assert.equal(evidences.length, 1, "a tentativa perdedora não deixa evidência recuperável");
-  assert.ok(audits.length <= 1, "no máximo uma trilha para a única mutação");
+
+  // A tentativa perdedora grava a evidência ANTES do claim (é o contrato), mas a
+  // encerra como 'not_applied' — nunca recuperável e nunca bloqueante.
+  const recoverable = evidences.filter((e) => e.state !== "not_applied");
+  assert.equal(recoverable.length, 1, "só a ocorrência aplicada é recuperável");
+  assert.equal(audits.length, 1, "uma trilha para a única mutação");
 });
 
 test("P1-04 — criação com papel privilegiado grava evidência antes e audita", async () => {
