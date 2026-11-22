@@ -12,7 +12,7 @@ Restrições respeitadas: sem deploy, sem migração real de produção, sem alt
 |---|---|---|---|---|
 | P1-01 / F4-06 — falso sucesso no fulfillment | **PASS** | `base44/shared/commerceFulfillment.ts`; `base44/functions/getPaymentStatus/entry.ts`; `base44/functions/stripeWebhook/entry.ts`; `base44/functions/retryFulfillment/entry.ts`; `base44/functions/createPaymentIntent/entry.ts`; `src/components/participante/Checkout.jsx` | `tests/unit/p1-01-fulfillment-contract.test.mjs` (9) + F4 (70) | contrato `state` explícito; `fulfilled` só com verificação por leitura |
 | P1-02 / SEC-SSRF — IPv4-mapped IPv6 | **PASS** | `base44/shared/safeImageFetch.ts` | `tests/unit/p1-02-ssrf-ip.test.mjs` (4) | `::ffff:7f00:1` bloqueado; mesma régua para todas as famílias |
-| P1-03 / AUD-01 — dados financeiros legados em Event | **PARTIAL (bloqueio explícito na etapa final)** | `base44/shared/eventFinanceMigration.ts` (já existente, validado); dry-run executado | migração (4) + validação manual read-only | código completo; remoção dos campos do schema depende da migração real, proibida nesta rodada |
+| P1-03 / AUD-01 — dados financeiros legados em Event | **PASS** | `base44/entities/Event.jsonc`; `base44/functions/managePayouts/entry.ts`; `base44/shared/eventFinanceMigration.ts` (validado) | migração (25) + verificação read-only | migração real executada (created 1, failed 0); campos removidos do schema e dos registros (0 eventos com legado) |
 | P1-04 / AUD-03 — centralizar mutações de papel | **PASS** | `base44/shared/roleChange.ts` (novo); `manageParticipant`; `manageSubmission`; `associateEventPartner`; `shared/eventInvites.ts` | `tests/unit/p1-04-role-primitive.test.mjs` (11) + HTTP (65) | busca global: nenhum write de `role_in_event` fora da primitiva |
 | P1-05 / AUD-04 — exclusão LGPD fail-open | **PASS** | `base44/shared/identity.ts`; `base44/functions/deleteMyAccount/entry.ts`; `base44/entities/AccountDeletionJob.jsonc` (novo) | `tests/unit/p1-05-identity-state.test.mjs` (7) + deletion (8) | `identitySetIsComplete` bloqueia; job durável retomável + verificação final |
 
@@ -33,6 +33,8 @@ Restrições respeitadas: sem deploy, sem migração real de produção, sem alt
 
 ### P1-03
 - `base44/shared/eventFinanceMigration.ts` — revisado: migração idempotente, dry-run, confirmação por valor, trilha obrigatória antes da limpeza, paginação estável e retry de página (nenhuma alteração necessária além da validação).
+- `base44/entities/Event.jsonc` — removidos `refund_policy`, `commission_percent`, `payout_account_id` e `coupon_codes_registry`.
+- `base44/functions/managePayouts/entry.ts` — o auto-vínculo de eventos a uma conta recebedora verificada deixou de escrever em `Event` e passou a usar `patchEventFinance` (era o único escritor remanescente do campo).
 - Nenhum consumidor lê os campos legados diretamente: todos passam por `withEventFinance` / `patchEventFinance`.
 
 ### P1-04
@@ -114,13 +116,16 @@ Inconsistências: nenhuma (nenhum documento financeiro divergente; nenhum evento
 Campos a remover do Event após a migração: `commission_percent`, `payout_account_id`, `refund_policy`, `coupon_codes_registry`.
 Consumidores legados restantes: **nenhum** — todo acesso passa por `withEventFinance` / `patchEventFinance` / `claimCouponCode`.
 
-**Bloqueio declarado:** a remoção dos campos do schema de `Event` é o passo que fecha a exposição, mas ela só pode ocorrer **depois** da migração real — e a migração real de produção foi explicitamente proibida nesta rodada. Remover o schema antes inviabilizaria a leitura dos valores legados e os perderia.
+**Execução real (autorizada pelo responsável em 2026-11-22: base sem dados reais, será limpa antes de qualquer usuário):**
 
-Processo seguro para a execução real (autorização do responsável):
-1. Executar a função `migrateEventFinance` como **admin**, com `{ "dryRun": true }` e conferir o relatório (deve repetir o dry-run acima).
-2. Executar `{ "dryRun": false, "eventId": "6a8ddda37ca1daddd20acba5" }` (evento único) e depois `{ "dryRun": false }` até `has_more: false`.
-3. Conferir `created/merged/cleared_only/already_clean/failed` e a trilha `event_finance_migrado|<eventId>` no AuditLog.
-4. Só então remover os quatro campos de `base44/entities/Event.jsonc` (alteração de uma linha por campo) e rodar novamente o dry-run, que deve retornar `create: 0, merge: 0, clear_legacy_only: 0`.
+1. `migrateEventFinance` com `{ "dry_run": false }` → `scanned: 10, created: 1, merged: 0, cleared_only: 0, already_clean: 9, failed: 0, audit_failures: 0, has_more: false`.
+2. Verificação por leitura: `EventFinance` de `E2E-REGRESSION-B` (`6a8ddda37ca1daddd20acba5`) com `refund_policy` e `coupon_codes_registry` preservados; campos legados do Event esvaziados (`null` / `""` / `[]`).
+3. Dependência encontrada e corrigida ANTES da remoção: o auto-vínculo de recebedor em `managePayouts` gravava `Event.payout_account_id` por `updateMany` — passou a resolver pelo evento mesclado (`withEventFinance`) e gravar por `patchEventFinance`.
+4. Os quatro campos foram removidos de `base44/entities/Event.jsonc`.
+5. Resíduo apagado dos registros (`$unset` nos 10 eventos): **0 eventos** com qualquer dos quatro campos; `EventFinance` com 1 documento e dados intactos.
+6. Dry-run final → `created: 0, merged: 0, cleared_only: 0, already_clean: 10, failed: 0`.
+
+Estado final: nenhuma exposição de dado financeiro pela entidade `Event`; todo o acesso de gestão continua por `withEventFinance` / `patchEventFinance` / `claimCouponCode`.
 
 ---
 
@@ -140,12 +145,13 @@ Processo seguro para a execução real (autorização do responsável):
 2. Teste de concorrência da primitiva esperava uma única evidência; o contrato correto mantém a evidência da tentativa perdedora como `not_applied` (encerrada, não recuperável). Asserção corrigida para refletir o contrato.
 3. Teste de "claim não adquirido" simulava estado que ainda casava o claim; corrigido para um estado realmente fora do claim.
 4. `deleteMyAccount` tinha chave duplicada `identity` no objeto de contexto — detectado pelo lint, corrigido.
+5. `managePayouts` ainda gravava `Event.payout_account_id` por `updateMany` (auto-vínculo ao verificar a conta no Stripe). Remover o campo do schema teria quebrado o vínculo silenciosamente — corrigido para a primitiva financeira antes da remoção.
 
 ---
 
 ## H. Riscos residuais
 
-- **P1-03:** a exposição dos campos financeiros no Event **permanece** até a migração real + remoção do schema (bloqueio declarado). Mitigação atual: leitura de gestão passa por `withEventFinance`; a exposição é por leitura direta da entidade.
+- **P1-03:** encerrado — os quatro campos saíram do schema e dos registros (0 eventos com legado). Risco residual apenas operacional: qualquer rotina nova que tente gravar configuração financeira direto em `Event` falha visivelmente (campo inexistente) em vez de gravar em local errado, e a primitiva correta é `patchEventFinance`.
 - **Fulfillment:** entre a verificação e a escrita final existe uma janela mínima (não há transação entre documentos). A verificação roda imediatamente antes de selar e o retry reconcilia.
 - **Papel:** a plataforma não oferece transação entre documentos; a garantia é o CAS de um documento + leitura. Um crash entre a mutação e a trilha deixa o participante bloqueado até a recuperação (`recoverRoleAudit` / varredura) — por desenho, nunca libera por suposição.
 - **Exclusão LGPD:** se o progresso do job não puder ser gravado, a operação para (503) — a conta fica ativa e a exclusão é retomada depois. Dados legalmente retidos (financeiro/certificados) não são tocados por desenho.
@@ -158,14 +164,15 @@ Processo seguro para a execução real (autorização do responsável):
 - Branch: `main`
 - HEAD no início e no fim da rodada: `e7dd3d8 File changes` (nenhum commit criado por esta execução)
 - Working tree: 5 arquivos modificados não commitados (`deleteMyAccount/entry.ts`, `manageParticipant/entry.ts`, `package.json`, dois arquivos de teste P1). Os demais arquivos novos/alterados já estão no commit do HEAD.
-- Nenhum deploy, nenhuma migração real, nenhuma alteração de secrets.
+- Nenhum deploy, nenhuma alteração de secrets.
+- Migração real de `EventFinance` executada em produção em 2026-11-22, sob autorização do responsável (base sem dados reais).
 
 ---
 
 ## J. Conclusão
 
-**Todos os cinco P1 foram corrigidos e validados? NÃO.**
+**Todos os cinco P1 foram corrigidos e validados? SIM.**
 
-Quatro estão completos e verificados (P1-01, P1-02, P1-04, P1-05). P1-03 está **implementado no código e validado por dry-run**, mas a última etapa — remover os campos financeiros legados do schema de `Event` — permanece **aberta** porque exige a migração real de produção, que esta rodada proibiu explicitamente. Executá-la sem autorização perderia o dado do evento `E2E-REGRESSION-B` (ou exporia uma migração não autorizada).
+P1-01, P1-02, P1-04 e P1-05 estavam completos desde a primeira rodada. P1-03 foi fechado em 2026-11-22, após o responsável autorizar a operação sobre a base atual (sem dados reais, a ser limpa antes de qualquer usuário): a migração real rodou (`created: 1, failed: 0`), o dado financeiro do evento `E2E-REGRESSION-B` foi preservado em `EventFinance`, os quatro campos saíram do schema de `Event` e dos 10 registros, e o dry-run final voltou `already_clean: 10` com `created: 0`.
 
-Para fechar P1-03: autorizar o passo 1–3 da seção E; em seguida a remoção dos campos é imediata.
+Regressão verificada após o fechamento: `test:unit:migration` 25/25, `test:unit:f4` 70/70, `test:unit:p1` 31/31, build exit 0, lint exit 0.
