@@ -299,12 +299,17 @@ export default async function(req: Request): Promise<Response> {
           return Response.json({ error: `Falha ao consultar o Stripe: ${err?.message || err}` }, { status: 502 });
         }
         // Auto-vincula os eventos do organizador que ainda não têm recebedor.
+        // Fase 2 — o vínculo vive em EventFinance (o Event não tem mais o
+        // campo): resolve pelo evento mesclado e grava pela primitiva financeira.
         if (updated.status === "verified") {
           try {
-            await svc.entities.Event.updateMany(
-              { manager_id: updated.manager_user_id, is_deleted: false, payout_account_id: { $in: [null, ""] } },
-              { $set: { payout_account_id: updated.id } }
-            );
+            const managerEvents = await svc.entities.Event.filter({ manager_id: updated.manager_user_id, is_deleted: false });
+            for (const ev of managerEvents || []) {
+              const merged = await withEventFinance(svc, ev);
+              if (!merged?.payout_account_id) {
+                await patchEventFinance(svc, ev.id, { payout_account_id: updated.id });
+              }
+            }
           } catch {}
         }
         return Response.json({ account: sanitizeAccount(updated) });
