@@ -73,7 +73,18 @@ export default async function(req: Request): Promise<Response> {
 
     const result = await fulfillOrder(svc, { ...payment, fulfillment_status: 'pending' }, order, orderItems);
 
-    if (result.fulfilled) {
+    // P1-01 — 'fulfilling' não é sucesso: outro processo está emitindo.
+    if (result.state === 'fulfilling') {
+      return Response.json({
+        ok: false,
+        fulfilled: false,
+        in_progress: true,
+        fulfillment_state: result.state,
+        error: 'A emissão deste pagamento está em andamento em outro processo. Aguarde alguns instantes e tente de novo.',
+      }, { status: 409 });
+    }
+
+    if (result.state === 'fulfilled') {
       // Captura a taxa do Stripe também no retry (P3) — não só no webhook.
       try {
         const pi = await retrievePaymentIntent(payment.intent_id);
@@ -88,10 +99,15 @@ export default async function(req: Request): Promise<Response> {
       } catch (delivErr: any) {
         console.error('[retryFulfillment] ticket delivery failed:', delivErr?.message || delivErr);
       }
-      return Response.json({ ok: true, fulfilled: true, tickets: result.tickets.length });
+      return Response.json({ ok: true, fulfilled: true, fulfillment_state: result.state, tickets: result.tickets.length });
     }
 
-    return Response.json({ ok: false, fulfilled: false, error: result.error || 'Falha na emissão dos ingressos.' }, { status: 422 });
+    return Response.json({
+      ok: false,
+      fulfilled: false,
+      fulfillment_state: result.state,
+      error: result.error || 'Falha na emissão dos ingressos.',
+    }, { status: 422 });
   } catch (error: any) {
     console.error('[retryFulfillment]', error?.message || error);
     return Response.json({ error: error.message }, { status: 500 });

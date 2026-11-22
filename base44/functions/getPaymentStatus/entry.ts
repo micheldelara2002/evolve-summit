@@ -67,7 +67,16 @@ export default async function(req: Request): Promise<Response> {
         await deliverTickets(svc, event, order, result.tickets, orderItems);
         await ensureCompanionInvites(base44, svc, orderItems);
       } catch (e: any) { console.error('[getPaymentStatus] delivery failed:', e?.message || e); }
-      return Response.json({ status: "succeeded", fulfillment_status: result.fulfilled ? "fulfilled" : "pending_retry", tickets: result.tickets.length, error: result.error });
+      // P1-01 — o estado vem do CONTRATO verificado (fulfilled | fulfilling |
+      // pending_retry | failed). Nunca é derivado só do booleano.
+      return Response.json({
+        status: "succeeded",
+        fulfillment_status: result.state,
+        fulfilled: result.fulfilled,
+        in_progress: result.in_progress,
+        tickets: result.tickets.length,
+        error: result.error,
+      });
     }
 
     if (piStatus === "canceled") {

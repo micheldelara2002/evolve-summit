@@ -36,187 +36,11 @@ async function isStaffManager(base44, user, eventId) {
   return authorized;
 }
 
-// F3-08 — auditoria de operação crítica gerada no BACKEND. Autor, evento,
-// entidade e resultado vêm da operação executada, nunca do corpo da requisição.
-//
-// F3-10 (2026-11-12) — TRILHA OBRIGATÓRIA: era best-effort (falha ia só para o
-// console e a alteração de papel era declarada concluída sem evidência). Agora
-// a estratégia é a MESMA de certificados e operações financeiras:
-//   • trilha principal gravada e CONFIRMADA   → 'recorded';
-//   • principal falhou, pendência gravada e RELIDA por leitura → 'pending'
-//     (reconciliada por resolvePendingTrails com a mesma chave);
-//   • principal e pendência falharam          → 'unavailable' (o chamador
-//     responde 503: nunca declara a alteração concluída sem auditoria).
-// A chave é determinística por OCORRÊNCIA real da escrita (informada pelo
-// chamador), então retry/replay não duplica trilha e duas transições legítimas
-// distintas não se sobrescrevem.
-async function auditRoleChange(svc, user, eventId, { entityType = 'Participant', entityId, occurrence, details }) {
-  const entry = {
-    event_id: eventId,
-    action: 'role_change',
-    entity_type: entityType,
-    entity_id: entityId || '',
-    user_id: user.id,
-    user_name: user.full_name || user.email || '',
-    details: JSON.stringify(details || {}),
-    ip_address: '',
-    audit_key: buildAuditKey('role_change', occurrence || `${entityType}:${entityId || 'sem_id'}`),
-  };
-  try {
-    await writeMandatoryAudit(svc, entry);
-    return 'recorded';
-  } catch (err: any) {
-    const failure = err?.message || String(err);
-    const pending = await recordPendingTrailVerified(svc, {
-      ...entry,
-      provider: 'base44',
-      failure_reason: failure,
-    });
-    return pending ? 'pending' : 'unavailable';
-  }
-}
-
-// F3-14 (2026-11-16) — EVIDÊNCIA DURÁVEL da alteração de acesso.
-//
-// A recuperação da trilha NÃO pode ser reconstruída a partir do estado atual do
-// participante: `role_in_event` e `updated_date` não provam que houve alteração
-// nem quem a executou — reconstruir daí permitia criar um role_change fictício e
-// atribuir a autoria ao operador da recuperação. Antes de mutar, o servidor grava
-// em AccessChangeEvidence o que a trilha precisará provar (evento, entidade,
-// ocorrência, valor anterior, valor novo e o ATOR ORIGINAL do contexto
-// autenticado). A recuperação lê apenas essa evidência e confere a
-// correspondência com o estado persistido; sem evidência, nenhuma trilha é
-// criada. A ocorrência é gerada no SERVIDOR — nada disso vem do cliente.
+// P1-04 (AUD-03) — o ciclo de alteração de papel (trilha obrigatória, evidência,
+// claim, porta de integridade e reconciliação) vive em shared/roleChange.ts, a
+// ÚNICA porta de escrita de `role_in_event`. Este arquivo importa de lá; aqui
+// só resta o nome da entidade de evidência, usado pela recuperação de trilha.
 const EVIDENCE_ENTITY = 'AccessChangeEvidence';
-
-function newOccurrence(prefix) {
-  const token = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `${prefix}:${token}`;
-}
-
-async function createEvidence(svc, data) {
-  const created = await svc.entities[EVIDENCE_ENTITY].create({ ...data, is_deleted: false });
-  if (!created?.id) throw new Error('evidência não confirmou a gravação');
-  return created;
-}
-
-// O estado da evidência é reforço de leitura (observabilidade/reconciliação);
-// a verdade da trilha é o AuditLog com a mesma chave.
-async function markEvidence(svc, evidenceId, patch) {
-  if (!evidenceId) return;
-  try {
-    await svc.entities[EVIDENCE_ENTITY].update(evidenceId, patch);
-  } catch (err: any) {
-    console.error('[manageParticipant] falha ao atualizar evidência:', err?.message || err);
-  }
-}
-
-function evidenceStateFor(auditState) {
-  if (auditState === 'recorded') return 'audit_recorded';
-  if (auditState === 'pending') return 'audit_pending';
-  return 'audit_unavailable';
-}
-
-// F3-15 (2026-11-17) — PROVA DE MUTAÇÃO no próprio participante.
-//
-// A evidência sozinha não prova que a escrita aconteceu: 'started' é gravado
-// ANTES da mutação e a atualização para 'applied' é reforço de observabilidade.
-// Quando essa atualização falha, o papel mudou e a recuperação recusava a
-// ocorrência — um estado sem saída. O TOKEN DE OCORRÊNCIA fecha a lacuna: ele é
-// gravado NA MESMA escrita que altera o papel, então o estado persistido passa a
-// provar QUAL operação aplicou o papel atual.
-// Consequência necessária: se uma segunda alteração legítima vier depois, o
-// token passa a ser o da segunda e a primeira deixa de ser inferível — a
-// classificação devolve 'superada' em vez de atribuir old/new errados.
-const ROLE_TOKEN_FIELD = 'last_role_change_occurrence';
-
-// Reconciliação EVIDÊNCIA × ESTADO PERSISTIDO. NÃO considera 'started' como
-// prova de mutação: consulta o token gravado pela própria escrita.
-//   • token da ocorrência + papel == new_value → mutação aplicada (recuperável);
-//   • sem token                              → nada prova a escrita (recusa);
-//   • token de ocorrência posterior           → superada (não inferir);
-//   • token da ocorrência com papel divergente → estado contraditório (recusa);
-//   • evidência já marcada como aplicada       → papel precisa corresponder.
-function reconcileRoleEvidence(participant, evidence) {
-  const token = String(participant?.[ROLE_TOKEN_FIELD] || '');
-  const occurrence = String(evidence?.occurrence || '');
-  const persistedRole = String(participant?.role_in_event || '');
-  const expectedRole = String(evidence?.new_value || '');
-  const state = String(evidence?.state || '');
-
-  if (state === 'started') {
-    if (!token) return { applied: false, classification: 'nao_aplicada' };
-    if (token !== occurrence) return { applied: false, classification: 'superada_por_ocorrencia_posterior' };
-    if (persistedRole !== expectedRole) return { applied: false, classification: 'estado_divergente' };
-    return { applied: true, classification: 'mutacao_aplicada_evidencia_nao_atualizada' };
-  }
-  if (persistedRole !== expectedRole) return { applied: false, classification: 'estado_divergente' };
-  return { applied: true, classification: 'mutacao_aplicada' };
-}
-
-// F3-16 (2026-11-18) — PORTA DE INTEGRIDADE da alteração de papel.
-//
-// Lacuna fechada: A é aplicada e a trilha falha; B é aplicada antes da
-// recuperação de A e sobrescreve o token, porque o token pertence ao ESTADO, não
-// ao histórico. A recuperação de A devolvia 'superada' — correto para não
-// inventar a transição, mas A ficava efetivada e sem trilha para sempre.
-// Correção: o participante passa a carregar o ciclo de auditoria do próprio papel.
-//   [ROLE_PENDING_FIELD] = ocorrência aplicada cuja trilha NÃO está confirmada;
-//   [ROLE_LOCK_FIELD]    = claim da alteração em andamento.
-// Regra: sem trilha confirmada da ocorrência pendente, nova alteração de papel do
-// mesmo participante é RECUSADA. A porta nunca libera por suposição — só quando
-// nenhuma pendência existe, ou quando a leitura ENCONTRA a trilha (e aí libera
-// sozinha, inclusive após a varredura de manutenção gravar a pendência).
-//
-// Concorrência (limitação real declarada): a plataforma não oferece transação
-// entre documentos. A garantia é a atomicidade da atualização CONDICIONAL de UM
-// documento (CAS { [ROLE_LOCK_FIELD]: { $ne: true } }) — a mesma primitiva já
-// usada em checkout_lock, lead_partner_ids e devolução de estoque — somada à
-// confirmação por leitura. Dois escritores concorrentes: um casa o filtro e
-// aplica, o outro não casa e recebe 409. Nenhum dos dois fica sem evidência.
-const ROLE_LOCK_FIELD = 'role_change_locked';
-const ROLE_PENDING_FIELD = 'role_audit_pending';
-
-function rolePendingOf(participant) {
-  return String(participant?.[ROLE_PENDING_FIELD] || '');
-}
-
-// Libera o claim SOMENTE da ocorrência dona (CAS pelo token pendente) e confirma
-// por leitura. Sem confirmação, o chamador trata como ainda bloqueado.
-async function releaseRoleLock(svc, participantId, eventId, occurrence) {
-  const token = String(occurrence || '');
-  if (!token) return false;
-  try {
-    await svc.entities.Participant.updateMany(
-      { id: participantId, event_id: eventId, [ROLE_PENDING_FIELD]: token },
-      { $set: { [ROLE_LOCK_FIELD]: false, [ROLE_PENDING_FIELD]: '' } },
-    );
-  } catch (err: any) {
-    console.error('[manageParticipant] falha ao liberar claim de papel:', err?.message || err);
-    return false;
-  }
-  try {
-    const rows = await svc.entities.Participant.filter({ id: participantId, event_id: eventId });
-    const row = rows?.[0] || null;
-    return !!row && String(row[ROLE_PENDING_FIELD] || '') !== token;
-  } catch {
-    return false;
-  }
-}
-
-// Estado da porta: 'clear' (pode alterar), 'blocked' (trilha pendente confirmada),
-// 'unavailable' (não foi possível verificar — fail-closed).
-async function roleChangeGate(svc, participant, eventId) {
-  const pending = rolePendingOf(participant);
-  if (!pending) return { state: 'clear', released: false, pending: '' };
-  const trail = await readAuditByKey(svc, buildAuditKey('role_change', pending));
-  if (trail.state === 'unavailable') return { state: 'unavailable', released: false, pending };
-  if (trail.state === 'absent') return { state: 'blocked', released: false, pending };
-  const released = await releaseRoleLock(svc, participant.id, eventId, pending);
-  return released
-    ? { state: 'clear', released: true, pending }
-    : { state: 'blocked', released: false, pending };
-}
 
 // F3-16 (2026-11-18) — VÍNCULO CONFIRMADO User ↔ Person.
 //
@@ -404,7 +228,28 @@ export default async function(req) {
         throw error;
       }
       data.person_id = person.id;
-      const created = await base44.asServiceRole.entities.Participant.create({ ...data, event_id: eventId });
+      // P1-04 (AUD-03) — criação com papel privilegiado passa pela primitiva:
+      // evidência ANTES da criação, token/claim na própria criação e trilha
+      // obrigatória. Papel default ('attendee') é criação simples.
+      let created;
+      try {
+        const outcome = await createParticipantWithRole(base44.asServiceRole, {
+          eventId,
+          data,
+          actor: user,
+          source: 'manage_participant_create',
+        });
+        created = outcome.participant;
+      } catch (error: any) {
+        if (error?.message === 'role_evidence_unavailable') {
+          return Response.json({
+            error: 'Não foi possível registrar a evidência do papel concedido. Nada foi criado; tente novamente.',
+            audit_state: 'unavailable',
+            applied: false,
+          }, { status: 503 });
+        }
+        throw error;
+      }
 
       // Conta: quem já usa o app é vinculado; quem não usa recebe o convite.
       const account = await findAccountByEmail(base44.asServiceRole, data.email);
@@ -514,7 +359,30 @@ export default async function(req) {
         ready.push({ ...p, person_id: person.id });
       }
 
-      const created = ready.length > 0 ? await svc.entities.Participant.bulkCreate(ready) : [];
+      // P1-04 (AUD-03) — itens com papel privilegiado são criados um a um pela
+      // primitiva (evidência + trilha); o restante (papel default) vai em lote.
+      const PRIVILEGED_CREATE_ROLES = ['speaker', 'partner_rep'];
+      const plainReady = ready.filter((p) => !PRIVILEGED_CREATE_ROLES.includes(p.role_in_event));
+      const privilegedReady = ready.filter((p) => PRIVILEGED_CREATE_ROLES.includes(p.role_in_event));
+      const created = plainReady.length > 0 ? await svc.entities.Participant.bulkCreate(plainReady) : [];
+      for (const p of privilegedReady) {
+        try {
+          const outcome = await createParticipantWithRole(svc, {
+            eventId,
+            data: p,
+            actor: user,
+            source: 'manage_participant_bulk',
+          });
+          created.push(outcome.participant);
+        } catch (e: any) {
+          duplicates.push({
+            email: p.email,
+            reason: e?.message === 'role_evidence_unavailable'
+              ? 'Não foi possível registrar a evidência do papel privilegiado'
+              : 'Não foi possível criar o participante com papel privilegiado',
+          });
+        }
+      }
 
       // CONVITE — só quem ainda não tem conta. Falha por linha não derruba o lote.
       for (const p of ready) {
@@ -583,215 +451,42 @@ export default async function(req) {
       }
       const svc = base44.asServiceRole;
 
-      // F3-16 — PORTA DE INTEGRIDADE. Roda ANTES de qualquer escrita: se a
-      // ocorrência anterior deste participante ainda não tem trilha confirmada,
-      // a nova alteração é RECUSADA (409) e nada é criado nem alterado — é o que
-      // impede a sobrescrita do token e a perda definitiva da evidência anterior.
-      // Se a trilha foi gravada depois (recuperação ou varredura de manutenção), a
-      // porta encontra o registro por leitura, libera o claim antigo por CAS e
-      // segue com o estado atualizado.
-      const roleTouched = changesRole || data.role_in_event !== undefined;
-      if (roleTouched) {
-        const gate = await roleChangeGate(svc, current, eventId);
-        if (gate.state === 'unavailable') {
-          return Response.json({
-            error: 'Não foi possível verificar a trilha da alteração de papel anterior (leitura indisponível). Nada foi alterado; tente novamente.',
-            audit_state: 'unavailable',
-            applied: false,
-            role_change_blocked: true,
-          }, { status: 503 });
-        }
-        if (gate.state === 'blocked') {
-          return Response.json({
-            error: 'Este participante tem uma alteração de papel aplicada sem trilha de auditoria confirmada. Conclua a auditoria antes de alterar o papel novamente.',
-            audit_state: 'pending',
-            applied: false,
-            role_change_blocked: true,
-            pending_occurrence: gate.pending,
-            recovery: {
-              op: 'recoverRoleAudit',
-              participant_id: participantId,
-              event_id: eventId,
-            },
-          }, { status: 409 });
-        }
-        if (gate.released) {
-          // O papel pode ter mudado desde a leitura inicial: old_value precisa vir
-          // do estado real, nunca de uma leitura anterior à liberação.
-          const refreshed = await svc.entities.Participant.filter({ id: participantId, event_id: eventId });
-          current = refreshed?.[0] || current;
-          changesRole = data.role_in_event !== undefined && data.role_in_event !== current.role_in_event;
-        }
-      }
-
-      // F3-14 — EVIDÊNCIA DURÁVEL antes da mutação. Sem ela não há como provar
-      // depois que a alteração existiu (nem quem a fez), e a recuperação da
-      // trilha seria uma invenção a partir do estado atual.
-      let occurrence = '';
-      let evidence = null;
-      if (changesRole) {
-        occurrence = newOccurrence(`participant:${participantId}`);
-        try {
-          evidence = await createEvidence(svc, {
-            event_id: eventId,
-            entity_type: 'Participant',
-            entity_id: participantId,
-            operation: 'role_change',
-            occurrence,
-            old_value: String(current.role_in_event || ''),
-            new_value: String(data.role_in_event || ''),
-            actor_user_id: user.id,
-            actor_name: user.full_name || user.email || '',
-            audit_key: buildAuditKey('role_change', occurrence),
-            state: 'started',
-          });
-        } catch (err: any) {
-          // Fail-closed: sem evidência a operação NÃO acontece. Alterar
-          // privilégio sem possibilidade de trilha é pior do que não alterar.
-          console.error('[manageParticipant] evidência de papel não gravada:', err?.message || err);
-          return Response.json({
-            error: 'Não foi possível registrar a evidência da alteração de papel. Nada foi alterado; tente novamente.',
-            audit_state: 'unavailable',
-            applied: false,
-          }, { status: 503 });
-        }
-      }
-
-      // F3-16 — CLAIM + MUTAÇÃO em UMA única escrita condicional de documento.
-      // Só aplica o papel quem ainda encontra o claim livre: em concorrência,
-      // exatamente um escritor casa o filtro e o outro não casa (o filtro é
-      // reavaliado sobre o documento já modificado). O vencedor grava NA MESMA
-      // escrita o token da ocorrência (prova de mutação), o claim e a pendência
-      // de auditoria — não existe janela com o papel alterado sem que o estado
-      // diga qual ocorrência o alterou e que a trilha está devendo.
-      let updated: any = null;
-      if (changesRole) {
-        try {
-          await svc.entities.Participant.updateMany(
-            { id: participantId, event_id: eventId, [ROLE_LOCK_FIELD]: { $ne: true } },
-            {
-              $set: {
-                ...data,
-                [ROLE_TOKEN_FIELD]: occurrence,
-                [ROLE_LOCK_FIELD]: true,
-                [ROLE_PENDING_FIELD]: occurrence,
-              },
-            },
-          );
-        } catch (err: any) {
-          // Erro não prova ausência de escrita: a confirmação por leitura decide.
-          console.error('[manageParticipant] claim de papel retornou erro:', err?.message || err);
-        }
-
-        // Confirmação por LEITURA: a resposta do updateMany não é a autoridade.
-        let persisted: any = null;
-        let readFailed = false;
-        try {
-          const persistedRows = await svc.entities.Participant.filter({ id: participantId, event_id: eventId });
-          persisted = persistedRows?.[0] || null;
-        } catch (err: any) {
-          readFailed = true;
-          console.error('[manageParticipant] leitura de confirmação do papel falhou:', err?.message || err);
-        }
-
-        const applied = !!persisted
-          && String(persisted[ROLE_TOKEN_FIELD] || '') === occurrence
-          && String(persisted[ROLE_PENDING_FIELD] || '') === occurrence
-          && String(persisted.role_in_event || '') === String(data.role_in_event || '');
-
-        if (!applied) {
-          // Claim visivelmente ocupado por OUTRA ocorrência: a nossa escrita não
-          // aconteceu. A evidência é encerrada como 'not_applied' — nunca
-          // recuperável (não houve mutação) e nunca bloqueante.
-          const foreignPending = String(persisted?.[ROLE_PENDING_FIELD] || '');
-          // Só é "claim perdido" quando OUTRA ocorrência ocupa a pendência. Se
-          // não há pendência nenhuma, nossa escrita simplesmente não aconteceu —
-          // caso fail-closed abaixo, com a evidência preservada em 'started'.
-          const lostClaim = !!persisted && !!foreignPending && foreignPending !== occurrence;
-          if (lostClaim) {
-            await markEvidence(svc, evidence?.id, {
-              state: 'not_applied',
-              failure_reason: 'claim ocupado por outra alteração',
-            });
-            return Response.json({
-              error: 'Outra alteração de papel deste participante foi aplicada primeiro. Nada foi alterado neste pedido; recarregue e tente novamente.',
-              applied: false,
-              conflict: 'role_change_concurrent',
-              pending_occurrence: foreignPending,
-              evidence_id: evidence?.id || '',
-            }, { status: 409 });
-          }
-          // Sem leitura confiável (ou claim nosso com papel divergente) a
-          // evidência NÃO é encerrada: permanece 'started' para que a recuperação
-          // decida com prova. Nunca é promovida a 'applied' por suposição.
-          console.error('[manageParticipant] mutação de papel não comprovada por leitura:', occurrence);
-          return Response.json({
-            error: 'Não foi possível confirmar a alteração de papel no estado persistido. A evidência foi preservada e a operação pode ser conciliada.',
-            audit_state: 'unavailable',
-            applied: false,
-            evidence_id: evidence?.id || '',
-            recovery: {
-              op: 'recoverRoleAudit',
-              participant_id: participantId,
-              event_id: eventId,
-              evidence_id: evidence?.id || '',
-            },
-          }, { status: 503 });
-        }
-        updated = persisted;
-      } else {
-        updated = await svc.entities.Participant.update(participantId, data);
-      }
-
-      // F3-08/F3-10 — papel alterado é auditado aqui (operação crítica), com
-      // trilha obrigatória. Sem trilha confirmada e sem pendência persistida a
-      // resposta é 503: a alteração existe, mas não é declarada concluída.
-      if (changesRole) {
-        await markEvidence(svc, evidence?.id, { state: 'applied' });
-        const auditState = await auditRoleChange(svc, user, eventId, {
-          entityId: participantId,
-          occurrence,
-          details: {
-            field: 'role_in_event',
-            old_value: current.role_in_event,
-            new_value: data.role_in_event,
-            participant_email: current.email || '',
-            evidence_id: evidence?.id || '',
-          },
+      // P1-04 (AUD-03) — a alteração de papel passa pela PRIMITIVA ÚNICA
+      // (shared/roleChange.ts): porta de integridade → evidência → claim CAS →
+      // confirmação por leitura → trilha obrigatória → liberação do claim.
+      if (data.role_in_event !== undefined) {
+        const outcome = await applyParticipantRole(svc, {
+          eventId,
+          participantId,
+          newRole: String(data.role_in_event),
+          data,
+          actor: user,
+          source: 'manage_participant_update',
+          extraDetails: { participant_email: current.email || '' },
         });
-        await markEvidence(svc, evidence?.id, { state: evidenceStateFor(auditState), audit_state: auditState });
-        // F3-16 — a porta só é liberada com a trilha ENCONTRADA por leitura.
-        // 'pending' também mantém o bloqueio: existe pendência registrada, não a
-        // trilha. A liberação vem de recoverRoleAudit ou da varredura de
-        // manutenção (a porta detecta a trilha e libera sozinha na próxima
-        // tentativa de alteração). Nenhuma alteração efetivada fica sem caminho.
-        const lockReleased = auditState === 'recorded'
-          ? await releaseRoleLock(svc, participantId, eventId, occurrence)
-          : false;
-        if (auditState === 'unavailable') {
+        if (!outcome.ok) {
           return Response.json({
-            error: 'Papel alterado, mas a trilha de auditoria não pôde ser registrada. A evidência foi preservada: repita a recuperação para concluir a auditoria.',
-            role_change_blocked: true,
-            participant: updated,
-            audit_state: 'unavailable',
-            applied: true,
-            // F3-13/F3-14 — recuperação da trilha da alteração já efetivada, agora
-            // ancorada na evidência gravada antes da mutação.
-            recovery: {
-              op: 'recoverRoleAudit',
-              participant_id: participantId,
-              event_id: eventId,
-              evidence_id: evidence?.id || '',
-            },
-          }, { status: 503 });
+            error: outcome.error,
+            applied: outcome.applied,
+            ...(outcome.audit_state ? { audit_state: outcome.audit_state } : {}),
+            ...(outcome.role_change_blocked !== undefined ? { role_change_blocked: outcome.role_change_blocked } : {}),
+            ...(outcome.pending_occurrence ? { pending_occurrence: outcome.pending_occurrence } : {}),
+            ...(outcome.conflict ? { conflict: outcome.conflict } : {}),
+            ...(outcome.evidence_id ? { evidence_id: outcome.evidence_id } : {}),
+            ...(outcome.recovery ? { recovery: outcome.recovery } : {}),
+            ...(outcome.participant ? { participant: outcome.participant } : {}),
+          }, { status: outcome.status });
         }
+        if (outcome.unchanged) return Response.json({ participant: outcome.participant });
         return Response.json({
-          participant: updated,
-          audit_state: auditState,
-          evidence_id: evidence?.id || '',
-          role_change_blocked: !lockReleased,
+          participant: outcome.participant,
+          audit_state: outcome.audit_state,
+          evidence_id: outcome.evidence_id,
+          role_change_blocked: outcome.role_change_blocked,
         });
       }
+
+      const updated = await svc.entities.Participant.update(participantId, data);
       return Response.json({ participant: updated });
     }
 
@@ -1353,19 +1048,27 @@ export default async function(req) {
         return Response.json({ error: 'Informe quem deve sair da equipe.' }, { status: 400 });
       }
 
-      // F3-16 — remover da equipe muda role_in_event; a porta de integridade vale
-      // aqui também (sem ela, a mudança de papel ficaria sem trilha recuperável).
-      // Roda ANTES de desativar vínculos para não deixar estado pela metade.
+      // P1-04 (AUD-03) — sair da equipe REBAIXA o papel: passa pela primitiva
+      // única (porta de integridade + evidência + claim + trilha). Roda ANTES de
+      // desativar vínculos para não deixar estado pela metade.
       if (participant && participant.role_in_event === 'team') {
-        const gate = await roleChangeGate(svc, participant, eventId);
-        if (gate.state !== 'clear') {
+        const demote = await applyParticipantRole(svc, {
+          eventId,
+          participantId: participant.id,
+          newRole: 'attendee',
+          actor: user,
+          source: 'remove_staff',
+          extraDetails: { participant_email: email || participant.email || '' },
+        });
+        if (!demote.ok) {
           return Response.json({
-            error: gate.state === 'unavailable'
-              ? 'Não foi possível verificar a trilha das alterações de papel deste participante. Nada foi alterado.'
-              : 'Há uma alteração de papel deste participante sem trilha de auditoria confirmada. Conclua a auditoria antes de remover da equipe.',
-            audit_state: gate.state === 'unavailable' ? 'unavailable' : 'pending',
-            role_change_blocked: true,
-          }, { status: gate.state === 'unavailable' ? 503 : 409 });
+            error: demote.error,
+            applied: demote.applied,
+            ...(demote.audit_state ? { audit_state: demote.audit_state } : {}),
+            role_change_blocked: demote.role_change_blocked !== false,
+            ...(demote.pending_occurrence ? { pending_occurrence: demote.pending_occurrence } : {}),
+            ...(demote.recovery ? { recovery: demote.recovery } : {}),
+          }, { status: demote.status });
         }
       }
 
@@ -1378,10 +1081,8 @@ export default async function(req) {
       for (const m of memberships || []) {
         await svc.entities.EventMembership.update(m.id, { is_active: false, is_deleted: true });
       }
-      // Remover da equipe não apaga a presença: volta a ser participante.
-      if (participant && participant.role_in_event === 'team') {
-        await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
-      }
+      // Remover da equipe não apaga a presença (o rebaixamento já foi feito pela
+      // primitiva acima).
       const auditState = await auditRoleChange(svc, user, eventId, {
         entityType: 'EventMembership',
         entityId: memberships?.[0]?.id || '',

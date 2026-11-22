@@ -11,6 +11,10 @@
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { inviteAccount } from "./accountInvites.ts";
 import { recordAccessChange } from "./accessAudit.ts";
+// P1-04 (AUD-03) — o papel concedido pela aceitação de convite também passa pela
+// primitiva ÚNICA (evidência + claim + trilha). Antes este caminho escrevia
+// `role_in_event` direto e só registrava trilha do VÍNCULO, não do papel.
+import { applyParticipantRole, createParticipantWithRole } from "./roleChange.ts";
 
 // F3-13 — `auditState` (recorded | pending | unavailable) acompanha a concessão:
 // o vínculo de acesso nunca fica sem tentativa de trilha, e o chamador informa
@@ -104,7 +108,7 @@ const ROLE_TO_PARTICIPANT: Record<string, string> = {
  */
 async function ensureParticipantForRole(
   svc: any,
-  { eventId, personId, role, personName, userEmail }: any,
+  { eventId, personId, role, personName, userEmail, actor, strict = false }: any,
 ): Promise<any | null> {
   const roleInEvent = ROLE_TO_PARTICIPANT[role];
   if (!roleInEvent) return null;
@@ -125,27 +129,59 @@ async function ensureParticipantForRole(
   );
 
   if (found) {
-    const needsUpdate = found.role_in_event !== roleInEvent || (personId && found.person_id !== personId);
-    if (!needsUpdate) return found;
-    return await svc.entities.Participant.update(found.id, {
-      role_in_event: roleInEvent,
-      ...(personId && !found.person_id ? { person_id: personId } : {}),
+    const needsRole = found.role_in_event !== roleInEvent;
+    const needsPerson = !!personId && !found.person_id;
+    if (!needsRole && !needsPerson) return found;
+
+    if (!needsRole) {
+      return await svc.entities.Participant.update(found.id, { person_id: personId });
+    }
+
+    // P1-04 — o papel concedido pelo convite passa pela primitiva única.
+    const outcome = await applyParticipantRole(svc, {
+      eventId,
+      participantId: found.id,
+      newRole: roleInEvent,
+      data: needsPerson ? { person_id: personId } : {},
+      actor: actor || null,
+      source: "event_invite",
+      extraDetails: { invitation_role: role, participant_email: email },
     });
+    if (!outcome.ok) {
+      console.error("[eventInvites] papel do convite não aplicado:", outcome.error);
+      // O vínculo (EventMembership) já concede o acesso; a presença fica para
+      // reconciliação. Na concessão EXPLÍCITA (strict) o erro é propagado.
+      if (strict) throw new Error("role_change_blocked");
+      return found;
+    }
+    return outcome.participant;
   }
 
   // Só papéis de gestão criam presença a partir do convite.
   if (role !== "team" && role !== "manager") return null;
 
-  return await svc.entities.Participant.create({
-    event_id: eventId,
-    full_name: personName || "",
-    email,
-    role_in_event: roleInEvent,
-    registration_status: "confirmed",
-    person_id: personId || "",
-    is_deleted: false,
-    created_day: new Date().toISOString().slice(0, 10),
-  });
+  try {
+    const created = await createParticipantWithRole(svc, {
+      eventId,
+      data: {
+        full_name: personName || "",
+        email,
+        role_in_event: roleInEvent,
+        registration_status: "confirmed",
+        person_id: personId || "",
+        is_deleted: false,
+        created_day: new Date().toISOString().slice(0, 10),
+      },
+      actor: actor || null,
+      source: "event_invite",
+      extraDetails: { invitation_role: role, participant_email: email },
+    });
+    return created.participant;
+  } catch (err: any) {
+    console.error("[eventInvites] criação de presença com papel falhou:", err?.message || err);
+    if (strict) throw new Error("role_change_blocked");
+    return null;
+  }
 }
 
 /**
@@ -193,6 +229,8 @@ export async function grantEventRole(
       role,
       personName: displayName || target.full_name || "",
       userEmail: target.email,
+      actor,
+      strict: true,
     });
 
     // Convites antigos para este e-mail passam a valer agora.
@@ -378,6 +416,7 @@ export async function linkPendingInvites(
       role: invite.target_role || "manager",
       personName,
       userEmail: email,
+      actor,
     });
 
     if ((invite.target_role || "manager") === "manager" && !event.manager_id) {

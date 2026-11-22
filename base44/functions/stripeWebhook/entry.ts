@@ -180,7 +180,16 @@ export default async function(req: Request): Promise<Response> {
         console.error('[stripeWebhook] ticket delivery failed:', delivErr?.message || delivErr);
       }
 
-      return Response.json({ received: true, fulfilled: result.fulfilled, tickets: result.tickets.length });
+      // P1-01 — o webhook NÃO declara conclusão que não foi verificada. O estado
+      // explícito acompanha a resposta (200 é sempre devolvido para o Stripe não
+      // reenviar em loop; a retomada é feita pelo reconciler/retry).
+      return Response.json({
+        received: true,
+        fulfillment_state: result.state,
+        fulfilled: result.fulfilled,
+        in_progress: result.in_progress,
+        tickets: result.tickets.length,
+      });
     }
 
     if (evt.type === "payment_intent.payment_failed") {

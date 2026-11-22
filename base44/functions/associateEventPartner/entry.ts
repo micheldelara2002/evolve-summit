@@ -1,7 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAuth.ts";
-import { recordAccessChange } from "../../shared/accessAudit.ts";
+// P1-04 (AUD-03) — promoção e criação de representante usam a primitiva ÚNICA
+// de papel (evidência + claim + trilha obrigatória).
+import { applyParticipantRole, createParticipantWithRole } from "../../shared/roleChange.ts";
 
 // 2026-11-04 — RELAÇÃO PARCEIRO ↔ EVENTO.
 // O Partner é global; o vínculo é por evento. Porta única porque a RLS de
@@ -106,67 +108,60 @@ export default async function (req: Request): Promise<Response> {
         );
         if (existingParticipant) {
           if (existingParticipant.role_in_event !== 'partner_rep') {
-            const updatedRep = await svc.entities.Participant.update(existingParticipant.id, {
-              role_in_event: 'partner_rep',
-              person_id: rep.person_id,
-              photo_url: person.photo_url || existingParticipant.photo_url || '',
-            });
-            const state = await recordAccessChange(svc, {
+            // P1-04 — promoção pela primitiva única.
+            const outcome = await applyParticipantRole(svc, {
               eventId,
-              entityType: 'Participant',
-              entityId: existingParticipant.id,
-              actor: user,
-              operation: 'role_change',
-              reference: `participant:${existingParticipant.id}:${updatedRep?.updated_date || existingParticipant.updated_date || ''}`,
-              details: {
-                field: 'role_in_event',
-                old_value: existingParticipant.role_in_event || null,
-                new_value: 'partner_rep',
-                source: 'event_partner_association',
-                partner_id: partnerId,
+              participantId: existingParticipant.id,
+              newRole: 'partner_rep',
+              data: {
                 person_id: rep.person_id,
+                photo_url: person.photo_url || existingParticipant.photo_url || '',
               },
+              actor: user,
+              source: 'event_partner_association',
+              extraDetails: { partner_id: partnerId, person_id: rep.person_id },
             });
-            accessAudits.push({ participant_id: existingParticipant.id, audit_state: state });
+            if (!outcome.ok) {
+              console.error('[associateEventPartner] papel partner_rep não aplicado:', outcome.error);
+              accessAudits.push({
+                participant_id: existingParticipant.id,
+                audit_state: outcome.audit_state || 'unavailable',
+              });
+              continue;
+            }
+            accessAudits.push({ participant_id: existingParticipant.id, audit_state: outcome.audit_state });
           }
           continue;
         }
-        const createdRep = await svc.entities.Participant.create({
-          event_id: eventId,
-          full_name: person.full_name || '',
-          email,
-          phone: person.phone || '',
-          company: person.company || partners[0].trade_name || '',
-          job_title: person.job_title || '',
-          bio: person.bio || '',
-          linkedin: person.linkedin || '',
-          photo_url: person.photo_url || '',
-          role_in_event: 'partner_rep',
-          registration_status: 'confirmed',
-          person_id: rep.person_id,
-          is_deleted: false,
-          created_day: new Date().toISOString().slice(0, 10),
-        });
-
-        // F3-13 — participante criado já como partner_rep: concessão auditada.
-        const state = await recordAccessChange(svc, {
-          eventId,
-          entityType: 'Participant',
-          entityId: createdRep.id,
-          actor: user,
-          operation: 'role_change',
-          reference: `participant:${createdRep.id}:${createdRep.created_date || ''}`,
-          details: {
-            field: 'role_in_event',
-            old_value: null,
-            new_value: 'partner_rep',
+        // P1-04 — participante criado já como partner_rep passa pela primitiva:
+        // evidência ANTES da criação, token/claim na própria criação e trilha.
+        try {
+          const created = await createParticipantWithRole(svc, {
+            eventId,
+            data: {
+              full_name: person.full_name || '',
+              email,
+              phone: person.phone || '',
+              company: person.company || partners[0].trade_name || '',
+              job_title: person.job_title || '',
+              bio: person.bio || '',
+              linkedin: person.linkedin || '',
+              photo_url: person.photo_url || '',
+              role_in_event: 'partner_rep',
+              registration_status: 'confirmed',
+              person_id: rep.person_id,
+              is_deleted: false,
+              created_day: new Date().toISOString().slice(0, 10),
+            },
+            actor: user,
             source: 'event_partner_association',
-            partner_id: partnerId,
-            person_id: rep.person_id,
-          },
-        });
-        accessAudits.push({ participant_id: createdRep.id, audit_state: state });
-        participantsCreated += 1;
+            extraDetails: { partner_id: partnerId, person_id: rep.person_id },
+          });
+          accessAudits.push({ participant_id: created.participant.id, audit_state: created.audit_state });
+          participantsCreated += 1;
+        } catch (err: any) {
+          console.error('[associateEventPartner] criação de representante falhou:', err?.message || err);
+        }
       }
     }
 

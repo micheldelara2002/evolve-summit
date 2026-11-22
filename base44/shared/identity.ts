@@ -25,6 +25,30 @@
 // Import (de um entry.ts):
 //   import { resolveIdentity, requireSelfPersonId, findMyParticipant } from "../../shared/identity.ts";
 
+// P1-05 (AUD-04) — ESTADO EXPLÍCITO da resolução de identidade.
+//
+// DEFEITO CORRIGIDO: `resolveIdentity` engolia a falha das consultas e devolvia
+// um conjunto vazio de Persons — indistinguível de "o usuário realmente não tem
+// Person". A exclusão de conta (LGPD) continuava nesse caso, anonimizando o que
+// encontrou e declarando a conta excluída mesmo sem saber se havia mais dados.
+//
+// Agora o resultado diz o que se sabe:
+//   • resolved    — conjunto verificado, sem falha de leitura;
+//   • ambiguous   — mais de uma Person por e-mail (conjunto ainda verificado);
+//   • no_person   — ausência REAL, confirmada por leituras bem-sucedidas;
+//   • partial     — resolveu parte, mas uma consulta falhou (pode faltar Person);
+//   • unavailable — nenhuma consulta confiável: não se sabe o conjunto;
+//   • no_user     — sem usuário autenticado.
+// Operações que precisam do conjunto COMPLETO (exclusão de conta) recusam
+// 'partial' e 'unavailable' — nunca tratam erro de leitura como ausência.
+export type IdentityState =
+  | "resolved"
+  | "ambiguous"
+  | "no_person"
+  | "partial"
+  | "unavailable"
+  | "no_user";
+
 export type Identity = {
   userId: string;
   emailRaw: string;
@@ -35,6 +59,10 @@ export type Identity = {
   selfPersonId: string | null;
   ambiguous: boolean;
   reason: "ok" | "no_user" | "no_person" | "ambiguous";
+  /** P1-05 — estado explícito da resolução (ver IdentityState). */
+  state: IdentityState;
+  /** P1-05 — falhas de consulta observadas (sem PII: só origem + mensagem). */
+  lookupErrors: string[];
 };
 
 export type SelfPersonDenial = { ok: false; status: number; error: string; reason: string };
@@ -78,18 +106,27 @@ export async function resolveIdentity(base44: any, user: any): Promise<Identity>
     selfPersonId: null,
     ambiguous: false,
     reason: "no_user",
+    state: "no_user",
+    lookupErrors: [],
   };
   if (!user?.id) return base;
 
   const svc = svcOf(base44);
+  let linkedFailed = false;
+  let emailFailed = false;
 
   // 1. Vínculo explícito — existência basta (Participant/PartnerRepresentative
   //    continuam apontando para a Person mesmo se ela foi desativada).
+  //    P1-05 — falha de leitura é REGISTRADA, nunca tratada como ausência.
   if (user.person_id) {
     try {
       const linked = await svc.entities.Person.filter({ id: user.person_id });
+      if (!Array.isArray(linked)) throw new Error("resposta_invalida");
       if (linked?.[0]?.id) base.linkedPersonId = linked[0].id;
-    } catch { /* trilha de e-mail abaixo ainda pode resolver */ }
+    } catch (err: any) {
+      linkedFailed = true;
+      base.lookupErrors.push(`linked_person:${err?.message || err}`);
+    }
   }
 
   // 2. E-mail normalizado — todas as correspondências ativas.
@@ -100,10 +137,14 @@ export async function resolveIdentity(base44: any, user: any): Promise<Identity>
         contact_email: { $in: base.emailVariants },
         is_active: { $ne: false },
       });
+      if (!Array.isArray(rows)) throw new Error("resposta_invalida");
       for (const p of rows || []) {
         if (normalizeEmail(p.contact_email) === emailNorm && p.id) byEmail.push(p.id);
       }
-    } catch { /* sem correspondência */ }
+    } catch (err: any) {
+      emailFailed = true;
+      base.lookupErrors.push(`email_person:${err?.message || err}`);
+    }
   }
 
   base.personIds = [...new Set([base.linkedPersonId, ...byEmail].filter(Boolean) as string[])];
@@ -125,7 +166,40 @@ export async function resolveIdentity(base44: any, user: any): Promise<Identity>
     : base.personIds.length === 0
       ? "no_person"
       : "ok";
+
+  // 3. ESTADO EXPLÍCITO (P1-05). A ordem importa:
+  //    • sem NENHUMA Person e com consulta que falhou → não se pode afirmar
+  //      ausência: 'unavailable';
+  //    • com alguma Person mas consulta que falhou → conjunto pode estar
+  //      incompleto: 'partial';
+  //    • sem falhas → 'resolved' / 'ambiguous' / 'no_person' (ausência real).
+  const hasPerson = base.personIds.length > 0;
+  const anyFailure = linkedFailed || emailFailed;
+  if (anyFailure && !hasPerson) {
+    base.state = "unavailable";
+  } else if (anyFailure) {
+    base.state = "partial";
+  } else if (base.ambiguous) {
+    base.state = "ambiguous";
+  } else if (hasPerson) {
+    base.state = "resolved";
+  } else {
+    base.state = "no_person";
+  }
   return base;
+}
+
+/**
+ * P1-05 — o conjunto de Persons é CONFIÁVEL? Só 'resolved', 'ambiguous' e
+ * 'no_person' provam que o conjunto completo foi observado. 'partial' e
+ * 'unavailable' significam que uma consulta falhou: qualquer operação que
+ * dependa de conhecer TODAS as identidades do usuário (exclusão LGPD) deve
+ * recusar em vez de prosseguir com um conjunto possivelmente incompleto.
+ */
+export function identitySetIsComplete(identity: Identity): boolean {
+  return identity.state === "resolved"
+    || identity.state === "ambiguous"
+    || identity.state === "no_person";
 }
 
 /**

@@ -28,35 +28,169 @@ export const MAX_IMAGE_DIM = 4096; // dimensão máxima aceita ao desenhar
 // busca externa é bloqueada (o PDF perde o logo, mas nunca fica inseguro).
 const DNS_CHECK_ENABLED = true;
 
+// ===== P1-02 (SEC-SSRF) — NORMALIZAÇÃO E CLASSIFICAÇÃO DE IP =====
+//
+// DEFEITO CORRIGIDO: a versão anterior só reconhecia IPv4-mapped IPv6 na forma
+// pontuada (`::ffff:127.0.0.1`). A forma HEXADECIMAL (`::ffff:7f00:1`), que é
+// equivalente e aceita por qualquer parser, atravessava a validação e permitia
+// alcançar 127.0.0.1. O mesmo valia para IPv4 embutido em 6to4/NAT64 e para
+// IPv4 em formato decimal/octal/hexadecimal único.
+//
+// Agora a validação é feita sobre a REPRESENTAÇÃO NUMÉRICA do endereço:
+//   1. IPv4 (pontuado, decimal único, octal, hexadecimal) → classificação v4;
+//   2. IPv6 → 8 grupos de 16 bits (compacto ou expandido);
+//   3. IPv4 embutido (mapeado ::ffff:0:0/96, compatível ::/96, NAT64 64:ff9b::/96,
+//      6to4 2002::/16) é EXTRAÍDO e classificado como IPv4;
+//   4. qualquer endereço que não seja globalmente roteável é bloqueado;
+//   5. endereço malformado/irreconhecível bloqueia (fail-closed).
+//
+// A mesma régua vale para hostname literal e para TODAS as respostas DNS.
+
+function parseIpv4(ip: string): number[] | null {
+  const parts = String(ip || '').trim().split('.');
+  if (parts.length !== 4) return null;
+  const out: number[] = [];
+  for (const part of parts) {
+    if (!/^(0[xX][0-9a-fA-F]+|\d{1,3})$/.test(part)) return null;
+    const n = /^0[xX]/.test(part) ? parseInt(part, 16) : parseInt(part, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 255) return null;
+    out.push(n);
+  }
+  return out;
+}
+
+// IPv4 em formato numérico único, aceito por parsers de URL e por bibliotecas
+// HTTP: "2130706433" (decimal), "0x7f000001" (hex), "017700000001" (octal).
+function parseIpv4Numeric(ip: string): number[] | null {
+  const t = String(ip || '').trim();
+  let n: number;
+  if (/^\d{1,10}$/.test(t)) {
+    n = Number(t);
+  } else if (/^0[xX][0-9a-fA-F]{1,8}$/.test(t)) {
+    n = parseInt(t, 16);
+  } else if (/^0[0-7]{1,11}$/.test(t)) {
+    n = parseInt(t, 8);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) return null;
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+}
+
+function isBlockedIpv4(o: number[]): boolean {
+  if (!Array.isArray(o) || o.length !== 4) return true;
+  if (o.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return true;
+  const [a, b, c] = o;
+  if (a === 0) return true;                                        // "este" / não roteável
+  if (a === 10) return true;                                       // privado
+  if (a === 127) return true;                                      // loopback
+  if (a === 100 && b >= 64 && b <= 127) return true;               // CGNAT
+  if (a === 169 && b === 254) return true;                         // link-local + metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;                // privado
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;   // IETF / TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return true;              // 6to4 relay anycast
+  if (a === 192 && b === 168) return true;                         // privado
+  if (a === 198 && (b === 18 || b === 19)) return true;            // benchmarking
+  if (a === 198 && b === 51 && c === 100) return true;             // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true;              // TEST-NET-3
+  if (a >= 224) return true;                                       // multicast/reservado/broadcast
+  return false;
+}
+
+// IPv6 → 8 grupos de 16 bits. Suporta forma compacta ("::"), expandida, zona
+// ("%eth0") e IPv4 embutido no último bloco. null = inválido.
+function parseIpv6(ip: string): number[] | null {
+  let t = String(ip || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!t.includes(':')) return null;
+  const zone = t.indexOf('%');
+  if (zone >= 0) t = t.slice(0, zone);
+
+  // IPv4 embutido no fim: a.b.c.d → dois grupos hex.
+  const lastColon = t.lastIndexOf(':');
+  if (lastColon < 0) return null;
+  const tail = t.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    const v4 = parseIpv4(tail);
+    if (!v4) return null;
+    const g1 = ((v4[0] << 8) | v4[1]).toString(16);
+    const g2 = ((v4[2] << 8) | v4[3]).toString(16);
+    t = `${t.slice(0, lastColon + 1)}${g1}:${g2}`;
+  }
+
+  const toGroup = (g: string): number | null => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : null);
+  const dbl = t.indexOf('::');
+  let head: string[];
+  let tailGroups: string[] = [];
+  if (dbl >= 0) {
+    if (t.indexOf('::', dbl + 1) >= 0) return null; // mais de uma compressão
+    const left = t.slice(0, dbl);
+    const right = t.slice(dbl + 2);
+    head = left ? left.split(':') : [];
+    tailGroups = right ? right.split(':') : [];
+  } else {
+    head = t.split(':');
+  }
+  const h = head.map(toGroup);
+  const tl = tailGroups.map(toGroup);
+  if (h.some((g) => g === null) || tl.some((g) => g === null)) return null;
+  const headNums = h as number[];
+  const tailNums = tl as number[];
+  if (dbl >= 0) {
+    const missing = 8 - (headNums.length + tailNums.length);
+    if (missing < 1) return null;
+    return [...headNums, ...new Array(missing).fill(0), ...tailNums];
+  }
+  return headNums.length === 8 ? headNums : null;
+}
+
+function ipv4FromGroups(hi: number, lo: number): number[] {
+  return [(hi >> 8) & 255, hi & 255, (lo >> 8) & 255, lo & 255];
+}
+
+function isBlockedIpv6(g: number[]): boolean {
+  if (!Array.isArray(g) || g.length !== 8) return true;
+  const isZeroRange = (from: number, to: number) => g.slice(from, to).every((x) => x === 0);
+
+  if (isZeroRange(0, 8)) return true;                                   // ::
+  if (isZeroRange(0, 7) && g[7] === 1) return true;                     // ::1 loopback
+  // IPv4-mapped ::ffff:0:0/96 (inclui a forma hexadecimal ::ffff:7f00:1)
+  if (isZeroRange(0, 5) && g[5] === 0xffff) return isBlockedIpv4(ipv4FromGroups(g[6], g[7]));
+  // IPv4-compatível ::/96 (obsoleto, mas ainda aceito por parsers)
+  if (isZeroRange(0, 6)) return isBlockedIpv4(ipv4FromGroups(g[6], g[7]));
+  // NAT64 64:ff9b::/96 — o IPv4 embutido decide
+  if (g[0] === 0x64 && g[1] === 0xff9b && isZeroRange(2, 6)) {
+    return isBlockedIpv4(ipv4FromGroups(g[6], g[7]));
+  }
+  // 6to4 2002::/16 — o IPv4 embutido decide
+  if (g[0] === 0x2002) return isBlockedIpv4(ipv4FromGroups(g[1], g[2]));
+  // Teredo 2001:0000::/32
+  if (g[0] === 0x2001 && g[1] === 0x0000) return true;
+  if ((g[0] & 0xfe00) === 0xfc00) return true;                          // ULA fc00::/7
+  if ((g[0] & 0xffc0) === 0xfe80) return true;                          // link-local fe80::/10
+  if ((g[0] & 0xffc0) === 0xfec0) return true;                          // site-local fec0::/10
+  if ((g[0] & 0xff00) === 0xff00) return true;                          // multicast ff00::/8
+  if (g[0] === 0x0100 && isZeroRange(1, 4)) return true;                // discard 100::/64
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true;                  // documentação 2001:db8::/32
+  if (g[0] === 0x2001 && g[1] === 0x0002 && g[2] === 0x0000) return true; // benchmarking
+  return false;
+}
+
 // IP literal privado/reservado (v4 e v6) — usado por hostname literal e pela
 // validação DNS (mesma régua para os endereços resolvidos).
 export function isPrivateIpLiteral(ip: string): boolean {
   const s = String(ip || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
   if (!s) return true;
-  // IPv4
-  const v4 = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (v4) {
-    const o = v4.slice(1).map(Number);
-    if (o.some((n) => n > 255)) return true;
-    const a = o[0], b = o[1];
-    if (
-      a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224
-    ) return true;
-    return false;
-  }
-  // IPv6 — loopback, ULA (fc00::/7), link-local (fe80::/10), mapeado
+
+  const dotted = parseIpv4(s);
+  if (dotted) return isBlockedIpv4(dotted);
+
+  const numeric = parseIpv4Numeric(s);
+  if (numeric) return isBlockedIpv4(numeric);
+
   if (s.includes(':')) {
-    if (s.startsWith('::ffff:')) return isPrivateIpLiteral(s.slice(7));
-    if (s === '::' || s === '::1') return true;
-    if (s.startsWith('fc') || s.startsWith('fd')) return true;
-    if (/^fe[89ab]/.test(s)) return true;
-    return false;
+    const groups = parseIpv6(s);
+    if (!groups) return true; // IPv6 malformado: bloqueia (fail-closed)
+    return isBlockedIpv6(groups);
   }
   return true; // não é IP — bloqueia por conservadorismo
 }
@@ -66,14 +200,18 @@ function isBlockedHost(hostname: string): boolean {
   if (!h) return true;
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
   if (h === 'metadata.google.internal' || h === 'metadata.goog') return true;
-  if (h.match(/^(\d{1,3}\.){3}\d{1,3}$/) || h.includes(':')) {
-    return isPrivateIpLiteral(h); // literal IPv4/IPv6
+  // Literal IPv4 (inclusive decimal/octal/hexadecimal único) ou IPv6.
+  if (/^[\d.]+$/.test(h) || /^0[xX][0-9a-f]+$/.test(h) || h.includes(':')) {
+    return isPrivateIpLiteral(h);
   }
   return false;
 }
 
+// Um registro DNS só é avaliado se for IP reconhecível — IPv4 pontuado, IPv6
+// ou IPv4 em formato numérico (defensivo: nunca confiar no formato).
 function isIpLiteral(s: string): boolean {
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || s.includes(':');
+  const t = String(s || '').trim();
+  return !!parseIpv4(t) || !!parseIpv4Numeric(t) || t.includes(':');
 }
 
 // Cache curto de resoluções BEM-SUCEDIDAS (TTL 5 min): resolveDns no runtime

@@ -505,15 +505,18 @@ export default async function(req: Request): Promise<Response> {
       // resposta carrega pending_retry/erro e o frontend mostra 'Inscrição em
       // processamento' (o reconciler agendado recupera a emissão).
       let freeFulfillmentError = '';
+      // P1-01 — o estado vem do CONTRATO verificado. Antes o default era
+      // 'fulfilled' quando a leitura não trazia status — falso sucesso.
+      let freeFulfillmentStatus = 'pending_retry';
       try {
         const fulfillment = await fulfillOrder(svc, freePayment, order, orderItems);
+        freeFulfillmentStatus = fulfillment.state;
         if (!fulfillment.fulfilled) freeFulfillmentError = fulfillment.error || '';
       } catch (err: any) {
+        freeFulfillmentStatus = 'pending_retry';
         freeFulfillmentError = err?.message || String(err);
         console.error('[createPaymentIntent] free fulfillment error:', freeFulfillmentError);
       }
-      const freshPayment = (await svc.entities.Payment.filter({ id: freePayment.id }))[0];
-      const freeFulfillmentStatus = freshPayment?.fulfillment_status || (freeFulfillmentError ? 'pending_retry' : 'fulfilled');
       // P0-B — a trilha já foi gravada e confirmada antes da emissão; aqui só o
       // desfecho da emissão é anexado (best-effort).
       await enrichCheckoutTrail({

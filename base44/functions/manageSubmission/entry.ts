@@ -10,6 +10,9 @@ import { ensureSelfPerson } from "../../shared/selfPerson.ts";
 import { validateContent, validateAnswers } from "../../shared/submissionForm.ts";
 import { incUniqueParticipant, incParticipantsByRole, moveParticipantsByRole } from "../../shared/businessMetrics.ts";
 import { recordAccessChange } from "../../shared/accessAudit.ts";
+// P1-04 (AUD-03) — promoção/rebaixamento de palestrante pela PRIMITIVA ÚNICA de
+// papel (gate + evidência + claim + trilha). Nenhum write direto de role aqui.
+import { applyParticipantRole, createParticipantWithRole } from "../../shared/roleChange.ts";
 
 /**
  * manageSubmission — porta única de escrita de Submission (Call for Papers).
@@ -105,26 +108,22 @@ async function revertSpeakerParticipant(svc: any, eventId: string, submission: a
     (liveSessions || []).length > 0;
   if (stillSpeaker) return;
 
-  const reverted = await svc.entities.Participant.update(participant.id, { role_in_event: 'attendee' });
-  await moveParticipantsByRole(svc, eventId, 'speaker', 'attendee', participant.created_date);
-
-  // F3-13 — rebaixar o palestrante REVOGA acesso: trilha obrigatória no backend.
-  return await recordAccessChange(svc, {
+  // P1-04 (AUD-03) — rebaixar o palestrante REVOGA acesso: passa pela primitiva
+  // única (porta de integridade + evidência + claim + trilha obrigatória).
+  const outcome = await applyParticipantRole(svc, {
     eventId,
-    entityType: 'Participant',
-    entityId: participant.id,
+    participantId: participant.id,
+    newRole: 'attendee',
     actor,
-    operation: 'role_change',
-    reference: `participant:${participant.id}:${reverted?.updated_date || participant.updated_date || participant.created_date || ''}`,
-    details: {
-      field: 'role_in_event',
-      old_value: 'speaker',
-      new_value: 'attendee',
-      source: 'cfp_cancel',
+    source: 'cfp_cancel',
+    extraDetails: {
       submission_id: submission.id,
       participant_email: participant.email || '',
     },
   });
+  if (!outcome.ok) return outcome;
+  await moveParticipantsByRole(svc, eventId, 'speaker', 'attendee', participant.created_date);
+  return outcome;
 }
 
 /**
@@ -435,46 +434,80 @@ export default async function(req: Request): Promise<Response> {
           });
           participant = found[0];
         }
+        // P1-04 (AUD-03) — aprovar concede o papel de PALESTRANTE pela primitiva
+        // única: evidência antes da mutação, claim CAS, confirmação por leitura e
+        // trilha obrigatória. A ocorrência é gerada no servidor, então a retomada
+        // da A-03 não duplica a trilha.
+        let roleAuditState: any = null;
         if (!participant) {
-          participant = await svc.entities.Participant.create({
-            event_id: eventId,
-            full_name: submission.submitter_name,
-            email: submission.submitter_email,
-            person_id: submission.person_id,
-            role_in_event: 'speaker',
-            registration_status: 'registered',
-            created_day: new Date().toISOString().slice(0, 10),
+          const created = await createParticipantWithRole(svc, {
+            eventId,
+            data: {
+              full_name: submission.submitter_name,
+              email: submission.submitter_email,
+              person_id: submission.person_id,
+              role_in_event: 'speaker',
+              registration_status: 'registered',
+              created_day: new Date().toISOString().slice(0, 10),
+            },
+            actor: user,
+            source: 'cfp_approve',
+            extraDetails: { submission_id: submission.id },
           });
+          participant = created.participant;
+          roleAuditState = created.audit_state;
           await incUniqueParticipant(svc, eventId, participant.created_date);
           await incParticipantsByRole(svc, eventId, 'speaker', participant.created_date);
         } else if (participant.role_in_event !== 'speaker') {
           const oldRole = participant.role_in_event;
-          await svc.entities.Participant.update(participant.id, { role_in_event: 'speaker' });
-          await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
+          const promoted = await applyParticipantRole(svc, {
+            eventId,
+            participantId: participant.id,
+            newRole: 'speaker',
+            actor: user,
+            source: 'cfp_approve',
+            extraDetails: {
+              submission_id: submission.id,
+              participant_email: participant.email || '',
+            },
+          });
+          if (!promoted.ok) {
+            await releaseClaim(svc, submission);
+            return Response.json({
+              error: promoted.error,
+              applied: promoted.applied,
+              ...(promoted.audit_state ? { audit_state: promoted.audit_state } : {}),
+              role_change_blocked: promoted.role_change_blocked !== false,
+              ...(promoted.pending_occurrence ? { pending_occurrence: promoted.pending_occurrence } : {}),
+              ...(promoted.recovery ? { recovery: promoted.recovery } : {}),
+            }, { status: promoted.status });
+          }
+          participant = promoted.participant;
+          roleAuditState = promoted.audit_state;
           promotedFrom = oldRole;
+          await moveParticipantsByRole(svc, eventId, oldRole, 'speaker', participant.created_date);
         }
 
-        // F3-13 — aprovar a proposta concede acesso de PALESTRANTE: a concessão
-        // passa a ter trilha gerada pelo backend. A chave é determinística por
-        // participante + ocorrência, então a retomada da A-03 não duplica; a
-        // falha de auditoria não derruba uma aprovação legítima (a curadoria é
-        // fluxo de conteúdo, não operação financeira) — o estado é informado.
-        const roleAuditState = await recordAccessChange(svc, {
-          eventId,
-          entityType: 'Participant',
-          entityId: participant.id,
-          actor: user,
-          operation: 'role_change',
-          reference: `participant:${participant.id}:${participant.updated_date || participant.created_date || ''}`,
-          details: {
-            field: 'role_in_event',
-            old_value: promotedFrom,
-            new_value: 'speaker',
-            source: 'cfp_approve',
-            submission_id: submission.id,
-            participant_email: participant.email || '',
-          },
-        });
+        // Já palestrante: a concessão continua registrada (idempotente pela chave
+        // determinística) — a primitiva só é chamada quando o papel muda.
+        if (!roleAuditState) {
+          roleAuditState = await recordAccessChange(svc, {
+            eventId,
+            entityType: 'Participant',
+            entityId: participant.id,
+            actor: user,
+            operation: 'role_change',
+            reference: `participant:${participant.id}:${participant.updated_date || participant.created_date || ''}`,
+            details: {
+              field: 'role_in_event',
+              old_value: promotedFrom,
+              new_value: 'speaker',
+              source: 'cfp_approve',
+              submission_id: submission.id,
+              participant_email: participant.email || '',
+            },
+          });
+        }
 
         const session = await svc.entities.Session.create({
           event_id: eventId,
@@ -512,9 +545,22 @@ export default async function(req: Request): Promise<Response> {
 
       // A-02: cancelar uma proposta aprovada também desfaz o palestrante.
       const hadParticipant = !!submission.participant_id;
-      const revokeAuditState = (targetStatus === 'cancelled' && hadParticipant)
-        ? await revertSpeakerParticipant(svc, eventId, submission, user)
-        : null;
+      let revokeAuditState: any = null;
+      if (targetStatus === 'cancelled' && hadParticipant) {
+        const revoke = await revertSpeakerParticipant(svc, eventId, submission, user);
+        if (revoke && revoke.ok === false) {
+          await releaseClaim(svc, submission);
+          return Response.json({
+            error: revoke.error,
+            applied: revoke.applied,
+            ...(revoke.audit_state ? { audit_state: revoke.audit_state } : {}),
+            role_change_blocked: revoke.role_change_blocked !== false,
+            ...(revoke.pending_occurrence ? { pending_occurrence: revoke.pending_occurrence } : {}),
+            ...(revoke.recovery ? { recovery: revoke.recovery } : {}),
+          }, { status: revoke.status });
+        }
+        revokeAuditState = revoke?.audit_state || null;
+      }
 
       await svc.entities.Submission.update(submission.id, {
         status: targetStatus,

@@ -124,8 +124,14 @@ function CheckoutForm({ paymentId, eventId, total }) {
       try {
         const res = await getPaymentStatus(paymentId);
         if (res.status === "succeeded") {
-          clearInterval(pollRef.current);
-          setStatus("succeeded");
+          // P1-01 — pagamento aprovado NÃO é emissão concluída. A tela de
+          // sucesso só aparece com fulfillment_status === "fulfilled".
+          if (res.fulfillment_status === "fulfilled") {
+            clearInterval(pollRef.current);
+            setStatus("succeeded");
+          } else {
+            setStatus("processing");
+          }
         } else if (res.status === "failed" || res.status === "expired") {
           clearInterval(pollRef.current);
           setStatus("failed");
@@ -157,6 +163,10 @@ function CheckoutForm({ paymentId, eventId, total }) {
 
   if (status === "succeeded") {
     return <SuccessScreen eventId={eventId} />;
+  }
+
+  if (status === "processing") {
+    return <ProcessingScreen eventId={eventId} />;
   }
 
   if (status === "waiting") {

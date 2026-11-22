@@ -119,9 +119,73 @@ export async function captureStripeFee(svc: any, payment: any, chargeId: any): P
   }
 }
 
+// ===== P1-01 (F4-06) — CONTRATO EXPLÍCITO DE FULFILLMENT =====
+//
+// DEFEITO CORRIGIDO: `fulfillOrder` devolvia `fulfilled: true` em caminhos que
+// NÃO provavam conclusão — quando outro processo estava emitindo ('fulfilling'),
+// quando o claim não foi adquirido e quando um estado 'fulfilled' persistido não
+// correspondia a ingressos/participantes realmente emitidos. Polling, webhook e
+// frontend liam esse `true` como "compra concluída".
+//
+// Agora o retorno carrega um ESTADO inequívoco:
+//   fulfilled     → conclusão VERIFICADA por leitura (único caso com fulfilled=true);
+//   fulfilling    → outro processo está emitindo agora;
+//   pending_retry → processamento pendente e recuperável;
+//   failed        → exige tratamento (ex.: pedido cancelado).
+// `fulfilled` continua existindo como atalho booleano, mas é DERIVADO do estado.
+export type FulfillmentState = "fulfilled" | "fulfilling" | "pending_retry" | "failed";
+
+export interface FulfillmentResult {
+  state: FulfillmentState;
+  fulfilled: boolean;
+  in_progress: boolean;
+  tickets: any[];
+  error?: string;
+}
+
+function fulfilledResult(tickets: any[]): FulfillmentResult {
+  return { state: "fulfilled", fulfilled: true, in_progress: false, tickets };
+}
+function fulfillingResult(tickets: any[], error?: string): FulfillmentResult {
+  return { state: "fulfilling", fulfilled: false, in_progress: true, tickets, error };
+}
+function pendingResult(tickets: any[], error: string): FulfillmentResult {
+  return { state: "pending_retry", fulfilled: false, in_progress: false, tickets, error };
+}
+
+/**
+ * VERIFICAÇÃO DE CONCLUSÃO REAL: cada item de pedido tem ingresso E cada
+ * ingresso está vinculado ao seu participante. Falha de leitura LANÇA — o
+ * chamador trata como pendente, nunca como concluído.
+ */
+export async function verifyFulfillmentComplete(
+  svc: any,
+  orderId: string,
+  items?: any[],
+): Promise<{ complete: boolean; reason?: string; tickets: any[] }> {
+  if (!orderId) return { complete: false, reason: "pedido_sem_identidade", tickets: [] };
+  const tickets = await svc.entities.Ticket.filter({ order_id: orderId, is_deleted: false });
+  const orderItems = Array.isArray(items) && items.length > 0
+    ? items
+    : await svc.entities.OrderItem.filter({ order_id: orderId, is_deleted: false });
+  if (!Array.isArray(tickets) || !Array.isArray(orderItems)) {
+    return { complete: false, reason: "leitura_invalida", tickets: Array.isArray(tickets) ? tickets : [] };
+  }
+  if (orderItems.length === 0) return { complete: false, reason: "pedido_sem_itens", tickets };
+  const missingTicket = orderItems.filter((it: any) => !tickets.some((t: any) => t.order_item_id === it.id));
+  if (missingTicket.length > 0) {
+    return { complete: false, reason: `ingressos_ausentes:${missingTicket.length}`, tickets };
+  }
+  const orphanTickets = tickets.filter((t: any) => !t.participant_id);
+  if (orphanTickets.length > 0) {
+    return { complete: false, reason: `participantes_nao_vinculados:${orphanTickets.length}`, tickets };
+  }
+  return { complete: true, tickets };
+}
+
 // Idempotent fulfillment: create Participants + Tickets for a paid order.
-// Returns { fulfilled: boolean, tickets: string[], error?: string }.
-export async function fulfillOrder(svc: any, payment: any, order: any, orderItems: any[]): Promise<{ fulfilled: boolean; tickets: any[]; error?: string }> {
+// Returns a FulfillmentResult (ver contrato acima).
+export async function fulfillOrder(svc: any, payment: any, order: any, orderItems: any[]): Promise<FulfillmentResult> {
   // P0 — Guarda de pedido cancelado: confirmação de pagamento (webhook OU
   // polling OU retry) que chega para um pedido JÁ cancelado/expirado NUNCA emite
   // ingressos nem participantes. O pagamento é marcado 'succeeded' (o dinheiro é
@@ -154,12 +218,33 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       } catch {}
     }
     const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
-    return { fulfilled: false, tickets, error: "Pedido já cancelado — pagamento registrado para resolução manual (estorno)." };
+    return {
+      state: "failed",
+      fulfilled: false,
+      in_progress: false,
+      tickets,
+      error: "Pedido já cancelado — pagamento registrado para resolução manual (estorno).",
+    };
   }
 
   if (payment.fulfillment_status === "fulfilled") {
-    const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
-    return { fulfilled: true, tickets };
+    // P1-01 — estado terminal só é conclusão se os registros emitidos confirmam.
+    let verified: { complete: boolean; reason?: string; tickets: any[] };
+    try {
+      verified = await verifyFulfillmentComplete(svc, order.id, orderItems);
+    } catch (err: any) {
+      return pendingResult([], `Não foi possível verificar a emissão: ${err?.message || err}`);
+    }
+    if (verified.complete) return fulfilledResult(verified.tickets);
+    // 'fulfilled' sem emissão completa = estado terminal inconsistente (crash
+    // antigo). Reabre para retomada — nunca declara concluído.
+    try {
+      await svc.entities.Payment.updateMany(
+        { id: payment.id, fulfillment_status: "fulfilled" },
+        { $set: { fulfillment_status: "pending_retry", error_reason: `Emissão incompleta detectada (${verified.reason}).` } },
+      );
+    } catch { /* a retomada abaixo já vai tentar; nada é declarado concluído */ }
+    payment = { ...payment, fulfillment_status: "pending_retry" };
   }
 
   // Claim atômico com ESTADO INTERMEDIÁRIO 'fulfilling' — distinto de 'fulfilled'
@@ -169,9 +254,10 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
   if (payment.fulfillment_status === "fulfilling") {
     const claimedAt = payment.updated_date ? new Date(payment.updated_date).getTime() : 0;
     if (Date.now() - claimedAt < FULFILLING_STALE_MS) {
-      // Outro laço de emissão está vivo agora — não concorre com ele.
+      // Outro laço de emissão está vivo agora — não concorre com ele E NÃO
+      // declara conclusão: o estado é 'fulfilling'.
       const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
-      return { fulfilled: true, tickets };
+      return fulfillingResult(tickets, "Emissão em andamento por outro processo.");
     }
     // 'fulfilling' stalo = crash antigo. Recupera para pending_retry; o claim
     // normal abaixo retoma a emissão de onde parou (idempotente por item).
@@ -186,9 +272,37 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
     { $set: { fulfillment_status: "fulfilling", status: "succeeded", succeeded_at: payment.succeeded_at || new Date().toISOString() } }
   );
   if (!claim || !claim.updated) {
-    // Another caller is fulfilling or already done.
-    const tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
-    return { fulfilled: true, tickets };
+    // P1-01 — O CLAIM NÃO É NOSSO: não existe prova de conclusão. O estado real
+    // do pagamento (relido) decide entre 'fulfilled' (verificado), 'fulfilling'
+    // e 'pending_retry'. Nunca 'fulfilled' por suposição.
+    let fresh: any = null;
+    try {
+      fresh = (await svc.entities.Payment.filter({ id: payment.id }))[0] || null;
+    } catch (err: any) {
+      return pendingResult([], `Estado do pagamento não verificável: ${err?.message || err}`);
+    }
+    let tickets: any[] = [];
+    try {
+      tickets = await svc.entities.Ticket.filter({ order_id: order.id, is_deleted: false });
+    } catch { tickets = []; }
+    if (!fresh) return pendingResult(tickets, "Pagamento não encontrado ao confirmar o claim.");
+    if (fresh.fulfillment_status === "fulfilled") {
+      try {
+        const verified = await verifyFulfillmentComplete(svc, order.id, orderItems);
+        return verified.complete
+          ? fulfilledResult(verified.tickets)
+          : pendingResult(verified.tickets, `Emissão incompleta (${verified.reason}).`);
+      } catch (err: any) {
+        return pendingResult(tickets, `Não foi possível verificar a emissão: ${err?.message || err}`);
+      }
+    }
+    if (fresh.fulfillment_status === "fulfilling") {
+      return fulfillingResult(tickets, "Emissão em andamento por outro processo.");
+    }
+    return pendingResult(
+      tickets,
+      `Claim de emissão não adquirido (estado ${fresh.fulfillment_status || "desconhecido"}).`,
+    );
   }
 
   const createdTickets: any[] = [];
@@ -366,6 +480,24 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       }
     }
 
+    // P1-01 — VERIFICAÇÃO ANTES DE SELAR. Emissão incompleta não vira
+    // 'fulfilled': o pagamento permanece em 'pending_retry' (recuperável) e a
+    // resposta diz exatamente isso.
+    let verified: { complete: boolean; reason?: string; tickets: any[] };
+    try {
+      verified = await verifyFulfillmentComplete(svc, order.id, orderItems);
+    } catch (err: any) {
+      verified = { complete: false, reason: `verificacao_indisponivel:${err?.message || err}`, tickets: createdTickets };
+    }
+    if (!verified.complete) {
+      await svc.entities.Payment.update(payment.id, {
+        fulfillment_status: "pending_retry",
+        error_reason: `Emissão não confirmada: ${verified.reason}`,
+      });
+      await svc.entities.Order.update(order.id, { fulfillment_status: "pending_retry" });
+      return pendingResult(verified.tickets, `Emissão não confirmada: ${verified.reason}`);
+    }
+
     // Mark order fulfilled.
     await svc.entities.Order.update(order.id, { status: "paid", fulfillment_status: "fulfilled" });
     await svc.entities.Payment.update(payment.id, { status: "succeeded", fulfillment_status: "fulfilled", succeeded_at: new Date().toISOString() });
@@ -393,7 +525,7 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
       });
     } catch {}
 
-    return { fulfilled: true, tickets: createdTickets };
+    return fulfilledResult(verified.tickets);
   } catch (err: any) {
     // Fulfillment partially failed — flag for manual resolution. Payment stays succeeded.
     await svc.entities.Payment.update(payment.id, { fulfillment_status: "pending_retry", error_reason: err?.message || String(err) });
@@ -414,7 +546,7 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
         user_id: order.buyer_user_id,
       });
     } catch {}
-    return { fulfilled: false, tickets: createdTickets, error: err?.message || String(err) };
+    return pendingResult(createdTickets, err?.message || String(err));
   }
 }
 
