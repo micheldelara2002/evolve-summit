@@ -425,6 +425,12 @@ const STEPS = {
           youtube: null,
           website: null,
           is_active: false,
+          // P2-03 (2026-11-22) — MARCADOR DE ANONIMIZAÇÃO. Diferente de
+          // is_active=false (desativação operacional, reversível), este registro
+          // é IRRECUPERÁVEL por desenho: a resolução de identidade nunca o
+          // reativa nem o reutiliza por match de e-mail. Quem voltar com o mesmo
+          // e-mail recebe uma identidade NOVA, e este permanece anonimizado.
+          is_anonymized: true,
         });
       }
     }

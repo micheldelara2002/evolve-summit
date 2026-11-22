@@ -15,8 +15,6 @@ import { generateTicketHash } from "./commercePolicy.ts";
 import { releaseCheckoutLock } from "./checkoutLock.ts";
 import { incUniqueParticipant, incParticipantsByRole, decUniqueParticipant, decParticipantsByRole } from "./businessMetrics.ts";
 import { retrieveChargeWithBalance } from "./stripeClient.ts";
-import { normalizeEmail, emailMatchVariants } from "./identity.ts";
-import { deterministicCompare } from "./deterministicSurvivor.ts";
 import { applyConfirmedRefundCents } from "./refundLedger.ts";
 import {
   releaseReservationsForOrderItem,
@@ -25,6 +23,11 @@ import {
   convertReservedToSoldOnce,
   orderTracksStockReservations,
 } from "./stockReservation.ts";
+import { resolveOrCreatePerson } from "./personResolution.ts";
+import {
+  commitCouponReservationsForOrder,
+  releaseCouponReservationsForOrder,
+} from "./couponReservation.ts";
 
 // Janela após a qual um fulfillment em estado intermediário 'fulfilling' é
 // considerado crash (nenhum laço de emissão dura tanto) e pode ser retomado.
@@ -53,38 +56,29 @@ export function blocksFulfillment(
   return true;
 }
 
-// Resolve or create a Person by contact_email (companion may not have an account yet).
-// Dedup com reativação: Person inativa com o mesmo e-mail é REATIVADA (a
-// inscrição anterior cancelada/reembolsada não impede uma nova inscrição —
-// a identidade existente volta), em vez de criar uma Person duplicada.
+// Resolve a Person do titular do ingresso (o acompanhante pode ainda não ter
+// conta). P2-03 (2026-11-22) — a resolução é a MESMA de todo o app
+// (shared/personResolution.ts) e inclui cadastros INATIVOS:
+//
+//   DEFEITO CORRIGIDO: aqui a consulta era `is_active: { $ne: false }` — os
+//   inativos nunca apareciam — e o ramo seguinte que tentava reativá-los era
+//   código MORTO. Resultado: quem tinha cadastro desativado ganhava uma SEGUNDA
+//   Person ao comprar de novo, dividindo pontos, certificados e histórico.
+//
+//   Agora: ativa → reutiliza; inativa → REATIVA por CAS auditado; anonimizada
+//   (LGPD) → nunca reutiliza, cria identidade nova; falha de leitura → RECUSA
+//   (o fulfillment fica pendente e recuperável, jamais duplica identidade).
 async function ensurePerson(svc: any, name: string, email: string, phone?: string): Promise<string> {
-  // P1-A — e-mail canônico na gravação e na comparação. Se houver mais de um
-  // cadastro com o mesmo e-mail, a escolha é DETERMINÍSTICA (created_date + id):
-  // emitir ingresso não pode falhar por ambiguidade de cadastro, e todos os
-  // caminhos (compra, retry, webhook) elegem o mesmo sobrevivente.
-  const normalized = normalizeEmail(email);
-  const existing = await svc.entities.Person.filter({
-    contact_email: emailMatchVariants(email),
-    is_active: { $ne: false },
+  const resolution = await resolveOrCreatePerson(svc, {
+    name,
+    email,
+    phone,
+    reason: "emissao_de_ingresso",
   });
-  const matches = (existing || [])
-    .filter((p: any) => normalizeEmail(p.contact_email) === normalized)
-    .sort(deterministicCompare);
-  if (matches.length > 0) {
-    if (matches[0].is_active === false) {
-      try { await svc.entities.Person.update(matches[0].id, { is_active: true }); } catch {}
-    }
-    return matches[0].id;
+  if (!resolution.ok) {
+    throw new Error(`Identidade do titular não resolvida (${resolution.reason}): ${resolution.error}`);
   }
-  const person = await svc.entities.Person.create({
-    full_name: name,
-    contact_email: normalized,
-    phone: phone || "",
-    is_active: true,
-    created_day: new Date().toISOString().slice(0, 10),
-    metrics_inc: true,
-  });
-  return person.id;
+  return resolution.personId;
 }
 
 // Convida titulares (acompanhantes) sem conta de usuário no app. Idempotente:
@@ -502,6 +496,15 @@ export async function fulfillOrder(svc: any, payment: any, order: any, orderItem
     await svc.entities.Order.update(order.id, { status: "paid", fulfillment_status: "fulfilled" });
     await svc.entities.Payment.update(payment.id, { status: "succeeded", fulfillment_status: "fulfilled", succeeded_at: new Date().toISOString() });
 
+    // P2-01 — a reserva do cupom desta compra é CONFIRMADA (o uso permanece).
+    // Best-effort: a autoridade do contador continua sendo o marcador do pedido;
+    // a reserva registra o desfecho do ciclo de vida para a reconciliação.
+    try {
+      await commitCouponReservationsForOrder(svc, order.id, "pagamento_confirmado");
+    } catch (couponErr: any) {
+      console.error("[fulfillOrder] confirmação da reserva de cupom falhou:", couponErr?.message || couponErr);
+    }
+
     // FIN-001 — pagamento confirmado: libera (idempotente) o lock de checkout
     // do comprador — a exclusividade deixa de ser necessária.
     await releaseCheckoutLock(svc, order.buyer_person_id, order.event_id);
@@ -590,20 +593,34 @@ export async function reserveCouponUse(svc: any, coupon: any): Promise<boolean> 
 // marker do pedido (coupon_uses_counted): reexecuções (webhook duplicado,
 // re-varredura do expirador, polling) não devolvem duas vezes.
 export async function releaseCouponUse(svc: any, order: any): Promise<void> {
-  if (!order || !order.coupon_id || order.coupon_uses_counted !== true) return;
-  try {
-    const unmarked = await svc.entities.Order.updateMany(
-      { id: order.id, coupon_uses_counted: true },
-      { $set: { coupon_uses_counted: false } }
-    );
-    if (unmarked && unmarked.updated) {
-      await svc.entities.Coupon.updateMany(
-        { id: order.coupon_id, uses_count: { $gt: 0 } },
-        { $inc: { uses_count: -1 } }
+  if (!order?.id) return;
+  const counterHandledByOrder = !!order.coupon_id && order.coupon_uses_counted === true;
+  if (counterHandledByOrder) {
+    try {
+      const unmarked = await svc.entities.Order.updateMany(
+        { id: order.id, coupon_uses_counted: true },
+        { $set: { coupon_uses_counted: false } }
       );
+      if (unmarked && unmarked.updated) {
+        await svc.entities.Coupon.updateMany(
+          { id: order.coupon_id, uses_count: { $gt: 0 } },
+          { $inc: { uses_count: -1 } }
+        );
+      }
+    } catch (err: any) {
+      console.error("[releaseCouponUse] failed:", err?.message || err);
     }
+  }
+
+  // P2-01 — encerra a RESERVA DURÁVEL do cupom deste pedido. Quando o marcador
+  // do pedido já devolveu o uso, a reserva só registra o desfecho
+  // (`counterHandledBy: "order"`) — nunca decrementa duas vezes.
+  try {
+    await releaseCouponReservationsForOrder(svc, order, "order_released", {
+      counterHandledBy: counterHandledByOrder ? "order" : "reservation",
+    });
   } catch (err: any) {
-    console.error("[releaseCouponUse] failed:", err?.message || err);
+    console.error("[releaseCouponUse] liberação da reserva de cupom falhou:", err?.message || err);
   }
 }
 
@@ -995,6 +1012,17 @@ export async function processRefundSuccess(svc: any, payment: any, order: any, r
       }
     } catch (err: any) {
       console.error("[processRefundSuccess] coupon return failed:", err?.message || err);
+    }
+    // P2-01 — o estorno integral reverte a venda: a reserva deixa de estar
+    // 'committed' e passa a 'released' (o uso já foi devolvido acima pelo
+    // marcador do pedido — a reserva não decrementa de novo).
+    try {
+      await releaseCouponReservationsForOrder(svc, order, "refund", {
+        counterHandledBy: "order",
+        allowCommitted: true,
+      });
+    } catch (resErr: any) {
+      console.error("[processRefundSuccess] liberação da reserva de cupom falhou:", resErr?.message || resErr);
     }
   }
 

@@ -21,14 +21,30 @@ import { assertPaymentMatchesIntent } from "../../shared/paymentMatch.ts";
 export default async function(req: Request): Promise<Response> {
   try {
     const signature = req.headers.get("stripe-signature") || "";
+    // O corpo é lido como TEXTO BRUTO e verificado exatamente como chegou —
+    // nenhuma reserialização (que mudaria os bytes e invalidaria o HMAC).
     const bodyText = await req.text();
     const secret = secrets.get("STRIPE_WEBHOOK_SECRET");
     if (!secret) return Response.json({ error: "webhook secret not configured" }, { status: 500 });
 
+    // P2-02 — ROTAÇÃO DE SEGREDO: quando o segredo anterior está configurado,
+    // ele também é aceito. O header pode trazer várias `v1` (uma por segredo) e
+    // basta UM par (segredo, assinatura) casar para o evento ser autêntico.
+    let previousSecret = "";
+    try {
+      previousSecret = secrets.get("STRIPE_WEBHOOK_SECRET_PREVIOUS") || "";
+    } catch {
+      previousSecret = "";
+    }
+    const acceptedSecrets = [secret, previousSecret].filter(
+      (s): s is string => typeof s === "string" && s.length > 0,
+    );
+
     let event;
     try {
-      event = await constructStripeEvent(bodyText, signature, secret);
+      event = await constructStripeEvent(bodyText, signature, acceptedSecrets);
     } catch (err: any) {
+      // Mensagem do erro carrega apenas o MOTIVO (sem segredo/assinatura/payload).
       console.error('[stripeWebhook] signature invalid:', err?.message || err);
       return Response.json({ error: "Invalid signature" }, { status: 400 });
     }

@@ -1,6 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES, canAccessPartnerData, verifyOwnSpeakerScope } from "../../shared/eventAuth.ts";
+import { parseQuantity } from "../../shared/numericInput.ts";
+
+// P2-04 — limite de negócio explícito para ganhadores por sorteio.
+const MAX_RAFFLE_WINNERS = 1000;
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -106,7 +110,18 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'Sem elegíveis disponíveis após exclusões.' }, { status: 400 });
     }
 
-    const count = Math.max(1, parseInt(winnerCount) || 1);
+    // P2-04 — quantidade de ganhadores é INTEIRA e positiva. Antes,
+    // `Math.max(1, parseInt(winnerCount) || 1)` transformava "abc", "2.7" e ""
+    // em 1 (ou truncava) em silêncio; agora entrada inválida é recusada.
+    const parsedWinners = parseQuantity(winnerCount, {
+      field: "quantidade de ganhadores",
+      min: 1,
+      max: MAX_RAFFLE_WINNERS,
+    });
+    if (!parsedWinners.ok) {
+      return Response.json({ error: parsedWinners.error }, { status: 400 });
+    }
+    const count = parsedWinners.value;
 
     // Fisher-Yates shuffle com aleatoriedade criptograficamente segura
     const arr = [...pool];

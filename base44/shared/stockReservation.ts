@@ -68,6 +68,7 @@
 // lote) para a retomada.
 
 import { retrievePaymentIntent } from "./stripeClient.ts";
+import { parseQuantity } from "./numericInput.ts";
 
 export const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const ENTITY = "StockReservation";
@@ -119,7 +120,15 @@ export async function reserveStockForCheckout(
 
   for (const lotId of Object.keys(demandByLot)) {
     const lot = lotById[lotId] || {};
-    const qty = Math.max(1, Number(demandByLot[lotId]) || 1);
+    // P2-04 — quantidade de negócio é INTEIRA e positiva. Antes,
+    // `Math.max(1, Number(x) || 1)` transformava 1.5 em 1.5 (e "" ou NaN em 1)
+    // em silêncio. Agora entrada inválida recusa a reserva inteira.
+    const parsedQty = parseQuantity(demandByLot[lotId], { field: "quantidade do lote", min: 1 });
+    if (!parsedQty.ok) {
+      console.error("[stockReservation] demanda inválida no lote:", lotId, parsedQty.reason);
+      return { ok: false, reason: "quantidade_invalida", failedLot: lotId };
+    }
+    const qty = parsedQty.value;
 
     // (1) Registro DURÁVEL primeiro (estado 'claiming'): a reserva passa a ser
     // identificável e encontrável antes de qualquer escrita de estoque.
@@ -177,10 +186,15 @@ export async function reserveStockForCheckout(
 export async function releaseReservation(svc: any, record: any, reason: string): Promise<{ released: boolean; reason: string }> {
   const token = String(record?.checkout_token || "");
   const lotId = String(record?.lot_id || "");
-  const qty = Math.abs(Number(record?.quantity) || 0);
-  if (!token || !lotId || qty <= 0) {
+  // P2-04 — a quantidade devolvida vem do registro e precisa ser um inteiro
+  // positivo. `Math.abs(Number(x) || 0)` aceitava 1.5 e devolvia 1.5 unidade ao
+  // lote; entrada inválida NÃO devolve nada (fail-closed, registro visível para
+  // a reconciliação em vez de corromper o saldo).
+  const parsedQty = parseQuantity(record?.quantity, { field: "quantidade reservada", min: 1 });
+  if (!token || !lotId || !parsedQty.ok) {
     return { released: false, reason: "reserva_sem_identidade" };
   }
+  const qty = parsedQty.value;
 
   let released = false;
   try {
@@ -418,15 +432,17 @@ async function consumeReservationIfFullyConverted(
   reason: string;
 }> {
   // F4-05 — QUANTIDADE INVÁLIDA/ZERO NÃO AUTORIZA ENCERRAMENTO.
-  // Antes `needed` virava 0 e a comparação `converted < needed` era falsa, então
-  // a reserva era consumida sem nenhuma unidade convertida comprovada. Sem uma
-  // quantidade reservada positiva e legível não há conversão a confirmar
-  // (fail-closed): o registro permanece vivo para a reconciliação.
-  const raw = Number(record?.quantity);
-  const needed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
-  if (!needed) {
-    return { consumed: false, converted: 0, needed, unavailable: false, reason: "quantidade_invalida" };
+  // Antes `needed` virava 0 (via Math.floor) e a comparação `converted < needed`
+  // era falsa, então a reserva era consumida sem nenhuma unidade convertida
+  // comprovada. P2-04: `Math.floor` foi REMOVIDO — quantidade fracionária não é
+  // truncada para um valor "válido"; é recusada. Sem uma quantidade reservada
+  // inteira e positiva não há conversão a confirmar (fail-closed): o registro
+  // permanece vivo para a reconciliação.
+  const parsedNeeded = parseQuantity(record?.quantity, { field: "quantidade reservada", min: 1 });
+  if (!parsedNeeded.ok) {
+    return { consumed: false, converted: 0, needed: 0, unavailable: false, reason: "quantidade_invalida" };
   }
+  const needed = parsedNeeded.value;
 
   const read = await convertedUnitsFor(svc, orderId || String(record?.order_id || ""), String(record?.lot_id || ""));
   if (read.unavailable) {

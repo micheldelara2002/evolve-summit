@@ -60,7 +60,11 @@
     "coupon_uses_counted": {
       "type": "boolean",
       "default": false,
-      "description": "P2 \u2014 Marker at\u00f4mico: o uso do cupom deste pedido j\u00e1 foi contabilizado no Coupon.uses_count (no fulfillment do pagamento confirmado \u2014 nunca na cria\u00e7\u00e3o do pedido). Retentativas de fulfillment n\u00e3o contam duas vezes; o estorno integral reseta o marker e devolve o uso."
+      "description": "P2 \u2014 Marker at\u00f4mico: o uso do cupom deste pedido j\u00e1 foi contabilizado no Coupon.uses_count (reserva do checkout ou fulfillment do pagamento confirmado). Retentativas n\u00e3o contam duas vezes; o estorno integral reseta o marker e devolve o uso."
+    },
+    "coupon_reservation_id": {
+      "type": "string",
+      "description": "P2-01 (2026-11-22) \u2014 ID da CouponReservation desta compra. Liga o pedido \u00e0 reserva dur\u00e1vel do uso do cupom: \u00e9 o que permite \u00e0 reconcilia\u00e7\u00e3o distinguir reserva \u00f3rf\u00e3 (sem pedido) de reserva de compra viva e encerrar a reserva (committed/released) com o desfecho do pedido."
     },
     "checkout_token": {
       "type": "string",

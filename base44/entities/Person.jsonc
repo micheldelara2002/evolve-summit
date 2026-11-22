@@ -1,7 +1,7 @@
 {
   "name": "Person",
   "type": "object",
-  "description": "Cadastro global de pessoa. Lote 4 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Usu\u00e1rios leem/escrevem a pr\u00f3pria Person via getMyPerson/saveMyPerson; gestores leem/gerenciam via managePerson; resolu\u00e7\u00f5es por ID via getPersonsByIds (backend functions que validam posse/evento).",
+  "description": "Cadastro global de pessoa. Lote 4 RLS: travado para admin (SDK direto s\u00f3 pelo admin \u00fanico). Usu\u00e1rios leem/escrevem a pr\u00f3pria Person via getMyPerson/saveMyPerson; gestores leem/gerenciam via managePerson; resolu\u00e7\u00f5es por ID via getPersonsByIds (backend functions que validam posse/evento). P2-03 (2026-11-22): a resolu\u00e7\u00e3o por e-mail \u00e9 centralizada em shared/personResolution.ts \u2014 inclui cadastros INATIVOS (is_active=false, reativ\u00e1veis por CAS auditado) e distingue ANONIMIZADOS (is_anonymized=true, nunca reativados).",
   "properties": {
     "full_name": {
       "type": "string",
@@ -50,7 +50,12 @@
     "is_active": {
       "type": "boolean",
       "default": true,
-      "description": "Se a pessoa est\u00e1 ativa no sistema"
+      "description": "Se a pessoa est\u00e1 ativa no sistema. P2-03: false = desativa\u00e7\u00e3o OPERACIONAL (cancelamento, reembolso, consolida\u00e7\u00e3o) \u2014 o cadastro continua reutiliz\u00e1vel e pode ser reativado explicitamente por resolveOrCreatePerson (CAS + trilha), em vez de gerar uma segunda Person."
+    },
+    "is_anonymized": {
+      "type": "boolean",
+      "default": false,
+      "description": "P2-03 (2026-11-22) \u2014 MARCADOR DE ANONIMIZA\u00c7\u00c3O (exclus\u00e3o LGPD). true = o cadastro foi anonimizado por deleteMyAccount (nome substitu\u00eddo, contato limpo) e \u00e9 IRRECUPER\u00c1VEL por desenho: nunca \u00e9 reativado nem reutilizado por match de e-mail \u2014 quem voltar com o mesmo e-mail recebe uma identidade NOVA. Diferente de is_active=false, que \u00e9 desativa\u00e7\u00e3o operacional e pode ser revertida."
     },
     "created_day": {
       "type": "string",

@@ -4,6 +4,7 @@ import { verifyEventMembership, EVENT_MANAGER_ROLES } from "../../shared/eventAu
 import { normalizeEmail, resolveIdentity } from "../../shared/identity.ts";
 import { ensureSelfPerson } from "../../shared/selfPerson.ts";
 import { validateContent, validateAnswers } from "../../shared/submissionForm.ts";
+import { saveEvaluationOnce, dedupeEvaluationsForScoring } from "../../shared/evaluationIntegrity.ts";
 
 // Status e papéis aceitos por decisão de gestão — qualquer outro é recusado.
 const PROMOTE_STATUSES = ['in_review', 'finalist', 'winner', 'rejected'];
@@ -342,15 +343,50 @@ export default async function(req: Request): Promise<Response> {
         status: 'submitted',
       };
 
-      const existing = await svc.entities.AwardEvaluation.filter({ submission_id, reviewer_user_id: user.id, is_deleted: false });
-      let result;
-      if (existing[0]) {
-        await svc.entities.AwardEvaluation.update(existing[0].id, payload);
-        result = { id: existing[0].id, ...payload };
-      } else {
-        result = await svc.entities.AwardEvaluation.create(payload);
+      // ===== P2-06 (2026-11-22) — UMA AVALIAÇÃO LÓGICA POR (submissão, avaliador) =====
+      // ANTES: `filter` → `create`. Duas requisições simultâneas (duplo clique,
+      // retry do cliente, duas abas) liam "não existe" ao mesmo tempo e criavam
+      // DUAS avaliações — score duplicado, média e ranking distorcidos.
+      // AGORA: a gravação converge para a sobrevivente determinística (retry é
+      // idempotente) e o cálculo de score deduplica por (submissão, avaliador).
+      const saved = await saveEvaluationOnce(svc, {
+        submissionId: submission_id,
+        reviewerUserId: user.id,
+        payload,
+      });
+      if (!saved.ok) {
+        console.error('[manageAward] avaliação não persistida:', saved.reason, saved.error);
+        return Response.json({ error: saved.error }, { status: 503 });
       }
-      return Response.json({ ok: true, evaluation: result });
+
+      // Trilha da decisão (best-effort: avaliação não é operação financeira
+      // obrigatória; a unicidade não depende da trilha).
+      try {
+        await svc.entities.AuditLog.create({
+          action: saved.created ? 'create' : 'update',
+          entity_type: 'AwardEvaluation',
+          entity_id: saved.evaluation.id,
+          user_id: user.id,
+          user_name: user.full_name || user.email || '',
+          event_id: sub.event_id,
+          details: JSON.stringify({
+            type: 'avaliacao_registrada',
+            submission_id,
+            award_id: sub.award_id,
+            total_score: total,
+            duplicatas_removidas: saved.duplicatesRemoved,
+          }),
+        });
+      } catch (auditErr: any) {
+        console.error('[manageAward] trilha da avaliação indisponível:', auditErr?.message || auditErr);
+      }
+
+      return Response.json({
+        ok: true,
+        evaluation: saved.evaluation,
+        created: saved.created,
+        duplicates_removed: saved.duplicatesRemoved,
+      });
     }
 
     // ── listMyAssignments: inscrições das premiações cuja banca inclui o user ─
@@ -414,7 +450,12 @@ export default async function(req: Request): Promise<Response> {
         // do evento.
         subQuery.award_id = award_id;
       }
-      const evaluations = await svc.entities.AwardEvaluation.filter(evalQuery, undefined, 1000);
+      // P2-06 — o score NUNCA conta duas vezes: a agregação usa uma avaliação
+      // por (submissão, avaliador), mesmo que uma duplicata transitória exista
+      // durante uma corrida de gravação.
+      const evaluations = dedupeEvaluationsForScoring(
+        await svc.entities.AwardEvaluation.filter(evalQuery, undefined, 1000),
+      );
       const subs = await svc.entities.AwardSubmission.filter(subQuery, undefined, 1000);
       const bySub = {};
       for (const e of evaluations) (bySub[e.submission_id] = bySub[e.submission_id] || []).push(e);

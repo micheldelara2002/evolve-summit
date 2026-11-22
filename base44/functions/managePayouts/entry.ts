@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { requireActiveUser } from "../../shared/accountSecurity.ts";
 import { verifyEventMembership, EVENT_MANAGER_ROLES, resolveUserPartnerManagerIds } from "../../shared/eventAuth.ts";
-import { toCents } from "../../shared/commercePolicy.ts";
+import { parseMoneyBRL, MAX_MONEY_BRL } from "../../shared/numericInput.ts";
 import {
   createConnectedAccount,
   createAccountLink,
@@ -324,19 +324,87 @@ export default async function(req: Request): Promise<Response> {
         if (!account?.stripe_account_id) {
           return Response.json({ error: "Nenhuma conta conectada para este evento." }, { status: 404 });
         }
-        const reserveBRL = Math.max(0, Number(amount) || 0);
+        // P2-08 (2026-11-22) — VALIDAÇÃO E TRILHA OBRIGATÓRIA DA RESERVA.
+        //
+        // DEFEITO CORRIGIDO: `Math.max(0, Number(amount) || 0)` transformava
+        // qualquer entrada inválida em um valor válido em silêncio ("abc" → 0,
+        // NaN → 0, -5 → 0) e a alteração era aplicada no Stripe e no registro
+        // local SEM trilha obrigatória — sem saber quem alterou, qual era o valor
+        // anterior nem o motivo.
+        //
+        // AGORA: dinheiro validado (finito, não negativo, até 2 casas, limite de
+        // negócio) e convertido em centavos por aritmética inteira; a trilha é
+        // gravada ANTES do efeito externo (sem trilha, nada muda) com ator,
+        // evento, valores anterior/novo, motivo, correlation id e resultado; o
+        // estado local só é confirmado por LEITURA depois.
+        const parsedAmount = parseMoneyBRL(amount, {
+          field: "valor da reserva",
+          max: MAX_MONEY_BRL,
+          allowZero: true,
+        });
+        if (!parsedAmount.ok) {
+          return Response.json(
+            { error: parsedAmount.error, field: "amount", reason: parsedAmount.reason },
+            { status: 400 },
+          );
+        }
+        const reserveBRL = parsedAmount.value;
+        const correlationId = crypto.randomUUID();
+        const previousReserve = Number(account.reserve_amount) || 0;
+        const reserveReason = String(body?.reason || "").trim().slice(0, 500);
+
+        try {
+          await trailPayoutChange(
+            "reserva_saldo",
+            "PayoutAccount",
+            account.id,
+            { reserve_amount: reserveBRL, anterior: previousReserve },
+            {
+              type: "reserva_saldo_alterada",
+              correlation_id: correlationId,
+              event_id: eventId,
+              conta_payout_id: account.id,
+              valor_anterior: previousReserve,
+              valor_novo: reserveBRL,
+              moeda: "BRL",
+              motivo: reserveReason,
+              resultado: "solicitada",
+            },
+          );
+        } catch (auditErr: any) {
+          console.error("[managePayouts] trilha obrigatória indisponível (reserva):", auditErr?.message || auditErr);
+          return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
+        }
+
         try {
           await updateConnectedAccountPayoutSettings({
             accountId: account.stripe_account_id,
-            minimumBalanceCents: toCents(reserveBRL),
+            minimumBalanceCents: parsedAmount.cents,
             debitNegativeBalances: true,
           });
         } catch (err: any) {
           console.error("[managePayouts] reserve failed:", err?.message || err);
           return Response.json({ error: `Falha ao configurar a reserva no Stripe: ${err?.message || err}` }, { status: 502 });
         }
-        const updated = await svc.entities.PayoutAccount.update(account.id, { reserve_amount: reserveBRL });
-        return Response.json({ account: sanitizeAccount(updated) });
+
+        await svc.entities.PayoutAccount.update(account.id, { reserve_amount: reserveBRL });
+
+        // Confirmação por LEITURA — resposta otimista não é prova de persistência.
+        let confirmed: any = null;
+        try {
+          confirmed = (await svc.entities.PayoutAccount.filter({ id: account.id }))[0] || null;
+        } catch (readErr: any) {
+          console.error("[managePayouts] confirmação da reserva ilegível:", readErr?.message || readErr);
+        }
+        if (!confirmed || Number(confirmed.reserve_amount) !== reserveBRL) {
+          console.error("[managePayouts] reserva não confirmada após a escrita:", account.id);
+          return Response.json({
+            error: "A reserva foi enviada ao provedor, mas o registro local não confirmou a gravação. Verifique antes de repetir.",
+            correlation_id: correlationId,
+          }, { status: 500 });
+        }
+
+        return Response.json({ account: sanitizeAccount(confirmed), correlation_id: correlationId });
       }
 
       // ===== Admin =====

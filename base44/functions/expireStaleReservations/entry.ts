@@ -10,6 +10,7 @@ import { verifyCampaignSenderAuthorization, resolveCampaignPartnerId } from "../
 import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
 import { buildAuditKey, resolvePendingTrails, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { reconcileStockReservations, assessOrderPaymentState, isPaymentProtected } from "../../shared/stockReservation.ts";
+import { reconcileCouponReservations, diagnoseLegacyCouponOrders } from "../../shared/couponReservation.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -372,6 +373,40 @@ export default async function(req: Request): Promise<Response> {
       }
     } catch (stockErr: any) {
       console.error('[expireStaleReservations] reconciliação de reservas de estoque falhou:', stockErr?.message || stockErr);
+    }
+
+    // ===== P2-01 — RECONCILIAÇÃO DE RESERVAS DE CUPOM =====
+    // Reserva durável criada no checkout e nunca encerrada (pedido que não
+    // nasceu, crash entre etapas, webhook perdido). Cada caso recebe a decisão
+    // própria: sem pedido e vencida → libera; pagamento confirmado → confirma;
+    // pagamento em processamento ou provedor indisponível → MANTÉM (nada é
+    // devolvido sem prova de que não há dinheiro vivo); pedido encerrado →
+    // libera sem decrementar (o marcador do pedido já devolveu o uso).
+    let couponReservationsChecked = 0;
+    let couponReservationsReleased = 0;
+    let couponReservationsCommitted = 0;
+    let couponReservationsUnavailable = 0;
+    let legacyCouponOrders = 0;
+    try {
+      const coupons = await reconcileCouponReservations(svc, 50);
+      couponReservationsChecked = coupons.examined;
+      couponReservationsReleased = coupons.released;
+      couponReservationsCommitted = coupons.committed;
+      couponReservationsUnavailable = coupons.unavailable;
+      if (coupons.examined > 0) {
+        console.log(
+          '[expireStaleReservations] reservas de cupom: examinadas=%d liberadas=%d confirmadas=%d mantidas=%d indisponiveis=%d',
+          coupons.examined, coupons.released, coupons.committed, coupons.kept, coupons.unavailable,
+        );
+      }
+      // Diagnóstico (sem escrita): pedidos com cupom contabilizado e SEM reserva
+      // identificada — casos legados, cujo contador continua sendo o marcador
+      // do pedido. Reportado para visibilidade, nunca alterado automaticamente.
+      const legacy = await diagnoseLegacyCouponOrders(svc, 50);
+      legacyCouponOrders = legacy.legacy;
+    } catch (couponErr: any) {
+      console.error('[expireStaleReservations] reconciliação de reservas de cupom falhou:', couponErr?.message || couponErr);
+      couponReservationsUnavailable++;
     }
 
     // ===== Reconciler de emissão: pagamentos pagos × ingressos/participantes =====
@@ -1099,6 +1134,12 @@ export default async function(req: Request): Promise<Response> {
       kept_alive: keptAlive,
       reconcile_flagged: reconcileFlagged,
       reconcile_completed: reconcileCompleted,
+      // P2-01 — ciclo de vida da reserva de cupom nesta rodada.
+      coupon_reservations_checked: couponReservationsChecked,
+      coupon_reservations_released: couponReservationsReleased,
+      coupon_reservations_committed: couponReservationsCommitted,
+      coupon_reservations_unavailable: couponReservationsUnavailable,
+      legacy_coupon_orders: legacyCouponOrders,
       refunds_reconciled: refundsReconciled,
       refunds_failed: refundsFailed,
       refunds_blocked: refundsBlocked,

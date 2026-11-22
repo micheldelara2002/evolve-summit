@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { incPersons } from "../../shared/businessMetrics.ts";
-import { normalizeEmail, emailMatchVariants } from "../../shared/identity.ts";
-import { deterministicCompare } from "../../shared/deterministicSurvivor.ts";
+import { normalizeEmail } from "../../shared/identity.ts";
+import { resolveOrCreatePerson, lookupPersonsByEmail } from "../../shared/personResolution.ts";
 import { linkPendingInvites, linkPendingPartnerReps } from "../../shared/eventInvites.ts";
 
 // CADASTRO ÚNICO E ATÔMICO (2026-11-04) — User e Person nascem juntos.
@@ -88,51 +88,37 @@ export default async function(req) {
     }
 
     // ---- 3. Person única por e-mail ----------------------------------------
-    const listByEmail = async () => {
-      const rows = await svc.entities.Person.filter({
-        contact_email: { $in: emailMatchVariants(account.email) },
-        is_active: { $ne: false },
-      });
-      return (rows || []).filter((p) => normalizeEmail(p.contact_email) === email && !!p.id);
-    };
-
-    const candidates = await listByEmail();
-    if (candidates.length > 1) {
+    // P2-03 (2026-11-22) — resolução central (shared/personResolution.ts):
+    // inclui cadastros INATIVOS (reativa por CAS auditado), NUNCA reativa
+    // anonimizados (LGPD) e converge corrida de criação para um único registro.
+    //
+    // AMBIGUIDADE continua sendo NEGAÇÃO com motivo (nunca "pega a primeira"):
+    // se mais de uma Person ATIVA usa o e-mail, o cadastro exige consolidação —
+    // é o mesmo contrato de antes, agora sobre o modelo de estados completo.
+    const preLookup = await lookupPersonsByEmail(svc, account.email);
+    if (!preLookup.ok) {
+      return Response.json({ error: NEUTRAL_ERROR, reason: preLookup.reason }, { status: 500 });
+    }
+    if (preLookup.active.length > 1) {
       return Response.json({
         error: 'Seu cadastro não pôde ser concluído. Mais de um cadastro de pessoa usa este e-mail.',
         reason: 'identity_ambiguous',
-        person_ids: candidates.map((p) => p.id),
+        person_ids: preLookup.active.map((p) => p.id),
       }, { status: 409 });
     }
 
-    let person = candidates[0] || null;
-    let createdId = null;
-
-    if (!person) {
-      person = await svc.entities.Person.create({
-        full_name: account.full_name || 'Novo Usuário',
-        contact_email: email,
-        is_active: true,
-        created_day: new Date().toISOString().slice(0, 10),
-        metrics_inc: true,
-      });
-      if (!person?.id) {
-        return Response.json({ error: NEUTRAL_ERROR, reason: 'person_not_created' }, { status: 500 });
-      }
-      createdId = person.id;
-
-      // Corrida entre cadastros simultâneos: as duas chamadas elegem o MESMO
-      // sobrevivente e o perdedor sai de cena (nunca fica Person duplicada).
-      const afterCreate = await listByEmail();
-      if (afterCreate.length > 1) {
-        const survivor = [...afterCreate].sort(deterministicCompare)[0];
-        for (const extra of afterCreate) {
-          if (extra.id === survivor.id) continue;
-          try { await svc.entities.Person.update(extra.id, { is_active: false }); } catch { /* converge no próximo */ }
-        }
-        person = survivor;
-      }
+    const resolution = await resolveOrCreatePerson(svc, {
+      name: account.full_name || 'Novo Usuário',
+      email: account.email,
+      reason: 'cadastro_de_usuario',
+      actor: { id: account.id, name: account.full_name || account.email },
+    });
+    if (!resolution.ok) {
+      const status = resolution.reason === 'identity_ambiguous' ? 409 : 500;
+      return Response.json({ error: NEUTRAL_ERROR, reason: resolution.reason }, { status });
     }
+    const person = resolution.person;
+    const createdId = resolution.created ? resolution.personId : null;
 
     // ---- 4. Vínculo gravado e CONFIRMADO -----------------------------------
     await svc.entities.User.update(account.id, { person_id: person.id });

@@ -6,7 +6,8 @@ import { calculateCart, toCents } from "../../shared/commercePolicy.ts";
 import { findActiveDuplicateEmails } from "../../shared/participantDedup.ts";
 // (dedup: 1 e-mail ativo = 1 inscrição por evento — validação server-side)
 import { createPaymentIntent, cancelPaymentIntent } from "../../shared/stripeClient.ts";
-import { fulfillOrder, ensureCompanionInvites, reserveCouponUse, releaseCouponUse, releaseReservations } from "../../shared/commerceFulfillment.ts";
+import { fulfillOrder, ensureCompanionInvites, releaseCouponUse, releaseReservations } from "../../shared/commerceFulfillment.ts";
+import { reserveCouponUsage, attachCouponReservation, releaseCouponReservation } from "../../shared/couponReservation.ts";
 import { claimCheckoutLock, attachCheckoutLock, releaseCheckoutLock } from "../../shared/checkoutLock.ts";
 import { newCheckoutToken, reserveStockForCheckout, releaseCheckoutReservations, attachReservationsToOrder } from "../../shared/stockReservation.ts";
 import { extractClientIp, writeAudit } from "../../shared/commerceAudit.ts";
@@ -315,23 +316,40 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: totals.coupon_message || 'Cupom inválido.' }, { status: 400 });
     }
 
-    // FIN-002 — reserva ATÔMICA do uso do cupom ANTES de criar o pedido/devolver
-    // o client_secret: checkouts concorrentes não ultrapassam max_uses (a
-    // validação de carrinho acima não é atômica). A reserva fica associada ao
-    // pedido via marker coupon_uses_counted; expiração/cancelamento/abandono
-    // devolvem (releaseCouponUse). Cupons ilimitados (max_uses=0) não reservam
-    // (continuam contados no fulfillment, sem teto).
-    let couponUseReserved = false;
-    if (coupon && Number(coupon.max_uses) > 0) {
-      const reserved = await reserveCouponUse(svc, coupon);
-      if (!reserved) {
-        // F4-01 — devolve as reservas desta tentativa POR TOKEN (idempotente).
-        await releaseCheckoutReservations(svc, checkoutToken, "coupon_exhausted");
+    // ===== P2-01 — CICLO DE VIDA EXPLÍCITO DA RESERVA DE CUPOM =====
+    // ANTES: o uso era consumido (`uses_count += 1` por CAS) e, se a criação do
+    // pedido falhasse depois, o incremento ficava ÓRFÃO — nenhum pedido apontava
+    // para ele e nenhum caminho sabia que aquela unidade precisava voltar.
+    //
+    // AGORA: nasce uma CouponReservation durável (identificada pelo token da
+    // tentativa, com evento, cupom, comprador e validade) e SÓ DEPOIS o uso é
+    // consumido. A liberação é um CAS na própria reserva (uma vez só), o
+    // decremento tem guarda e nenhuma requisição libera a reserva de outra.
+    // Cupom ilimitado registra a reserva sem consumir teto.
+    let couponReservation: any = null;
+    if (coupon) {
+      const reservation = await reserveCouponUsage(svc, {
+        coupon,
+        eventId,
+        userId: user.id,
+        checkoutToken,
+        discount: totals.discount,
+      });
+      if (!reservation.ok) {
+        // F4-01 — devolve as reservas de estoque desta tentativa POR TOKEN.
+        await releaseCheckoutReservations(svc, checkoutToken, "coupon_reservation_failed");
         await releaseCheckoutLock(svc, buyerPersonId, eventId);
-        return Response.json({ error: 'Cupom esgotado — o limite de utilizações foi atingido enquanto você finalizava a compra.' }, { status: 409 });
+        if (reservation.reason === "coupon_exhausted") {
+          return Response.json({ error: 'Cupom esgotado — o limite de utilizações foi atingido enquanto você finalizava a compra.' }, { status: 409 });
+        }
+        console.error('[createPaymentIntent] reserva de cupom indisponível:', reservation.reason);
+        return Response.json({
+          error: 'Não foi possível reservar o cupom agora. Nenhuma cobrança foi criada — tente novamente em instantes.',
+        }, { status: 503 });
       }
-      couponUseReserved = true;
+      couponReservation = reservation.reservation;
     }
+    const couponUseReserved = !!couponReservation && couponReservation.counter_reserved === true;
 
     // Create Order — ou reusa o pedido pendente anterior (mesmo comprador/evento).
     const orderPayload = {
@@ -353,16 +371,19 @@ export default async function(req: Request): Promise<Response> {
       // NÃO conta de novo: fulfills marcam o uso apenas para pedidos legados
       // criados antes da reserva em checkout).
       coupon_uses_counted: couponUseReserved,
+      // P2-01 — vínculo inequívoco entre pedido e reserva de cupom.
+      coupon_reservation_id: couponReservation?.id || '',
       currency: 'BRL',
       reserved_until: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min to pay
       fulfillment_status: 'pending',
     };
     let order;
-    if (reusableOrder) {
-      await svc.entities.Order.update(reusableOrder.id, orderPayload);
-      order = { ...reusableOrder, ...orderPayload, id: reusableOrder.id };
-    } else {
-      order = await svc.entities.Order.create(orderPayload);
+    try {
+      if (reusableOrder) {
+        await svc.entities.Order.update(reusableOrder.id, orderPayload);
+        order = { ...reusableOrder, ...orderPayload, id: reusableOrder.id };
+      } else {
+        order = await svc.entities.Order.create(orderPayload);
 
       // FIN-001 — defesa secundária (o lock atômico na Person já impede a
       // corrida ANTES do create; isto cobre o comprador sem Person): duas
@@ -380,6 +401,13 @@ export default async function(req: Request): Promise<Response> {
           // checkout vencedor).
           await releaseCheckoutReservations(svc, checkoutToken, "concurrent_checkout");
           await releaseCouponUse(svc, order);
+          // P2-01 — a reserva desta tentativa é encerrada SEM decrementar (o
+          // `releaseCouponUse` acima já devolveu o uso pelo marcador do pedido).
+          if (couponReservation?.id) {
+            await releaseCouponReservation(svc, couponReservation.id, "concurrent_checkout", {
+              counterHandledBy: "order",
+            });
+          }
           await svc.entities.Order.updateMany(
             { id: order.id, status: 'pending' },
             { $set: { status: 'cancelled', error_reason: 'Checkout concorrente — prevaleceu o checkout anterior do mesmo comprador.' } }
@@ -388,6 +416,22 @@ export default async function(req: Request): Promise<Response> {
           return Response.json({ error: 'Outro checkout deste evento acabou de começar (outra aba/dispositivo). Tente novamente em instantes.' }, { status: 409 });
         }
       }
+    }
+    } catch (orderErr: any) {
+      // P2-01 — PEDIDO QUE NÃO EXISTE NÃO CONSOME CUPOM.
+      // Antes, uma falha na criação do pedido subia para o catch genérico e o
+      // uso do cupom ficava consumido sem pedido. Agora as reservas desta
+      // tentativa são devolvidas (estoque por token, cupom pela própria reserva
+      // — decremento com guarda) antes de responder.
+      await releaseCheckoutReservations(svc, checkoutToken, "order_create_failed");
+      if (couponReservation?.id) {
+        await releaseCouponReservation(svc, couponReservation.id, "order_create_failed");
+      }
+      await releaseCheckoutLock(svc, buyerPersonId, eventId);
+      console.error('[createPaymentIntent] criação do pedido falhou:', orderErr?.message || orderErr);
+      return Response.json({
+        error: 'Não foi possível criar o pedido. Nenhuma cobrança foi criada — tente novamente em instantes.',
+      }, { status: 503 });
     }
 
     // FIN-001 — liga o lock vivo ao pedido ativo (reuso ou recém-criado):
@@ -399,6 +443,16 @@ export default async function(req: Request): Promise<Response> {
     // a reconciliação passa a encontrar a reserva pelo pedido e consegue
     // distinguir reserva órfã (sem pedido) de reserva de compra em andamento.
     await attachReservationsToOrder(svc, checkoutToken, order.id);
+
+    // P2-01 — liga a reserva do cupom ao pedido. A partir daqui a reconciliação
+    // consegue encerrar a reserva com o desfecho do pedido (pago → committed,
+    // cancelado/estornado → released) sem depender de memória desta execução.
+    if (couponReservation?.id) {
+      const couponAttached = await attachCouponReservation(svc, couponReservation.id, order.id);
+      if (!couponAttached) {
+        console.error('[createPaymentIntent] reserva de cupom não vinculada ao pedido:', couponReservation.id);
+      }
+    }
 
     // Create OrderItems.
     const orderItems = [];

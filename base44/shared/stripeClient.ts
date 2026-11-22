@@ -3,6 +3,7 @@
 
 import { secrets } from "base44:runtime";
 import { collectPages } from "./pagination.ts";
+import { verifyStripeSignature } from "./stripeSignature.ts";
 
 const STRIPE_API = "https://api.stripe.com/v1";
 const STRIPE_VERSION = "2025-10-29.clover";
@@ -175,25 +176,28 @@ export async function createRefund(opts: {
   return stripeRequest("/refunds", params, idempotencyKey);
 }
 
-// Webhook signature verification using Web Crypto (async).
-export async function constructStripeEvent(body: string, signature: string, secret: string): Promise<any> {
-  const parts = signature.split(",").map((s) => s.trim());
-  let t = "", v1 = "";
-  for (const p of parts) {
-    const [k, val] = p.split("=");
-    if (k === "t") t = val;
-    if (k === "v1") v1 = val;
+// P2-02 (2026-11-22) — verificação de assinatura delegada ao módulo puro
+// (shared/stripeSignature.ts): TODAS as `v1` do header são testadas, comparação
+// em tempo constante, tolerância de timestamp para passado E futuro, e suporte a
+// MAIS DE UM segredo (rotação: `STRIPE_WEBHOOK_SECRET` + anterior).
+//
+// Antes, o parser guardava só a ÚLTIMA `v1` — um header com a assinatura antiga e
+// a nova (rotação de segredo) recusava webhook legítimo com 400.
+export async function constructStripeEvent(
+  body: string,
+  signature: string,
+  secret: string | string[],
+): Promise<any> {
+  const verified = await verifyStripeSignature({ body, header: signature, secrets: secret });
+  if (!verified.ok) {
+    // Motivo é seguro (não carrega segredo, assinatura nem payload).
+    throw new Error(`Invalid Stripe signature (${verified.reason})`);
   }
-  if (!t || !v1) throw new Error("Invalid Stripe signature format");
-  const signedPayload = `${t}.${body}`;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(signedPayload));
-  const expected = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  if (expected !== v1) throw new Error("Invalid Stripe signature");
-  const tolerance = 300; // 5 min
-  if (Math.abs(Date.now() / 1000 - parseInt(t, 10)) > tolerance) throw new Error("Stripe signature timestamp out of tolerance");
-  return JSON.parse(body);
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error("Invalid Stripe payload");
+  }
 }
 
 // ===== Stripe Connect (destination charges) =====

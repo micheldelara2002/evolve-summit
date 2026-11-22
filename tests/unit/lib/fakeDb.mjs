@@ -117,6 +117,11 @@ export function createFakeDb({
   events = [],
   users = [],
   checkoutLocks = [],
+  // P2 (2026-11-22) — coleções das suítes do bloco A.
+  couponReservations = [],
+  awardEvaluations = [],
+  awardSubmissions = [],
+  payoutAccounts = [],
 } = {}) {
   const clone = (rows) => rows.map((r) => ({ ...r }));
   const paymentRows = clone(payments);
@@ -138,6 +143,11 @@ export function createFakeDb({
   const eventRows = clone(events);
   const userRows = clone(users);
   const checkoutLockRows = clone(checkoutLocks);
+  // P2 (2026-11-22) — reservas de cupom, avaliações e contas de repasse.
+  const couponReservationRows = clone(couponReservations);
+  const awardEvaluationRows = clone(awardEvaluations);
+  const awardSubmissionRows = clone(awardSubmissions);
+  const payoutAccountRows = clone(payoutAccounts);
   const svc = {
     entities: {
       Payment: collection(paymentRows),
@@ -155,6 +165,10 @@ export function createFakeDb({
       Event: collection(eventRows),
       User: collection(userRows),
       CheckoutLock: collection(checkoutLockRows),
+      CouponReservation: collection(couponReservationRows),
+      AwardEvaluation: collection(awardEvaluationRows),
+      AwardSubmission: collection(awardSubmissionRows),
+      PayoutAccount: collection(payoutAccountRows),
     },
   };
   return {
@@ -172,6 +186,11 @@ export function createFakeDb({
     stockReservations: stockReservationRows,
     persons: personRows,
     events: eventRows,
+    // P2 (2026-11-22)
+    couponReservations: couponReservationRows,
+    awardEvaluations: awardEvaluationRows,
+    awardSubmissions: awardSubmissionRows,
+    payoutAccounts: payoutAccountRows,
     payment: (id) => paymentRows.find((p) => p.id === id),
   };
 }
