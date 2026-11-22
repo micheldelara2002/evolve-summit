@@ -1,0 +1,161 @@
+{
+  "name": "PayoutOperation",
+  "type": "object",
+  "description": "P2-08 (2026-11-22) \u2014 OPERA\u00c7\u00c3O DE REPASSE rastre\u00e1vel do come\u00e7o ao fim. Existe porque uma trilha que registra apenas 'solicitada' n\u00e3o prova o desfecho: o provedor pode falhar depois da inten\u00e7\u00e3o, pode concluir e a grava\u00e7\u00e3o local falhar, ou pode dar timeout com resultado DESCONHECIDO (que n\u00e3o \u00e9 falha nem sucesso). Cada opera\u00e7\u00e3o tem operation_id est\u00e1vel, idempotency_key DETERMIN\u00cdSTICA (conta + valor em centavos), valor em centavos, executor, resultado do provedor e timestamps, e percorre: intent_recorded \u2192 provider_confirmed | provider_failed | reconciliation_required | divergent. Timeout/erro sem resposta vira reconciliation_required e a reconcilia\u00e7\u00e3o REENVIA a MESMA requisi\u00e7\u00e3o com a MESMA idempotency key \u2014 o provedor n\u00e3o executa duas vezes e responde o desfecho original. divergent = mesma chave usada com par\u00e2metros diferentes (conflito de idempot\u00eancia): exige interven\u00e7\u00e3o humana, nunca nova tentativa autom\u00e1tica. Escrita exclusivamente por backend (service role); RLS admin-only.",
+  "properties": {
+    "operation_id": {
+      "type": "string",
+      "description": "Identificador \u00fanico e est\u00e1vel da opera\u00e7\u00e3o (gerado no servidor, uma vez por inten\u00e7\u00e3o). Correlaciona registro local, trilha obrigat\u00f3ria e logs \u2014 nunca muda em retry ou reconcilia\u00e7\u00e3o."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Chave de idempot\u00eancia DETERMIN\u00cdSTICA enviada ao provedor (derivada de conta + valor em centavos, nunca do hor\u00e1rio). \u00c9 o que permite reenviar com seguran\u00e7a: retry e reconcilia\u00e7\u00e3o reusam a mesma chave e o provedor devolve o resultado original em vez de executar de novo."
+    },
+    "operation_type": {
+      "type": "string",
+      "default": "payout_reserve",
+      "description": "Tipo da opera\u00e7\u00e3o externa (payout_reserve)."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento cujo repasse foi alterado"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "ID do PayoutAccount (registro local) dono da configura\u00e7\u00e3o"
+    },
+    "stripe_account_id": {
+      "type": "string",
+      "description": "ID da conta conectada no provedor (acct_...) \u2014 recurso externo da opera\u00e7\u00e3o"
+    },
+    "actor_user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio que executou a opera\u00e7\u00e3o (nunca o operador da reconcilia\u00e7\u00e3o)"
+    },
+    "actor_name": {
+      "type": "string",
+      "description": "Nome do executor (snapshot)"
+    },
+    "amount_cents": {
+      "type": "number",
+      "description": "Valor solicitado em CENTAVOS (aritm\u00e9tica inteira \u2014 nunca float). \u00c9 o valor enviado ao provedor e o valor que a reconcilia\u00e7\u00e3o reenvia."
+    },
+    "amount_brl": {
+      "type": "number",
+      "description": "Valor solicitado em BRL (espelho para leitura humana e trilha)"
+    },
+    "previous_brl": {
+      "type": "number",
+      "description": "Valor anterior da reserva em BRL (snapshot da inten\u00e7\u00e3o)"
+    },
+    "currency": {
+      "type": "string",
+      "default": "BRL"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "intent_recorded",
+        "provider_confirmed",
+        "provider_failed",
+        "reconciliation_required",
+        "divergent"
+      ],
+      "enumColors": [
+        "yellow",
+        "green",
+        "red",
+        "blue",
+        "red"
+      ],
+      "default": "intent_recorded",
+      "description": "intent_recorded = inten\u00e7\u00e3o gravada, efeito externo ainda n\u00e3o confirmado; provider_confirmed = provedor confirmou a opera\u00e7\u00e3o (estado terminal); provider_failed = provedor recusou com erro expl\u00edcito (estado terminal); reconciliation_required = resultado DESCONHECIDO (timeout, queda de rede, 5xx) ou efeito externo confirmado com estado local n\u00e3o confirmado \u2014 a reconcilia\u00e7\u00e3o reenvia com a mesma chave; divergent = a mesma idempotency key foi usada com par\u00e2metros diferentes \u2014 exige revis\u00e3o humana, nunca nova tentativa autom\u00e1tica."
+    },
+    "provider": {
+      "type": "string",
+      "default": "stripe"
+    },
+    "provider_reference": {
+      "type": "string",
+      "description": "Refer\u00eancia do recurso externo devolvida pelo provedor (ex.: acct_...) quando a opera\u00e7\u00e3o foi confirmada. Preenchida, a reconcilia\u00e7\u00e3o N\u00c3O reenvia nada \u2014 apenas conclui o lado local."
+    },
+    "provider_status": {
+      "type": "string",
+      "description": "Status bruto devolvido pelo provedor ou o c\u00f3digo do erro (idempotency_conflict, provider_rejected, provider_unreachable\u2026)"
+    },
+    "provider_error": {
+      "type": "string",
+      "description": "Mensagem de erro do provedor (sem segredos, sem dados pessoais)"
+    },
+    "local_applied": {
+      "type": "boolean",
+      "default": false,
+      "description": "true quando o estado local (PayoutAccount.reserve_amount) foi CONFIRMADO por leitura com o valor desta opera\u00e7\u00e3o. Falso com provider_confirmed significa que o efeito externo existe e o local n\u00e3o \u2014 a reconcilia\u00e7\u00e3o aplica o local, sem tocar o provedor."
+    },
+    "audit_pending": {
+      "type": "boolean",
+      "default": false,
+      "description": "true quando a trilha de conclus\u00e3o n\u00e3o p\u00f4de ser confirmada e ficou registrada como caso pendente (resolvePendingTrails conclui depois). Nunca \u00e9 silencioso: a pend\u00eancia \u00e9 dur\u00e1vel."
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantas vezes o provedor foi chamado para esta opera\u00e7\u00e3o (diagn\u00f3stico de retry/reconcilia\u00e7\u00e3o)."
+    },
+    "last_error": {
+      "type": "string",
+      "description": "Motivo t\u00e9cnico da \u00faltima falha/indisponibilidade (sem PII)"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "ID de correla\u00e7\u00e3o da opera\u00e7\u00e3o (igual ao operation_id), gravado na trilha e devolvido ao chamador"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o desfecho foi registrado"
+    },
+    "settled_by": {
+      "type": "string",
+      "description": "Quem registrou o desfecho: 'request' (a pr\u00f3pria requisi\u00e7\u00e3o) ou 'reconciliation' (varredura de manuten\u00e7\u00e3o)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "operation_id",
+    "idempotency_key",
+    "event_id",
+    "account_id",
+    "state",
+    "amount_cents"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

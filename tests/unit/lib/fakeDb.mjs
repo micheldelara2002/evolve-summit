@@ -127,6 +127,9 @@ export function createFakeDb({
   awardEvaluations = [],
   awardSubmissions = [],
   payoutAccounts = [],
+  // P2 (2026-11-22) — resíduos: claims de avaliação e operações de repasse.
+  evaluationClaims = [],
+  payoutOperations = [],
 } = {}) {
   const clone = (rows) => rows.map((r) => ({ ...r }));
   const paymentRows = clone(payments);
@@ -153,6 +156,8 @@ export function createFakeDb({
   const awardEvaluationRows = clone(awardEvaluations);
   const awardSubmissionRows = clone(awardSubmissions);
   const payoutAccountRows = clone(payoutAccounts);
+  const evaluationClaimRows = clone(evaluationClaims);
+  const payoutOperationRows = clone(payoutOperations);
   const svc = {
     entities: {
       Payment: collection(paymentRows),
@@ -174,6 +179,8 @@ export function createFakeDb({
       AwardEvaluation: collection(awardEvaluationRows),
       AwardSubmission: collection(awardSubmissionRows),
       PayoutAccount: collection(payoutAccountRows),
+      EvaluationClaim: collection(evaluationClaimRows),
+      PayoutOperation: collection(payoutOperationRows),
     },
   };
   return {
@@ -196,6 +203,8 @@ export function createFakeDb({
     awardEvaluations: awardEvaluationRows,
     awardSubmissions: awardSubmissionRows,
     payoutAccounts: payoutAccountRows,
+    evaluationClaims: evaluationClaimRows,
+    payoutOperations: payoutOperationRows,
     payment: (id) => paymentRows.find((p) => p.id === id),
   };
 }

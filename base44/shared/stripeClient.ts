@@ -249,11 +249,96 @@ export async function updateConnectedAccountPayoutSettings(opts: {
   accountId: string;
   minimumBalanceCents: number;
   debitNegativeBalances: boolean;
+  idempotencyKey?: string;
 }): Promise<any> {
   const params = new URLSearchParams();
   if (opts.minimumBalanceCents > 0) {
     params.append("settings[payouts][minimum_balance]", String(opts.minimumBalanceCents));
   }
   params.append("settings[payouts][debit_negative_balances]", opts.debitNegativeBalances ? "true" : "false");
-  return stripeRequest(`/accounts/${opts.accountId}`, params);
+  return stripeRequest(`/accounts/${opts.accountId}`, params, opts.idempotencyKey);
+}
+
+// P2-08 (residual) — DESFECHO EXPLÍCITO DO PROVEDOR.
+//
+// DEFEITO CORRIGIDO: a chamada lançava uma exceção genérica para qualquer erro.
+// O chamador não conseguia distinguir "o provedor RECUSOU" (nada foi aplicado)
+// de "não houve resposta" (timeout, queda de rede, 5xx — resultado
+// DESCONHECIDO, que pode ter sido aplicado). Tratar os dois como falha produzia
+// divergência silenciosa: o local dizia "não alterado" e o provedor já tinha a
+// configuração nova.
+//
+// Agora o retorno é um estado de três valores, sem ambiguidade:
+//   confirmed → o provedor confirmou a operação (com referência do recurso);
+//   failed    → o provedor recusou com erro explícito (4xx): NADA foi aplicado;
+//   unknown   → não há resposta conclusiva: NÃO é falha nem sucesso.
+// Conflito de idempotência (mesma chave, parâmetros diferentes) vem como
+// `failed` com errorCode 'idempotency_conflict' — o chamador o classifica como
+// divergência e NUNCA repete automaticamente.
+export type PayoutProviderOutcome =
+  | { outcome: "confirmed"; reference: string; status: string }
+  | { outcome: "failed"; errorCode: string; status: string; message: string }
+  | { outcome: "unknown"; errorCode: string; message: string };
+
+export async function applyPayoutReserve(opts: {
+  accountId: string;
+  minimumBalanceCents: number;
+  debitNegativeBalances: boolean;
+  idempotencyKey: string;
+  timeoutMs?: number;
+}): Promise<PayoutProviderOutcome> {
+  const params = new URLSearchParams();
+  if (opts.minimumBalanceCents > 0) {
+    params.append("settings[payouts][minimum_balance]", String(opts.minimumBalanceCents));
+  }
+  params.append("settings[payouts][debit_negative_balances]", opts.debitNegativeBalances ? "true" : "false");
+
+  // Timeout de REQUISIÇÃO (não é coordenação): sem ele uma conexão pendurada
+  // nunca vira desfecho e a operação fica sem estado.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(opts.timeoutMs) || 15000);
+  let res: any = null;
+  try {
+    res = await fetch(`${STRIPE_API}/accounts/${opts.accountId}`, {
+      method: "POST",
+      headers: authHeaders(opts.idempotencyKey),
+      body: params.toString(),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    // Rede, DNS, abort/timeout: o pedido PODE ter chegado ao provedor.
+    return {
+      outcome: "unknown",
+      errorCode: "provider_unreachable",
+      message: String(err?.message || err),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (res.ok) {
+    return {
+      outcome: "confirmed",
+      reference: String(data?.id || opts.accountId),
+      status: String(data?.object || "account"),
+    };
+  }
+
+  const errorType = String(data?.error?.type || "");
+  const message = String(data?.error?.message || `Stripe error ${res.status}`);
+  if (errorType === "idempotency_error") {
+    return { outcome: "failed", errorCode: "idempotency_conflict", status: "409", message };
+  }
+  if (res.status >= 500) {
+    // 5xx não prova que o provedor NÃO aplicou: resultado desconhecido.
+    return { outcome: "unknown", errorCode: "provider_error_5xx", message };
+  }
+  return { outcome: "failed", errorCode: errorType || "provider_rejected", status: String(res.status), message };
 }

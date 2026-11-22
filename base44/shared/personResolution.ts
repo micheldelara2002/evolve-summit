@@ -33,6 +33,49 @@
 
 import { normalizeEmail, emailMatchVariants } from "./identity.ts";
 import { deterministicCompare } from "./deterministicSurvivor.ts";
+import { buildAuditKey, recordPendingTrailVerified, writeMandatoryAudit } from "./auditTrail.ts";
+
+// P2-03 (residual) — EVIDÊNCIA DURÁVEL DA REATIVAÇÃO.
+//
+// DEFEITO CORRIGIDO: a reativação era CAS + trilha best-effort. Se a gravação do
+// AuditLog falhasse, a mutação permanecia aplicada e `audited: false` era
+// devolvido — uma alteração de estado sem trilha confiável e sem nenhum caminho
+// que voltasse para gravá-la.
+//
+// AGORA a ordem é: INTENÇÃO durável → mutação → CONCLUSÃO. A intenção é um caso
+// de trilha pendente (AuditLog status 'pending' com a entrada original dentro),
+// gravado e CONFIRMADO por leitura ANTES do CAS. Consequências:
+//   • sem intenção confirmada, a reativação NÃO acontece (fail-closed): nenhuma
+//     mutação de identidade existe sem evidência durável correlacionável;
+//   • crash depois do CAS e antes da trilha: a intenção continua durável e a
+//     rotina de manutenção (resolvePendingTrails) grava a trilha original —
+//     a operação é recuperável, não silenciosa;
+//   • CAS perdido (outra execução reativou): a intenção é encerrada como NÃO
+//     aplicada, para nunca virar uma trilha que atribui a este ator uma
+//     reativação que ele não executou.
+//
+// LIMITAÇÃO DECLARADA: a plataforma não tem transação entre documentos, então
+// NÃO existe atomicidade entre o AuditLog e a Person. O que existe é ordem
+// obrigatória + evidência durável + recuperação automática.
+function newOperationId(): string {
+  return globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function closeAuditIntent(svc: any, pendingId: string, reason: string): Promise<void> {
+  if (!pendingId) return;
+  try {
+    await svc.entities.AuditLog.update(pendingId, {
+      status: "resolved",
+      resolved_at: new Date().toISOString(),
+      failure_reason: reason,
+    });
+  } catch (err: any) {
+    // Se nem o encerramento gravar, o caso pendente continua visível para a
+    // rotina de manutenção — nunca desaparece em silêncio.
+    console.error("[personResolution] encerramento da intenção de trilha falhou:", err?.message || err);
+  }
+}
 
 export type PersonBucket = "active" | "inactive" | "anonymized";
 
@@ -93,6 +136,9 @@ export type PersonResolution =
       created: boolean;
       reactivated: boolean;
       audited: boolean;
+      /** P2-03 — quando a trilha não pôde ser confirmada na hora: id do caso
+       *  pendente DURÁVEL que a reconciliação vai concluir. */
+      pendingTrailId?: string;
     }
   | { ok: false; reason: string; error: string };
 
@@ -163,6 +209,43 @@ export async function resolveOrCreatePerson(
 
   if (lookup.inactive.length > 0) {
     const candidate = lookup.inactive[0];
+
+    // (1) INTENÇÃO DURÁVEL — antes de qualquer mutação. A chave é determinística
+    // por ocorrência (gerada no servidor): retry e reconciliação convergem para
+    // UM único registro de trilha, nunca dois.
+    const occurrence = newOperationId();
+    const auditKey = buildAuditKey("person_reactivated", candidate.id, occurrence);
+    const trailEntry = {
+      action: "update",
+      entity_type: "Person",
+      entity_id: candidate.id,
+      user_id: opts.actor?.id || "system",
+      user_name: opts.actor?.name || "Sistema",
+      event_id: opts.eventId || "",
+      audit_key: auditKey,
+      details: JSON.stringify({
+        type: "person_reactivated",
+        person_id: candidate.id,
+        occurrence,
+        motivo: opts.reason || "identidade_reutilizada",
+        de: "inactive",
+        para: "active",
+      }),
+    };
+    const intent = await recordPendingTrailVerified(svc, {
+      ...trailEntry,
+      failure_reason: "Reativação de cadastro em andamento — trilha a confirmar.",
+    });
+    if (!intent) {
+      // Sem evidência durável NÃO há reativação (fail-closed).
+      return {
+        ok: false,
+        reason: "audit_intent_unavailable",
+        error: "Não foi possível registrar a evidência desta reativação. Nada foi alterado — tente novamente em instantes.",
+      };
+    }
+
+    // (2) MUTAÇÃO idempotente: só inativa e não anonimizada (LGPD preservada).
     let revived: any = null;
     try {
       revived = await svc.entities.Person.updateMany(
@@ -171,18 +254,22 @@ export async function resolveOrCreatePerson(
       );
     } catch (err: any) {
       console.error("[personResolution] reativação falhou:", candidate.id, err?.message || err);
+      await closeAuditIntent(svc, intent.id, "Reativação não aplicada: falha de escrita.");
       return { ok: false, reason: "reactivation_failed", error: "Não foi possível reativar o cadastro agora." };
     }
 
     if (revived && revived.updated) {
-      const audited = await auditPersonDecision(svc, {
-        type: "person_reactivated",
-        personId: candidate.id,
-        actorId: opts.actor?.id,
-        actorName: opts.actor?.name,
-        eventId: opts.eventId,
-        reason: opts.reason || "identidade_reutilizada",
-      });
+      // (3) CONCLUSÃO: trilha obrigatória confirmada. Se falhar agora, a
+      // intenção permanece pendente e a rotina de manutenção a grava — a
+      // operação é recuperável e o caso NÃO fica sem evidência.
+      let audited = false;
+      try {
+        await writeMandatoryAudit(svc, trailEntry);
+        audited = true;
+        await closeAuditIntent(svc, intent.id, "Trilha da reativação gravada e confirmada.");
+      } catch (err: any) {
+        console.error("[personResolution] trilha da reativação pendente:", err?.message || err);
+      }
       return {
         ok: true,
         personId: candidate.id,
@@ -190,8 +277,13 @@ export async function resolveOrCreatePerson(
         created: false,
         reactivated: true,
         audited,
+        pendingTrailId: audited ? "" : intent.id,
       };
     }
+
+    // CAS perdido: encerra a intenção como NÃO aplicada — nunca deixá-la virar
+    // uma trilha que atribui a este ator uma reativação feita por outra execução.
+    await closeAuditIntent(svc, intent.id, "Reativação não aplicada (corrida) — outra execução alterou o cadastro.");
 
     // CAS perdido (outra requisição reativou/alterou): relê e decide pelo estado.
     const again = await lookupPersonsByEmail(svc, normalized);

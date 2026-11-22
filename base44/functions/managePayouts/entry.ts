@@ -6,10 +6,10 @@ import {
   createConnectedAccount,
   createAccountLink,
   retrieveConnectedAccount,
-  updateConnectedAccountPayoutSettings,
 } from "../../shared/stripeClient.ts";
 import { auditHash, buildAuditKey, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { withEventFinance, patchEventFinance } from "../../shared/eventFinance.ts";
+import { runPayoutOperation } from "../../shared/payoutOperation.ts";
 
 // Stripe Connect — o organizador do evento recebe as vendas direto na conta
 // conectada dele (destination charge). A plataforma retém apenas a comissão
@@ -324,19 +324,17 @@ export default async function(req: Request): Promise<Response> {
         if (!account?.stripe_account_id) {
           return Response.json({ error: "Nenhuma conta conectada para este evento." }, { status: 404 });
         }
-        // P2-08 (2026-11-22) — VALIDAÇÃO E TRILHA OBRIGATÓRIA DA RESERVA.
+        // P2-08 (2026-11-22, residual) — CICLO COMPLETO DA OPERAÇÃO EXTERNA.
         //
-        // DEFEITO CORRIGIDO: `Math.max(0, Number(amount) || 0)` transformava
-        // qualquer entrada inválida em um valor válido em silêncio ("abc" → 0,
-        // NaN → 0, -5 → 0) e a alteração era aplicada no Stripe e no registro
-        // local SEM trilha obrigatória — sem saber quem alterou, qual era o valor
-        // anterior nem o motivo.
-        //
-        // AGORA: dinheiro validado (finito, não negativo, até 2 casas, limite de
-        // negócio) e convertido em centavos por aritmética inteira; a trilha é
-        // gravada ANTES do efeito externo (sem trilha, nada muda) com ator,
-        // evento, valores anterior/novo, motivo, correlation id e resultado; o
-        // estado local só é confirmado por LEITURA depois.
+        // A validação de valor (P2-04) continua aqui; o resto do ciclo passou a
+        // viver em shared/payoutOperation.ts, porque a trilha "solicitada" não
+        // provava desfecho nenhum. Agora: valor em centavos → intenção durável
+        // (PayoutOperation) → trilha da intenção → chamada ao provedor com
+        // idempotency key determinística → desfecho registrado (confirmado /
+        // recusado / DESCONHECIDO) → estado local aplicado e CONFIRMADO por
+        // leitura. Timeout NÃO é tratado como falha: vira reconciliation_required
+        // e a reconciliação reenvia a MESMA requisição com a MESMA chave, sem
+        // duplicar efeito externo.
         const parsedAmount = parseMoneyBRL(amount, {
           field: "valor da reserva",
           max: MAX_MONEY_BRL,
@@ -348,63 +346,71 @@ export default async function(req: Request): Promise<Response> {
             { status: 400 },
           );
         }
-        const reserveBRL = parsedAmount.value;
-        const correlationId = crypto.randomUUID();
         const previousReserve = Number(account.reserve_amount) || 0;
-        const reserveReason = String(body?.reason || "").trim().slice(0, 500);
 
-        try {
-          await trailPayoutChange(
-            "reserva_saldo",
-            "PayoutAccount",
-            account.id,
-            { reserve_amount: reserveBRL, anterior: previousReserve },
-            {
-              type: "reserva_saldo_alterada",
-              correlation_id: correlationId,
-              event_id: eventId,
-              conta_payout_id: account.id,
-              valor_anterior: previousReserve,
-              valor_novo: reserveBRL,
-              moeda: "BRL",
-              motivo: reserveReason,
-              resultado: "solicitada",
-            },
-          );
-        } catch (auditErr: any) {
-          console.error("[managePayouts] trilha obrigatória indisponível (reserva):", auditErr?.message || auditErr);
-          return Response.json({ error: PAYOUT_TRAIL_ERROR }, { status: 503 });
-        }
+        const op = await runPayoutOperation(svc, {
+          eventId,
+          account,
+          actor: { id: user.id, name: user.full_name || user.email || "" },
+          amountCents: parsedAmount.cents,
+          amountBrl: parsedAmount.value,
+          previousBrl: previousReserve,
+          reason: String(body?.reason || "").trim().slice(0, 500),
+        });
+        const correlationId = op.operation?.correlation_id || op.operation?.operation_id || "";
+        const operationSummary = op.operation
+          ? {
+              operation_id: op.operation.operation_id,
+              state: op.operation.state,
+              idempotency_key: op.operation.idempotency_key,
+              attempts: op.operation.attempts,
+            }
+          : null;
 
-        try {
-          await updateConnectedAccountPayoutSettings({
-            accountId: account.stripe_account_id,
-            minimumBalanceCents: parsedAmount.cents,
-            debitNegativeBalances: true,
-          });
-        } catch (err: any) {
-          console.error("[managePayouts] reserve failed:", err?.message || err);
-          return Response.json({ error: `Falha ao configurar a reserva no Stripe: ${err?.message || err}` }, { status: 502 });
-        }
-
-        await svc.entities.PayoutAccount.update(account.id, { reserve_amount: reserveBRL });
-
-        // Confirmação por LEITURA — resposta otimista não é prova de persistência.
-        let confirmed: any = null;
-        try {
-          confirmed = (await svc.entities.PayoutAccount.filter({ id: account.id }))[0] || null;
-        } catch (readErr: any) {
-          console.error("[managePayouts] confirmação da reserva ilegível:", readErr?.message || readErr);
-        }
-        if (!confirmed || Number(confirmed.reserve_amount) !== reserveBRL) {
-          console.error("[managePayouts] reserva não confirmada após a escrita:", account.id);
+        if (op.state === "provider_confirmed" && op.ok) {
+          let confirmed: any = null;
+          try {
+            confirmed = (await svc.entities.PayoutAccount.filter({ id: account.id }))[0] || null;
+          } catch (readErr: any) {
+            console.error("[managePayouts] leitura da reserva após confirmação falhou:", readErr?.message || readErr);
+          }
           return Response.json({
-            error: "A reserva foi enviada ao provedor, mas o registro local não confirmou a gravação. Verifique antes de repetir.",
+            account: sanitizeAccount(confirmed || account),
             correlation_id: correlationId,
-          }, { status: 500 });
+            operation: operationSummary,
+          });
         }
 
-        return Response.json({ account: sanitizeAccount(confirmed), correlation_id: correlationId });
+        if (op.state === "provider_failed") {
+          // Falha de TRILHA não é falha do provedor: nada foi executado.
+          if (op.operation?.provider_status === "audit_unavailable") {
+            return Response.json({ error: PAYOUT_TRAIL_ERROR, correlation_id: correlationId }, { status: 503 });
+          }
+          console.error("[managePayouts] reserve refused by provider:", op.error);
+          return Response.json({ error: op.error, correlation_id: correlationId, operation: operationSummary }, { status: 502 });
+        }
+
+        if (op.state === "divergent") {
+          return Response.json({
+            error: op.error,
+            correlation_id: correlationId,
+            operation: operationSummary,
+            reconciliation: "manual",
+          }, { status: 409 });
+        }
+
+        if (op.state === "intent_unavailable") {
+          return Response.json({ error: op.error }, { status: 503 });
+        }
+
+        // reconciliation_required — desfecho desconhecido ou local não confirmado.
+        // Nunca 200: o chamador não pode tratar como concluído.
+        return Response.json({
+          error: op.error,
+          correlation_id: correlationId,
+          operation: operationSummary,
+          reconciliation: "automatic",
+        }, { status: 503 });
       }
 
       // ===== Admin =====

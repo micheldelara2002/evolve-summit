@@ -1,7 +1,7 @@
 {
   "name": "Coupon",
   "type": "object",
-  "description": "Cupom de desconto por evento. discount_type 'percent' ou 'fixed'. scope 'per_ticket' ou 'per_cart'. uses_count nunca excede max_uses (guarda at\u00f4mica).",
+  "description": "Cupom de desconto por evento. discount_type 'percent' ou 'fixed'. scope 'per_ticket' ou 'per_cart'. uses_count nunca excede max_uses (guarda at\u00f4mica). P2-01 (2026-11-22): o contador tem LEDGER DE RESERVAS no pr\u00f3prio documento \u2014 reserved_reservation_ids registra quais reservas incrementaram uses_count e released_reservation_ids quais j\u00e1 devolveram. \u00c9 o que torna a devolu\u00e7\u00e3o EXATAMENTE-UMA-VEZ mesmo com crash entre a mudan\u00e7a de estado da reserva e o decremento (a plataforma n\u00e3o tem transa\u00e7\u00e3o entre documentos): o decremento \u00e9 CAS `$ne` no ledger + `$inc` na MESMA escrita.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -48,6 +48,20 @@
       "type": "number",
       "default": 0,
       "description": "Quantas vezes j\u00e1 foi usado (at\u00f4mico)"
+    },
+    "reserved_reservation_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "P2-01 \u2014 LEDGER DO INCREMENTO: IDs das CouponReservation que consumiram uma unidade de uses_count. Gravado na MESMA escrita at\u00f4mica do `$inc +1` (guarda `$ne` + teto), ent\u00e3o o incremento e sua identifica\u00e7\u00e3o nunca divergem. Crescimento limitado por max_uses (uma entrada por uso poss\u00edvel)."
+    },
+    "released_reservation_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "P2-01 \u2014 LEDGER DA DEVOLU\u00c7\u00c3O: IDs das CouponReservation cujo uso j\u00e1 voltou ao cupom. \u00c9 o port\u00e3o de EXATAMENTE-UMA-VEZ da compensa\u00e7\u00e3o: o decremento \u00e9 `$inc -1` + `$addToSet` deste ID + `$pull` do ledger de incremento, na mesma escrita. Repetir a compensa\u00e7\u00e3o (retry, reconcilia\u00e7\u00e3o concorrente, crash entre etapas) casa `$ne` e \u00e9 no-op \u2014 nunca h\u00e1 decremento duplicado nem devolu\u00e7\u00e3o perdida."
     },
     "is_active": {
       "type": "boolean",

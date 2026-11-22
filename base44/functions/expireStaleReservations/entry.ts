@@ -11,6 +11,7 @@ import { isCampaignDispatchApproved } from "../../shared/campaignContent.ts";
 import { buildAuditKey, resolvePendingTrails, writeMandatoryAudit } from "../../shared/auditTrail.ts";
 import { reconcileStockReservations, assessOrderPaymentState, isPaymentProtected } from "../../shared/stockReservation.ts";
 import { reconcileCouponReservations, diagnoseLegacyCouponOrders } from "../../shared/couponReservation.ts";
+import { reconcilePayoutOperations } from "../../shared/payoutOperation.ts";
 
 // P2/P3 — Expira checkouts abandonados: pedidos 'pending' cuja reserva venceu
 // (reserved_until — janela de 15 min do checkout).
@@ -387,16 +388,28 @@ export default async function(req: Request): Promise<Response> {
     let couponReservationsCommitted = 0;
     let couponReservationsUnavailable = 0;
     let legacyCouponOrders = 0;
+    // P2-01 (residual) — compensação do contador de uso do cupom.
+    let couponCounterCompensated = 0;
+    let couponCounterPending = 0;
+    let couponCounterManualReview = 0;
     try {
       const coupons = await reconcileCouponReservations(svc, 50);
       couponReservationsChecked = coupons.examined;
       couponReservationsReleased = coupons.released;
       couponReservationsCommitted = coupons.committed;
       couponReservationsUnavailable = coupons.unavailable;
-      if (coupons.examined > 0) {
+      // P2-01 (residual) — compensação do contador de uso pendente por crash
+      // entre a liberação da reserva e a devolução do uso. O CAS no ledger do
+      // cupom garante exatamente-uma-vez; casos não comprováveis ficam em
+      // revisão manual e são contados, nunca decrementados por suposição.
+      couponCounterCompensated = coupons.compensated;
+      couponCounterPending = coupons.compensationPending;
+      couponCounterManualReview = coupons.manualReview;
+      if (coupons.examined > 0 || coupons.compensationExamined > 0) {
         console.log(
-          '[expireStaleReservations] reservas de cupom: examinadas=%d liberadas=%d confirmadas=%d mantidas=%d indisponiveis=%d',
+          '[expireStaleReservations] reservas de cupom: examinadas=%d liberadas=%d confirmadas=%d mantidas=%d indisponiveis=%d | compensacao: examinadas=%d concluidas=%d pendentes=%d revisao_manual=%d',
           coupons.examined, coupons.released, coupons.committed, coupons.kept, coupons.unavailable,
+          coupons.compensationExamined, coupons.compensated, coupons.compensationPending, coupons.manualReview,
         );
       }
       // Diagnóstico (sem escrita): pedidos com cupom contabilizado e SEM reserva
@@ -407,6 +420,34 @@ export default async function(req: Request): Promise<Response> {
     } catch (couponErr: any) {
       console.error('[expireStaleReservations] reconciliação de reservas de cupom falhou:', couponErr?.message || couponErr);
       couponReservationsUnavailable++;
+    }
+
+    // ===== P2-08 (residual) — RECONCILIAÇÃO DE OPERAÇÕES DE REPASSE =====
+    // Operações com resultado DESCONHECIDO (timeout, queda de rede, 5xx) ou com
+    // efeito externo confirmado e estado local não confirmado. A reconciliação
+    // reenvia a MESMA requisição com a MESMA idempotency key: o provedor devolve
+    // o resultado original em vez de executar de novo, então nenhum efeito
+    // externo é duplicado. Conflito de idempotência vira divergência (manual).
+    let payoutOperationsChecked = 0;
+    let payoutOperationsConfirmed = 0;
+    let payoutOperationsFailed = 0;
+    let payoutOperationsDivergent = 0;
+    let payoutOperationsPending = 0;
+    try {
+      const payouts = await reconcilePayoutOperations(svc, { limit: 25 });
+      payoutOperationsChecked = payouts.examined;
+      payoutOperationsConfirmed = payouts.confirmed;
+      payoutOperationsFailed = payouts.failed;
+      payoutOperationsDivergent = payouts.divergent;
+      payoutOperationsPending = payouts.pending;
+      if (payouts.examined > 0) {
+        console.log(
+          '[expireStaleReservations] operações de repasse: examinadas=%d confirmadas=%d recusadas=%d divergentes=%d pendentes=%d indisponiveis=%d',
+          payouts.examined, payouts.confirmed, payouts.failed, payouts.divergent, payouts.pending, payouts.unavailable,
+        );
+      }
+    } catch (payoutErr: any) {
+      console.error('[expireStaleReservations] reconciliação de operações de repasse falhou:', payoutErr?.message || payoutErr);
     }
 
     // ===== Reconciler de emissão: pagamentos pagos × ingressos/participantes =====
@@ -1140,6 +1181,16 @@ export default async function(req: Request): Promise<Response> {
       coupon_reservations_committed: couponReservationsCommitted,
       coupon_reservations_unavailable: couponReservationsUnavailable,
       legacy_coupon_orders: legacyCouponOrders,
+      // P2-01 (residual) — compensação do contador de uso do cupom.
+      coupon_counter_compensated: couponCounterCompensated,
+      coupon_counter_pending: couponCounterPending,
+      coupon_counter_manual_review: couponCounterManualReview,
+      // P2-08 (residual) — ciclo das operações de repasse nesta rodada.
+      payout_operations_checked: payoutOperationsChecked,
+      payout_operations_confirmed: payoutOperationsConfirmed,
+      payout_operations_failed: payoutOperationsFailed,
+      payout_operations_divergent: payoutOperationsDivergent,
+      payout_operations_pending: payoutOperationsPending,
       refunds_reconciled: refundsReconciled,
       refunds_failed: refundsFailed,
       refunds_blocked: refundsBlocked,

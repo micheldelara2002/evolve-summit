@@ -18,6 +18,7 @@ import {
   lookupPersonsByEmail,
   resolveOrCreatePerson,
 } from "../../base44/shared/personResolution.ts";
+import { resolvePendingTrails } from "../../base44/shared/auditTrail.ts";
 import { createFakeDb } from "./lib/fakeDb.mjs";
 
 const person = (over = {}) => ({
@@ -83,13 +84,23 @@ test("cadastro INATIVO é reativado por CAS com trilha (defeito original corrigi
   assert.equal(db.persons.length, 1);
   assert.equal(db.persons[0].is_active, true);
 
-  assert.equal(db.auditLogs.length, 1);
-  const details = JSON.parse(db.auditLogs[0].details);
+  // P2-03 (residual) — a evidência é DURÁVEL: existe a intenção (registro
+  // pendente, gravado antes da mutação) e a trilha confirmada.
+  const recorded = db.auditLogs.filter((l) => l.status === "recorded");
+  assert.equal(recorded.length, 1);
+  const details = JSON.parse(recorded[0].details);
   assert.equal(details.type, "person_reactivated");
   assert.equal(details.person_id, "p_inactive");
-  assert.equal(db.auditLogs[0].entity_type, "Person");
-  assert.equal(db.auditLogs[0].event_id, "evt_1");
-  assert.equal(db.auditLogs[0].user_id, "u_admin");
+  assert.ok(details.occurrence, "a ocorrência é registrada para correlação");
+  assert.equal(recorded[0].entity_type, "Person");
+  assert.equal(recorded[0].event_id, "evt_1");
+  assert.equal(recorded[0].user_id, "u_admin");
+  assert.ok(recorded[0].audit_key.startsWith("person_reactivated|p_inactive|"));
+
+  const intents = db.auditLogs.filter((l) => l.status !== "recorded");
+  assert.equal(intents.length, 1, "a intenção prévia existe e foi encerrada");
+  assert.equal(intents[0].status, "resolved");
+  assert.equal(out.pendingTrailId, "");
 });
 
 test("cadastro ANONIMIZADO nunca é reutilizado — cria identidade NOVA", async () => {
@@ -199,4 +210,141 @@ test("e-mail inválido é recusado antes de qualquer leitura", async () => {
   assert.equal(out.ok, false);
   assert.equal(out.reason, "email_invalido");
   assert.equal(db.persons.length, 0);
+});
+
+// ===== P2-03 (residual) — EVIDÊNCIA DURÁVEL DA REATIVAÇÃO =====
+//
+// Antes: CAS + trilha best-effort. Uma falha do AuditLog deixava a mutação
+// aplicada sem trilha e sem caminho de recuperação. Agora: INTENÇÃO durável
+// confirmada por leitura ANTES da mutação → mutação idempotente → trilha
+// confirmada, com a intenção permanecendo recuperável se a trilha falhar.
+
+// Falha na gravação do AuditLog a partir da N-ésima chamada — permite simular
+// "a intenção grava, a trilha não".
+function auditFailAfter(db, allowedCreates) {
+  const originalCreate = db.svc.entities.AuditLog.create;
+  let calls = 0;
+  return {
+    entities: {
+      ...db.svc.entities,
+      AuditLog: {
+        ...db.svc.entities.AuditLog,
+        create: async (data) => {
+          calls++;
+          if (calls > allowedCreates) throw new Error("trilha indisponível");
+          return originalCreate(data);
+        },
+      },
+    },
+  };
+}
+
+test("(1) intenção de auditoria indisponível BLOQUEIA a reativação (nada muda)", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  const svc = {
+    entities: {
+      ...db.svc.entities,
+      AuditLog: {
+        ...db.svc.entities.AuditLog,
+        create: async () => { throw new Error("auditoria indisponível"); },
+        filter: async () => [],
+      },
+    },
+  };
+  const out = await resolve(svc, { actor: { id: "u_admin", name: "Gestora" } });
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "audit_intent_unavailable");
+  assert.equal(db.persons[0].is_active, false, "sem evidência durável não há reativação");
+});
+
+test("(2) reativação falha DEPOIS da intenção: a intenção é encerrada como não aplicada", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  const svc = {
+    entities: {
+      ...db.svc.entities,
+      Person: { ...db.svc.entities.Person, updateMany: async () => { throw new Error("escrita indisponível"); } },
+    },
+  };
+  const out = await resolve(svc);
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "reactivation_failed");
+  assert.equal(db.persons[0].is_active, false);
+  const intents = db.auditLogs.filter((l) => l.status !== "recorded");
+  assert.equal(intents.length, 1);
+  assert.equal(intents[0].status, "resolved");
+  assert.match(String(intents[0].failure_reason), /não aplicada/i);
+  assert.equal(db.auditLogs.filter((l) => l.status === "recorded").length, 0, "nenhuma trilha falsa é gravada");
+});
+
+test("(3) falha DEPOIS do CAS e ANTES da trilha: a operação é recuperável (intenção pendente)", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  // A 1ª criação de AuditLog é a intenção; a 2ª seria a trilha → falha.
+  const svc = auditFailAfter(db, 1);
+  const out = await resolve(svc, { actor: { id: "u_admin", name: "Gestora" } });
+  assert.equal(out.ok, true);
+  assert.equal(out.reactivated, true);
+  assert.equal(out.audited, false, "não se declara auditado sem confirmação");
+  assert.ok(out.pendingTrailId, "o caso pendente é devolvido para correlação");
+  assert.equal(db.persons[0].is_active, true, "a identidade foi reativada");
+  assert.equal(db.auditLogs.filter((l) => l.status === "recorded").length, 0);
+
+  // A rotina de manutenção conclui a trilha a partir da intenção durável.
+  const resolution = await resolvePendingTrails(db.svc);
+  assert.equal(resolution.resolved, 1);
+  const recorded = db.auditLogs.filter((l) => l.status === "recorded");
+  assert.equal(recorded.length, 1);
+  assert.equal(JSON.parse(recorded[0].details).type, "person_reactivated");
+  assert.equal(recorded[0].user_id, "u_admin", "a autoria original é preservada");
+});
+
+test("(4) retry da MESMA operação não cria segunda reativação nem segunda trilha", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  const first = await resolve(db.svc);
+  const second = await resolve(db.svc);
+  assert.equal(first.reactivated, true);
+  assert.equal(second.reactivated, false, "a segunda execução encontra a identidade já ativa");
+  assert.equal(db.persons.length, 1);
+  assert.equal(db.auditLogs.filter((l) => l.status === "recorded").length, 1);
+});
+
+test("(5) duas reativações CONCORRENTES: uma aplica, uma única trilha", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  const [a, b] = await Promise.all([resolve(db.svc), resolve(db.svc)]);
+  assert.equal([a, b].filter((r) => r.reactivated).length, 1, "só uma execução reativa");
+  assert.equal([a, b].every((r) => r.ok), true);
+  assert.equal(db.persons.length, 1);
+  assert.equal(db.auditLogs.filter((l) => l.status === "recorded").length, 1, "nenhuma trilha duplicada");
+  // Cada tentativa grava sua própria intenção; a perdedora é encerrada como NÃO
+  // aplicada — nunca vira uma trilha que atribui a reativação a quem não a fez.
+  const intents = db.auditLogs.filter((l) => l.status !== "recorded");
+  assert.equal(intents.length, 2);
+  assert.equal(intents.every((l) => l.status === "resolved"), true);
+});
+
+test("(6) anonimizada não gera NENHUMA trilha de reativação", async () => {
+  const db = createFakeDb({
+    persons: [person({ id: "p_anon", is_active: false, is_anonymized: true })],
+  });
+  const out = await resolve(db.svc);
+  assert.equal(out.ok, true);
+  assert.equal(out.created, true);
+  assert.equal(
+    db.auditLogs.filter((l) => JSON.parse(l.details || "{}").type === "person_reactivated").length,
+    0,
+    "a exclusão LGPD não é revertida nem registrada como reativação",
+  );
+});
+
+test("(7) falha de leitura da identidade não grava intenção (nada acontece)", async () => {
+  const db = createFakeDb({ persons: [person({ id: "p_inactive", is_active: false })] });
+  const svc = {
+    entities: {
+      ...db.svc.entities,
+      Person: { ...db.svc.entities.Person, filter: async () => { throw new Error("consulta indisponível"); } },
+    },
+  };
+  const out = await resolve(svc);
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "lookup_unavailable");
+  assert.equal(db.auditLogs.length, 0, "sem leitura não há decisão — e sem decisão não há trilha");
 });

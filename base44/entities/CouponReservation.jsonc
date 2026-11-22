@@ -1,7 +1,7 @@
 {
   "name": "CouponReservation",
   "type": "object",
-  "description": "P2-01 (2026-11-22) \u2014 RESERVA DUR\u00c1VEL do uso de um cupom. Existe porque o incremento em Coupon.uses_count acontecia ANTES da cria\u00e7\u00e3o do Order e, se o pedido falhasse, o uso ficava consumido sem nenhum pedido correspondente (cupom esgotado artificialmente, sem forma de descobrir a origem). Cada tentativa de checkout gera UM registro identificado pelo checkout_token (gerado no servidor), com evento, cupom, comprador, validade e o estado do ciclo: reserved (uso consumido, pedido ainda n\u00e3o confirmado), committed (venda confirmada \u2014 o uso permanece) e released (uso devolvido). A libera\u00e7\u00e3o \u00e9 um CAS no pr\u00f3prio registro (reserved \u2192 released): exatamente uma execu\u00e7\u00e3o devolve o uso, repetir \u00e9 no-op e nenhuma requisi\u00e7\u00e3o libera a reserva de outra. Escrita exclusivamente por backend (service role); RLS admin-only.",
+  "description": "P2-01 (2026-11-22) \u2014 RESERVA DUR\u00c1VEL do uso de um cupom. Cada tentativa de checkout gera UM registro identificado pelo checkout_token (gerado no servidor), com evento, cupom, comprador, validade e o estado do ciclo: reserved (uso consumido, pedido ainda n\u00e3o confirmado), committed (venda confirmada \u2014 o uso permanece) e released (uso devolvido). A libera\u00e7\u00e3o \u00e9 um CAS no pr\u00f3prio registro (reserved \u2192 released) e a COMPENSA\u00c7\u00c3O DO CONTADOR \u00e9 um segundo passo recuper\u00e1vel: counter_state registra se ela est\u00e1 pendente, conclu\u00edda, delegada ao marcador do pedido, dispensada (nada foi consumido) ou se exige revis\u00e3o manual. A autoridade de exatamente-uma-vez \u00e9 o ledger no documento do cupom (reserved_reservation_ids / released_reservation_ids) \u2014 counter_decremented \u00e9 diagn\u00f3stico e pode ser re-derivado, ent\u00e3o um crash entre a libera\u00e7\u00e3o e o decremento \u00e9 recuperado pela reconcilia\u00e7\u00e3o sem risco de decremento duplo. Escrita exclusivamente por backend (service role); RLS admin-only.",
   "properties": {
     "event_id": {
       "type": "string",
@@ -54,12 +54,42 @@
     "counter_reserved": {
       "type": "boolean",
       "default": false,
-      "description": "true quando ESTA reserva incrementou Coupon.uses_count (cupons com teto). Cupons ilimitados registram a reserva sem consumir teto."
+      "description": "DIAGN\u00d3STICO \u2014 true quando ESTA reserva incrementou Coupon.uses_count. A prova real \u00e9 o ledger reserved_reservation_ids no cupom: se a marca\u00e7\u00e3o falhar, a reconcilia\u00e7\u00e3o re-deriva o estado pelo ledger em vez de confiar neste campo."
     },
     "counter_decremented": {
       "type": "boolean",
       "default": false,
-      "description": "true quando a libera\u00e7\u00e3o desta reserva devolveu o uso ao cupom. Quando o decremento \u00e9 responsabilidade do marcador do pedido (releaseCouponUse / estorno), permanece false \u2014 nunca h\u00e1 dois decrementos."
+      "description": "DIAGN\u00d3STICO \u2014 true quando a devolu\u00e7\u00e3o desta reserva j\u00e1 foi confirmada. N\u00c3O \u00e9 a autoridade: o port\u00e3o de exatamente-uma-vez \u00e9 released_reservation_ids no cupom. Quando o decremento \u00e9 responsabilidade do marcador do pedido (releaseCouponUse / estorno), permanece false e counter_state fica 'handled_by_order' \u2014 nunca h\u00e1 dois decrementos."
+    },
+    "counter_state": {
+      "type": "string",
+      "enum": [
+        "not_applicable",
+        "reserved",
+        "pending",
+        "completed",
+        "handled_by_order",
+        "not_consumed",
+        "manual_review"
+      ],
+      "enumColors": [
+        "gray",
+        "yellow",
+        "yellow",
+        "green",
+        "blue",
+        "gray",
+        "red"
+      ],
+      "description": "P2-01 \u2014 ESTADO DA COMPENSA\u00c7\u00c3O DO CONTADOR: not_applicable (cupom ilimitado, n\u00e3o consome teto); reserved (uso consumido, reserva viva); pending (reserva liberada e devolu\u00e7\u00e3o ainda n\u00e3o confirmada \u2014 RECUPER\u00c1VEL pela reconcilia\u00e7\u00e3o); completed (uso devolvido e confirmado); handled_by_order (devolu\u00e7\u00e3o delegada ao marcador do pedido, n\u00e3o \u00e9 compensa\u00e7\u00e3o pendente); not_consumed (nada foi consumido por esta reserva \u2014 nenhum decremento \u00e9 devido); manual_review (o ledger do cupom n\u00e3o permite provar o desfecho \u2014 exige revis\u00e3o humana, nunca decremento por suposi\u00e7\u00e3o)."
+    },
+    "counter_handled_by": {
+      "type": "string",
+      "description": "P2-01 \u2014 Quem devolveu o uso: 'reservation' (compensa\u00e7\u00e3o desta reserva) ou 'order' (marcador coupon_uses_counted do pedido). Reservas com 'order' s\u00e3o EXCLU\u00cdDAS da varredura de compensa\u00e7\u00e3o \u2014 sem isso, a reconcilia\u00e7\u00e3o devolveria de novo um uso j\u00e1 devolvido."
+    },
+    "counter_review_reason": {
+      "type": "string",
+      "description": "P2-01 \u2014 Motivo t\u00e9cnico quando counter_state = manual_review (cupom ausente, ledger ileg\u00edvel ou estado divergente). Sem PII."
     },
     "released_reason": {
       "type": "string",

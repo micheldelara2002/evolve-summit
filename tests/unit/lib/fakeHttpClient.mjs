@@ -17,6 +17,8 @@ const COMMON = [
   "AwardConfig",
   "AwardSubmission",
   "AwardEvaluation",
+  "EvaluationClaim",
+  "PayoutOperation",
   "Person",
   "EventInvite",
 ];

@@ -20,6 +20,8 @@ import {
   commitCouponReservationsForOrder,
   reconcileCouponReservations,
   diagnoseLegacyCouponOrders,
+  compensateCouponReservation,
+  reconcileCouponCounterCompensation,
 } from "../../base44/shared/couponReservation.ts";
 import { createFakeDb } from "./lib/fakeDb.mjs";
 
@@ -181,7 +183,8 @@ test("encerramento por pedido trata todas as reservas do pedido", async () => {
 
 test("reconciliação: reserva órfã vencida devolve o uso", async () => {
   const db = createFakeDb({
-    coupons: [coupon({ uses_count: 1 })],
+    // O ledger é o que prova que ESTA reserva consumiu o uso.
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
     couponReservations: [reservation({ expires_at: PAST })],
   });
   const out = await reconcileCouponReservations(db.svc);
@@ -318,4 +321,227 @@ test("diagnóstico de pedidos legados não escreve nada", async () => {
   assert.equal(out.unavailable, false);
   assert.equal(db.coupons[0].uses_count, 2, "diagnóstico não altera contador");
   assert.equal(db.couponReservations.length, 1);
+});
+
+// ===== P2-01 (residual) — COMPENSAÇÃO DO CONTADOR: FALHA EM CADA ETAPA =====
+//
+// A janela corrigida: CAS para 'released' → decremento → marcação. Antes, um
+// crash em qualquer ponto depois do CAS deixava a reserva liberada, o contador
+// alto e a reconciliação sem enxergar o caso (ela só olhava `state = reserved`).
+// Agora o estado da compensação entra na MESMA escrita da liberação e a
+// devolução é CAS no ledger do cupom.
+
+function svcWith(db, overrides) {
+  return { entities: { ...db.svc.entities, ...overrides } };
+}
+
+test("(1) falha ANTES da mudança de estado: nada muda e nada fica pendente", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    couponReservations: [reservation({ id: "cr_1" })],
+  });
+  const svc = svcWith(db, {
+    CouponReservation: {
+      filter: db.svc.entities.CouponReservation.filter,
+      updateMany: async () => { throw new Error("escrita indisponível"); },
+    },
+  });
+  const out = await releaseCouponReservation(svc, "cr_1", "order_create_failed");
+  assert.equal(out.released, false);
+  assert.equal(out.reason.startsWith("liberacao_indisponivel"), true);
+  assert.equal(db.couponReservations[0].state, "reserved", "a reserva segue viva");
+  assert.equal(db.coupons[0].uses_count, 1, "o contador não se move");
+});
+
+test("(2) falha DEPOIS de 'released' e ANTES do decremento: a reconciliação devolve o uso uma única vez", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    couponReservations: [reservation({ id: "cr_1" })],
+  });
+  // Simula o crash: a liberação acontece, o decremento não.
+  const svc = svcWith(db, {
+    Coupon: {
+      filter: db.svc.entities.Coupon.filter,
+      updateMany: async () => { throw new Error("provedor de banco indisponível"); },
+    },
+  });
+  const released = await releaseCouponReservation(svc, "cr_1", "order_create_failed");
+  assert.equal(released.released, true);
+  assert.equal(released.decremented, false);
+  assert.equal(db.couponReservations[0].state, "released");
+  assert.equal(db.couponReservations[0].counter_state, "pending", "a devolução fica declarada como pendente");
+  assert.equal(db.coupons[0].uses_count, 1, "o uso ainda não voltou");
+
+  // A varredura seguinte — com o banco de volta — conclui a devolução.
+  const sweep = await reconcileCouponCounterCompensation(db.svc);
+  assert.equal(sweep.examined, 1);
+  assert.equal(sweep.compensated, 1);
+  assert.equal(sweep.pending, 0);
+  assert.equal(db.coupons[0].uses_count, 0, "o uso volta exatamente uma vez");
+  assert.equal(db.couponReservations[0].counter_state, "completed");
+  assert.deepEqual(db.coupons[0].released_reservation_ids, ["cr_1"]);
+});
+
+test("(3) crash DEPOIS do decremento e ANTES da marcação: nenhum segundo decremento", async () => {
+  const db = createFakeDb({ coupons: [coupon()] });
+  const reserved = await reserveCouponUsage(db.svc, {
+    coupon: db.coupons[0], eventId: "evt_1", checkoutToken: "ck_x",
+  });
+  const released = await releaseCouponReservation(db.svc, reserved.reservation.id, "order_create_failed");
+  assert.equal(released.decremented, true);
+  assert.equal(db.coupons[0].uses_count, 0);
+
+  // Simula a perda da marcação de diagnóstico (crash entre o decremento e o $set).
+  db.couponReservations[0].counter_state = "pending";
+  db.couponReservations[0].counter_decremented = false;
+
+  const sweep = await reconcileCouponCounterCompensation(db.svc);
+  assert.equal(sweep.examined, 1);
+  assert.equal(sweep.compensated, 0, "o ledger já registra a devolução");
+  assert.equal(db.coupons[0].uses_count, 0, "o contador não é decrementado duas vezes");
+  assert.equal(db.couponReservations[0].counter_state, "completed", "o diagnóstico é re-derivado do ledger");
+});
+
+test("(4) dois reconciliadores CONCORRENTES: um único decremento", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    couponReservations: [reservation({ id: "cr_1", state: "released", counter_state: "pending", released_reason: "order_create_failed" })],
+  });
+  const [a, b] = await Promise.all([
+    reconcileCouponCounterCompensation(db.svc),
+    reconcileCouponCounterCompensation(db.svc),
+  ]);
+  assert.equal(a.compensated + b.compensated, 1, "exatamente uma execução devolve o uso");
+  assert.equal(db.coupons[0].uses_count, 0);
+  assert.deepEqual(db.coupons[0].released_reservation_ids, ["cr_1"]);
+});
+
+test("(5) duas LIBERAÇÕES concorrentes da mesma reserva: uma vence, a outra é no-op", async () => {
+  const db = createFakeDb({ coupons: [coupon()] });
+  const reserved = await reserveCouponUsage(db.svc, {
+    coupon: db.coupons[0], eventId: "evt_1", checkoutToken: "ck_race",
+  });
+  const [first, second] = await Promise.all([
+    releaseCouponReservation(db.svc, reserved.reservation.id, "order_create_failed"),
+    releaseCouponReservation(db.svc, reserved.reservation.id, "order_create_failed"),
+  ]);
+  assert.equal([first, second].filter((r) => r.released).length, 1);
+  assert.equal(db.coupons[0].uses_count, 0, "um único decremento");
+});
+
+test("(6) reprocessamento MÚLTIPLO da mesma compensação: contador estável", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    couponReservations: [reservation({ id: "cr_1", state: "released", counter_state: "pending", released_reason: "x" })],
+  });
+  const results = [];
+  for (let i = 0; i < 5; i++) results.push(await compensateCouponReservation(db.svc, "cr_1"));
+  assert.equal(results.filter((r) => r.compensated).length, 1);
+  assert.equal(db.coupons[0].uses_count, 0);
+});
+
+test("(7) reserva que NUNCA consumiu (cupom esgotado) não devolve uso alheio", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 3, reserved_reservation_ids: ["cr_outra"] })],
+    couponReservations: [
+      reservation({
+        id: "cr_1",
+        state: "released",
+        counter_reserved: false,
+        counter_state: "not_consumed",
+        released_reason: "coupon_exhausted",
+      }),
+    ],
+  });
+  const sweep = await reconcileCouponCounterCompensation(db.svc);
+  assert.equal(sweep.examined, 0, "não entra na varredura de pendentes");
+  assert.equal(db.coupons[0].uses_count, 3);
+});
+
+test("(8) cupom SEM ledger (legado) vai para revisão manual, sem decremento por suposição", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 2 })],
+    couponReservations: [reservation({ id: "cr_1", state: "released", counter_state: "pending", released_reason: "x" })],
+  });
+  const sweep = await reconcileCouponCounterCompensation(db.svc);
+  assert.equal(sweep.examined, 1);
+  assert.equal(sweep.manualReview, 1);
+  assert.equal(db.coupons[0].uses_count, 2, "nada é decrementado sem prova");
+  assert.equal(db.couponReservations[0].counter_state, "manual_review");
+  assert.ok(db.couponReservations[0].counter_review_reason);
+});
+
+test("(9) leitura do cupom indisponível mantém a compensação PENDENTE (fail-closed)", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    couponReservations: [reservation({ id: "cr_1", state: "released", counter_state: "pending", released_reason: "x" })],
+  });
+  const svc = svcWith(db, {
+    Coupon: {
+      filter: async () => { throw new Error("leitura indisponível"); },
+      updateMany: db.svc.entities.Coupon.updateMany,
+    },
+  });
+  const out = await compensateCouponReservation(svc, "cr_1");
+  assert.equal(out.ok, false);
+  assert.equal(out.state, "pending", "indisponibilidade não é divergência");
+  assert.equal(db.coupons[0].uses_count, 1);
+  assert.equal(db.couponReservations[0].counter_state, "pending", "segue recuperável");
+});
+
+test("(10) devolução delegada ao pedido não entra na varredura de compensação", async () => {
+  const db = createFakeDb({ coupons: [coupon()] });
+  const reserved = await reserveCouponUsage(db.svc, {
+    coupon: db.coupons[0], eventId: "evt_1", checkoutToken: "ck_order",
+  });
+  await releaseCouponReservation(db.svc, reserved.reservation.id, "refund", { counterHandledBy: "order" });
+  assert.equal(db.couponReservations[0].counter_state, "handled_by_order");
+  assert.equal(db.couponReservations[0].counter_handled_by, "order");
+
+  const sweep = await reconcileCouponCounterCompensation(db.svc);
+  assert.equal(sweep.examined, 0, "quem devolveu foi o marcador do pedido");
+  assert.equal(db.coupons[0].uses_count, 1, "nunca há dois decrementos");
+});
+
+test("(11) pagamento CONFIRMADO não é liberado nem compensado pela varredura", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    orders: [{ id: "ord_1", event_id: "evt_1", status: "paid", is_deleted: false }],
+    payments: [{ id: "pay_1", order_id: "ord_1", status: "succeeded", fulfillment_status: "fulfilled", is_deleted: false }],
+    couponReservations: [reservation({ id: "cr_1", order_id: "ord_1" })],
+  });
+  const out = await reconcileCouponReservations(db.svc);
+  assert.equal(out.committed, 1);
+  assert.equal(out.compensationExamined, 0);
+  assert.equal(db.coupons[0].uses_count, 1, "venda confirmada mantém o uso");
+  assert.equal(db.couponReservations[0].state, "committed");
+});
+
+test("(12) pagamento INCONCLUSIVO não é liberado nem compensado", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    orders: [{ id: "ord_1", event_id: "evt_1", status: "pending", reserved_until: PAST, is_deleted: false }],
+    payments: [{ id: "pay_1", order_id: "ord_1", status: "pending", intent_id: "pi_1", is_deleted: false }],
+    couponReservations: [reservation({ id: "cr_1", order_id: "ord_1" })],
+  });
+  const out = await reconcileCouponReservations(db.svc, 50, {
+    retrieveIntent: async () => { throw new Error("provedor fora"); },
+  });
+  assert.equal(out.categories.indeterminado, 1);
+  assert.equal(out.released, 0);
+  assert.equal(out.compensationExamined, 0);
+  assert.equal(db.coupons[0].uses_count, 1);
+});
+
+test("(13) reserva sem pedido cujo pedido existe pelo token NÃO é tratada como órfã", async () => {
+  const db = createFakeDb({
+    coupons: [coupon({ uses_count: 1, reserved_reservation_ids: ["cr_1"] })],
+    orders: [{ id: "ord_1", event_id: "evt_1", status: "pending", reserved_until: FUTURE, checkout_token: "ck_1", is_deleted: false }],
+    couponReservations: [reservation({ id: "cr_1", order_id: "", checkout_token: "ck_1", expires_at: PAST })],
+  });
+  const out = await reconcileCouponReservations(db.svc);
+  assert.equal(out.categories.sem_pedido, 0);
+  assert.equal(out.categories.pedido_vivo, 1);
+  assert.equal(out.released, 0, "o vínculo é reconstruído pelo token antes de liberar");
+  assert.equal(db.coupons[0].uses_count, 1);
 });

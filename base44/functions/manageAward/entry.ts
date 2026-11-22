@@ -349,14 +349,21 @@ export default async function(req: Request): Promise<Response> {
       // DUAS avaliações — score duplicado, média e ranking distorcidos.
       // AGORA: a gravação converge para a sobrevivente determinística (retry é
       // idempotente) e o cálculo de score deduplica por (submissão, avaliador).
+      // P2-06 (residual) — a gravação acontece sob CLAIM de (submissão,
+      // avaliador): concorrência não produz duas notas. Quem perde o claim
+      // recebe 409 (retryável) e NUNCA uma segunda avaliação; falha de
+      // confirmação recebe 503 e não é reportada como sucesso.
       const saved = await saveEvaluationOnce(svc, {
         submissionId: submission_id,
         reviewerUserId: user.id,
         payload,
+        eventId: sub.event_id,
+        awardId: sub.award_id,
       });
       if (!saved.ok) {
         console.error('[manageAward] avaliação não persistida:', saved.reason, saved.error);
-        return Response.json({ error: saved.error }, { status: 503 });
+        const status = saved.reason === 'claim_busy' ? 409 : 503;
+        return Response.json({ error: saved.error, reason: saved.reason }, { status });
       }
 
       // Trilha da decisão (best-effort: avaliação não é operação financeira

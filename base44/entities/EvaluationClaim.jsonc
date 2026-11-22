@@ -1,0 +1,96 @@
+{
+  "name": "EvaluationClaim",
+  "type": "object",
+  "description": "P2-06 (2026-11-22) \u2014 CLAIM (lease) da grava\u00e7\u00e3o de uma avalia\u00e7\u00e3o, um registro por (submiss\u00e3o, avaliador). Existe porque `filter \u2192 create` n\u00e3o garante unicidade: dois requests simult\u00e2neos leem 'n\u00e3o existe' e ambos criam. A exclus\u00e3o m\u00fatua REAL \u00e9 o CAS no array AwardSubmission.evaluation_claims (documento que sempre existe, escrita at\u00f4mica) \u2014 este registro guarda o token e a VALIDADE do claim, para que: (a) o propriet\u00e1rio se identifique (fencing token gravado em AwardEvaluation.claim_token); (b) um claim abandonado por crash EXPIRE e possa ser retomado por outro request, sem lock permanente; (c) a retomada seja exatamente-uma-vez (CAS no token anterior). O claim \u00e9 liberado ao fim da grava\u00e7\u00e3o e nunca \u00e9 usado como permiss\u00e3o de acesso \u2014 autoriza\u00e7\u00e3o continua sendo da banca + papel reviewer no evento. Escrita exclusivamente por backend (service role); RLS admin-only.",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ID do evento (escopo de isolamento)"
+    },
+    "award_id": {
+      "type": "string",
+      "description": "ID da AwardConfig da premia\u00e7\u00e3o"
+    },
+    "submission_id": {
+      "type": "string",
+      "description": "ID da AwardSubmission avaliada (parte da chave l\u00f3gica)"
+    },
+    "reviewer_user_id": {
+      "type": "string",
+      "description": "ID do User avaliador (parte da chave l\u00f3gica)"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "held",
+        "released"
+      ],
+      "enumColors": [
+        "yellow",
+        "gray"
+      ],
+      "default": "held",
+      "description": "held = claim vivo (o token em vigor \u00e9 o propriet\u00e1rio); released = grava\u00e7\u00e3o encerrada e claim devolvido. released com token antigo nunca \u00e9 reutilizado."
+    },
+    "token": {
+      "type": "string",
+      "description": "Token \u00fanico do claim, gerado no servidor a cada aquisi\u00e7\u00e3o/retomada. \u00c9 o fencing token: a retomada de um claim expirado troca o token por CAS no token anterior, de modo que exatamente uma execu\u00e7\u00e3o passa a ser a propriet\u00e1ria."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Validade do claim. Vencido, o claim \u00e9 considerado abandonado (crash do propriet\u00e1rio) e pode ser retomado \u2014 a recupera\u00e7\u00e3o n\u00e3o depende de processo vivo nem de sleep."
+    },
+    "attempts": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantas vezes este claim foi adquirido/retomado (diagn\u00f3stico de recupera\u00e7\u00e3o)."
+    },
+    "acquired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "released_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "release_reason": {
+      "type": "string",
+      "description": "Motivo do encerramento (saved, update_failed, create_failed, confirm_unavailable, claim_expired, superseded)"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "event_id",
+    "award_id",
+    "submission_id",
+    "reviewer_user_id",
+    "state",
+    "token"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

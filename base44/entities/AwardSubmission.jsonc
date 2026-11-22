@@ -1,7 +1,7 @@
 {
   "name": "AwardSubmission",
   "type": "object",
-  "description": "Inscri\u00e7\u00e3o de um case em uma premia\u00e7\u00e3o, feita por um candidato (entrant). ESCRITA (2026-11-06): SDK direto travado para admin \u2014 a inscri\u00e7\u00e3o nasce por manageAward.submitCase (valida janela, formul\u00e1rio e identidade), o autor edita e retira o pr\u00f3prio case enquanto pendente (updateCase/deleteCase) e o status \u00e9 decidido pela gest\u00e3o em manageAward (promoteWinner/setStatus), que grava autor (decided_by) e data (decided_at) da decis\u00e3o. O candidato n\u00e3o altera o pr\u00f3prio status. LEITURA: pr\u00f3prio autor (e-mail do snapshot ou created_by) e admin; a banca avalia via manageAward.",
+  "description": "Inscri\u00e7\u00e3o de um case em uma premia\u00e7\u00e3o, feita por um candidato (entrant). ESCRITA (2026-11-06): SDK direto travado para admin \u2014 a inscri\u00e7\u00e3o nasce por manageAward.submitCase (valida janela, formul\u00e1rio e identidade), o autor edita e retira o pr\u00f3prio case enquanto pendente (updateCase/deleteCase) e o status \u00e9 decidido pela gest\u00e3o em manageAward (promoteWinner/setStatus), que grava autor (decided_by) e data (decided_at) da decis\u00e3o. O candidato n\u00e3o altera o pr\u00f3prio status. LEITURA: pr\u00f3prio autor (e-mail do snapshot ou created_by) e admin; a banca avalia via manageAward. P2-06 (2026-11-22): evaluation_claims \u00e9 a EXCLUS\u00c3O M\u00daTUA da avalia\u00e7\u00e3o \u2014 lista de avaliadores que det\u00eam o claim vigente, adquirida por CAS no PR\u00d3PRIO documento da submiss\u00e3o (que sempre existe), na mesma primitiva usada em lead_partner_ids/checkout_lock_events. Escrita exclusivamente pelo servidor.",
   "properties": {
     "award_id": {
       "type": "string",
@@ -49,6 +49,13 @@
     "assigned_reviewer_ids": {
       "type": "string",
       "description": "LEGADO \u2014 a banca vigente \u00e9 a da premia\u00e7\u00e3o (AwardConfig.assigned_reviewer_ids). Mantido apenas para registros antigos; n\u00e3o \u00e9 escrito nem lido pelo fluxo atual."
+    },
+    "evaluation_claims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "P2-06 \u2014 CLAIM DE AVALIA\u00c7\u00c3O por avaliador: cont\u00e9m o ID do avaliador que est\u00e1 gravando a nota deste case AGORA. A aquisi\u00e7\u00e3o \u00e9 CAS `{ evaluation_claims: { $ne: reviewerId } }` + $addToSet \u2014 em concorr\u00eancia, EXATAMENTE UM escritor vence (a escrita \u00e9 at\u00f4mica no documento da submiss\u00e3o, que sempre existe), e o perdedor recebe 'avalia\u00e7\u00e3o em processamento' em vez de criar uma segunda nota. A libera\u00e7\u00e3o \u00e9 $pull idempotente; o lease em EvaluationClaim permite recuperar claim abandonado por crash, sem lock permanente. O avaliador \u00e9 identificado por ID de User, ent\u00e3o avaliadores diferentes do mesmo case n\u00e3o se bloqueiam."
     },
     "decided_by_user_id": {
       "type": "string",

@@ -71,7 +71,22 @@ export async function reserveCouponUsage(
     const existing = await svc.entities[ENTITY].filter({ checkout_token: checkoutToken, is_deleted: false });
     if (Array.isArray(existing) && existing.length > 0) {
       const live = existing.find((r: any) => r.state !== "released") || existing[0];
-      return { ok: true, reservation: live, limited: Number(coupon.max_uses) > 0 };
+      const limitedNow = Number(coupon.max_uses) > 0;
+      // P2-01 (residual) — CURA DO CONSUMO: se a tentativa anterior caiu entre
+      // criar a reserva e consumir o uso, o ledger do cupom ainda não a contém.
+      // Repetir o checkout reconhece a reserva (idempotente) e aqui CONCLUI o
+      // consumo que faltou — sem isso o cupom ficaria sobre-utilizável para
+      // sempre, porque nenhum caminho voltaria a incrementar por esta reserva.
+      if (limitedNow && live.state === "reserved") {
+        const ensured = await ensureCouponUseConsumed(svc, live, coupon);
+        if (!ensured.ok) {
+          return { ok: false, reason: ensured.reason, error: "Não foi possível confirmar o uso do cupom agora." };
+        }
+        if (ensured.exhausted) {
+          return { ok: false, reason: "coupon_exhausted", error: "Cupom esgotado — o limite de utilizações foi atingido." };
+        }
+      }
+      return { ok: true, reservation: live, limited: limitedNow };
     }
   } catch (err: any) {
     // Sem conseguir verificar, não reserva: falha fechada.
@@ -95,8 +110,9 @@ export async function reserveCouponUsage(
       discount: Number(params?.discount) || 0,
       reserved_at: nowIso(),
       expires_at: new Date(Date.now() + ttl).toISOString(),
-      counter_reserved: limited,
+      counter_reserved: false,
       counter_decremented: false,
+      counter_state: limited ? "pending" : "not_applicable",
       is_deleted: false,
     });
   } catch (err: any) {
@@ -112,30 +128,106 @@ export async function reserveCouponUsage(
     return { ok: true, reservation, limited: false };
   }
 
-  let incremented = false;
-  try {
-    const res = await svc.entities.Coupon.updateMany(
-      { id: coupon.id, uses_count: { $lt: Number(coupon.max_uses) } },
-      { $inc: { uses_count: 1 } },
-    );
-    incremented = !!(res && res.updated);
-  } catch (err: any) {
-    console.error("[couponReservation] consumo do uso falhou:", err?.message || err);
+  const ensured = await ensureCouponUseConsumed(svc, reservation, coupon);
+  if (!ensured.ok) {
+    return { ok: false, reason: ensured.reason, error: "Não foi possível confirmar o uso do cupom agora." };
   }
 
-  if (!incremented) {
-    // Lote de uso esgotado em corrida: encerra a reserva desta tentativa sem
-    // decrementar (nada foi consumido) e informa o chamador.
+  if (ensured.exhausted) {
+    // Teto esgotado em corrida: encerra a reserva desta tentativa SEM decrementar
+    // (nada foi consumido) — `counter_reserved: false` e `counter_state:
+    // 'not_consumed'` na MESMA escrita, para que a reconciliação não devolva um
+    // uso que esta reserva nunca consumiu.
     try {
       await svc.entities[ENTITY].updateMany(
         { id: reservation.id, state: "reserved" },
-        { $set: { state: "released", released_reason: "coupon_exhausted", released_at: nowIso() } },
+        {
+          $set: {
+            state: "released",
+            released_reason: "coupon_exhausted",
+            released_at: nowIso(),
+            counter_reserved: false,
+            counter_state: "not_consumed",
+          },
+        },
       );
     } catch { /* a reserva fica visível para a reconciliação */ }
     return { ok: false, reason: "coupon_exhausted", error: "Cupom esgotado — o limite de utilizações foi atingido." };
   }
 
-  return { ok: true, reservation, limited: true };
+  return { ok: true, reservation: { ...reservation, counter_reserved: true, counter_state: "reserved" }, limited: true };
+}
+
+/**
+ * P2-01 (residual) — CONSUMO IDEMPOTENTE DO USO, provado pelo LEDGER DO CUPOM.
+ *
+ * O incremento e o registro de QUEM incrementou acontecem na MESMA escrita
+ * (`$inc +1` + `$addToSet reserved_reservation_ids`, com guarda `$ne`): não
+ * existe estado em que `uses_count` subiu sem o cupom saber por qual reserva.
+ * Isso é o que permite recuperar as duas falhas possíveis:
+ *   • crash DEPOIS do incremento: o ledger já contém a reserva e a repetição é
+ *     no-op (`$ne` não casa) — nunca há segundo incremento;
+ *   • crash ANTES do incremento: o ledger não a contém e a repetição conclui o
+ *     consumo — nunca há uso não contabilizado.
+ * Nenhuma decisão depende do campo de diagnóstico `counter_reserved`.
+ */
+async function ensureCouponUseConsumed(
+  svc: any,
+  reservation: any,
+  coupon: any,
+): Promise<{ ok: boolean; consumed: boolean; exhausted?: boolean; reason: string }> {
+  const reservationId = String(reservation?.id || "");
+  const couponId = String(coupon?.id || reservation?.coupon_id || "");
+  const maxUses = Number(coupon?.max_uses) || 0;
+  if (!reservationId || !couponId) return { ok: false, consumed: false, reason: "identidade_ausente" };
+  if (!(maxUses > 0)) return { ok: true, consumed: false, reason: "ilimitado" };
+
+  let current: any = null;
+  try {
+    current = (await svc.entities.Coupon.filter({ id: couponId }))[0] || null;
+  } catch (err: any) {
+    console.error("[couponReservation] leitura do ledger do cupom falhou:", err?.message || err);
+    return { ok: false, consumed: false, reason: "coupon_lookup_unavailable" };
+  }
+  if (!current) return { ok: false, consumed: false, reason: "coupon_missing" };
+  const reservedLedger = Array.isArray(current.reserved_reservation_ids) ? current.reserved_reservation_ids : [];
+  if (reservedLedger.includes(reservationId)) return { ok: true, consumed: true, reason: "ja_consumido" };
+
+  let updated = 0;
+  try {
+    const res = await svc.entities.Coupon.updateMany(
+      { id: couponId, reserved_reservation_ids: { $ne: reservationId }, uses_count: { $lt: maxUses } },
+      { $inc: { uses_count: 1 }, $addToSet: { reserved_reservation_ids: reservationId } },
+    );
+    updated = res && res.updated ? res.updated : 0;
+  } catch (err: any) {
+    console.error("[couponReservation] consumo do uso falhou:", err?.message || err);
+    return { ok: false, consumed: false, reason: "coupon_consume_unavailable" };
+  }
+
+  if (updated) {
+    try {
+      await svc.entities[ENTITY].updateMany(
+        { id: reservationId },
+        { $set: { counter_reserved: true, counter_state: "reserved" } },
+      );
+    } catch { /* diagnóstico: o ledger já prova o consumo */ }
+    return { ok: true, consumed: true, reason: "consumido" };
+  }
+
+  // Zero atualização não prova nada: pode ser corrida (outra execução consumiu
+  // por esta mesma reserva) ou teto esgotado. A leitura decide.
+  let after: any = null;
+  try {
+    after = (await svc.entities.Coupon.filter({ id: couponId }))[0] || null;
+  } catch (err: any) {
+    return { ok: false, consumed: false, reason: "coupon_confirm_unavailable" };
+  }
+  if (!after) return { ok: false, consumed: false, reason: "coupon_missing" };
+  const afterLedger = Array.isArray(after.reserved_reservation_ids) ? after.reserved_reservation_ids : [];
+  if (afterLedger.includes(reservationId)) return { ok: true, consumed: true, reason: "ja_consumido" };
+  if ((Number(after.uses_count) || 0) >= maxUses) return { ok: true, consumed: false, exhausted: true, reason: "esgotado" };
+  return { ok: false, consumed: false, reason: "coupon_consume_unconfirmed" };
 }
 
 /** Liga a reserva ao pedido criado/reutilizado (idempotente). */
@@ -166,55 +258,214 @@ export async function releaseCouponReservation(
   reservationId: string,
   reason: string,
   opts: { counterHandledBy?: "order" | "reservation"; allowCommitted?: boolean } = {},
-): Promise<{ released: boolean; decremented: boolean; reason: string }> {
-  if (!reservationId) return { released: false, decremented: false, reason: "sem_reserva" };
+): Promise<{ released: boolean; decremented: boolean; counterState: string; reason: string }> {
+  if (!reservationId) return { released: false, decremented: false, counterState: "unknown", reason: "sem_reserva" };
 
   let row: any = null;
   try {
     row = (await svc.entities[ENTITY].filter({ id: reservationId }))[0] || null;
   } catch (err: any) {
-    return { released: false, decremented: false, reason: `leitura_indisponivel:${err?.message || err}` };
+    return { released: false, decremented: false, counterState: "unknown", reason: `leitura_indisponivel:${err?.message || err}` };
   }
-  if (!row) return { released: false, decremented: false, reason: "nao_encontrada" };
+  if (!row) return { released: false, decremented: false, counterState: "unknown", reason: "nao_encontrada" };
   // `allowCommitted`: o estorno integral reverte uma venda já confirmada —
   // a reserva deixa de representar uso consumido e passa a 'released'.
   const fromStates = opts.allowCommitted ? ["reserved", "committed"] : ["reserved"];
   if (!fromStates.includes(String(row.state))) {
-    return { released: false, decremented: false, reason: `estado_${row.state}` };
+    return { released: false, decremented: false, counterState: String(row.counter_state || "unknown"), reason: `estado_${row.state}` };
   }
+
+  // P2-01 (residual) — O ESTADO DA COMPENSAÇÃO ENTRA NA MESMA ESCRITA DA
+  // LIBERAÇÃO. Antes, o CAS só marcava `released` e o decremento vinha depois,
+  // fora de qualquer registro: um crash nessa janela deixava a reserva liberada,
+  // o contador alto e `counter_decremented: false` — e a reconciliação, que só
+  // olhava `state = reserved`, nunca voltava nesse caso (vazamento permanente).
+  // Agora a liberação já declara o que falta fazer:
+  //   handled_by_order → a devolução é do marcador do pedido (nada a compensar);
+  //   pending          → esta reserva consumiu um uso e a devolução está PENDENTE;
+  //   not_consumed     → nada foi consumido (nenhum decremento é devido).
+  const counterState = opts.counterHandledBy === "order"
+    ? "handled_by_order"
+    : (row.counter_reserved === true ? "pending" : "not_consumed");
+  const releasePatch: Record<string, any> = {
+    state: "released",
+    released_reason: reason,
+    released_at: nowIso(),
+    counter_state: counterState,
+  };
+  if (opts.counterHandledBy === "order") releasePatch.counter_handled_by = "order";
 
   let claimed = false;
   try {
     const res = await svc.entities[ENTITY].updateMany(
       { id: reservationId, state: { $in: fromStates } },
-      { $set: { state: "released", released_reason: reason, released_at: nowIso() } },
+      { $set: releasePatch },
     );
     claimed = !!(res && res.updated);
   } catch (err: any) {
-    return { released: false, decremented: false, reason: `liberacao_indisponivel:${err?.message || err}` };
+    return { released: false, decremented: false, counterState: "unknown", reason: `liberacao_indisponivel:${err?.message || err}` };
   }
-  if (!claimed) return { released: false, decremented: false, reason: "corrida" };
+  if (!claimed) return { released: false, decremented: false, counterState: "unknown", reason: "corrida" };
 
-  let decremented = false;
-  if (row.counter_reserved === true && opts.counterHandledBy !== "order") {
-    try {
-      const dec = await svc.entities.Coupon.updateMany(
-        { id: row.coupon_id, uses_count: { $gt: 0 } },
-        { $inc: { uses_count: -1 } },
-      );
-      decremented = !!(dec && dec.updated);
-    } catch (err: any) {
-      console.error("[couponReservation] devolução do uso falhou:", err?.message || err);
-    }
-    try {
-      await svc.entities[ENTITY].updateMany(
-        { id: reservationId },
-        { $set: { counter_decremented: decremented } },
-      );
-    } catch { /* registro de diagnóstico */ }
+  if (counterState !== "pending") {
+    return { released: true, decremented: false, counterState, reason };
   }
 
-  return { released: true, decremented, reason };
+  // Compensação: exatamente-uma-vez pelo ledger do cupom. Se ela falhar agora,
+  // a reserva fica com `counter_state: "pending"` e a reconciliação conclui —
+  // a repetição é no-op porque o ledger já registra a devolução.
+  const compensation = await compensateCouponReservation(svc, reservationId);
+  return { released: true, decremented: compensation.compensated, counterState: compensation.state, reason };
+}
+
+/**
+ * P2-01 (residual) — COMPENSAÇÃO DO CONTADOR, RECUPERÁVEL E EXATAMENTE-UMA-VEZ.
+ *
+ * A autoridade não é o campo de diagnóstico da reserva: é o LEDGER do cupom.
+ * O decremento é uma única escrita condicional no próprio Coupon:
+ *
+ *   { id, released_reservation_ids: { $ne: reservationId },
+ *     reserved_reservation_ids: reservationId, uses_count: { $gt: 0 } }
+ *   → $inc uses_count -1  + $addToSet released_reservation_ids
+ *                          + $pull reserved_reservation_ids
+ *
+ * Consequências (nenhuma delas depende de estado intermediário ou de memória da
+ * execução anterior):
+ *   • repetir é no-op — a segunda execução não casa `$ne` e não decrementa;
+ *   • dois reconciliadores concorrentes: apenas um casa a condição;
+ *   • crash antes do decremento → a reserva continua `pending` e a varredura
+ *     seguinte conclui;
+ *   • crash depois do decremento → o ledger já registra a devolução; a varredura
+ *     apenas marca a reserva como concluída (sem segundo decremento);
+ *   • cupom ausente/ilegível ou ledger incapaz de provar o desfecho → a reserva
+ *     vai para `manual_review` e NADA é decrementado por suposição.
+ */
+export async function compensateCouponReservation(
+  svc: any,
+  reservationId: string,
+): Promise<{ ok: boolean; compensated: boolean; state: string; reason: string }> {
+  if (!reservationId) return { ok: false, compensated: false, state: "unknown", reason: "sem_reserva" };
+
+  let row: any = null;
+  try {
+    row = (await svc.entities[ENTITY].filter({ id: reservationId }))[0] || null;
+  } catch (err: any) {
+    return { ok: false, compensated: false, state: "pending", reason: `leitura_indisponivel:${err?.message || err}` };
+  }
+  if (!row) return { ok: false, compensated: false, state: "unknown", reason: "nao_encontrada" };
+  if (row.counter_handled_by === "order" || row.counter_state === "handled_by_order") {
+    return { ok: true, compensated: false, state: "handled_by_order", reason: "delegado_ao_pedido" };
+  }
+  if (row.counter_decremented === true || row.counter_state === "completed") {
+    return { ok: true, compensated: false, state: "completed", reason: "ja_compensada" };
+  }
+  if (row.counter_state === "not_consumed") {
+    return { ok: true, compensated: false, state: "not_consumed", reason: "nada_consumido" };
+  }
+
+  const couponId = String(row.coupon_id || "");
+  let coupon: any = null;
+  try {
+    coupon = (await svc.entities.Coupon.filter({ id: couponId }))[0] || null;
+  } catch (err: any) {
+    // Indisponibilidade NÃO é divergência: a reserva segue `pending` e a próxima
+    // varredura tenta de novo.
+    return { ok: false, compensated: false, state: "pending", reason: `cupom_indisponivel:${err?.message || err}` };
+  }
+  if (!coupon) {
+    await markCompensation(svc, reservationId, "manual_review", false, "Cupom não encontrado — devolução não comprovável.");
+    return { ok: false, compensated: false, state: "manual_review", reason: "cupom_ausente" };
+  }
+
+  const releasedLedger = Array.isArray(coupon.released_reservation_ids) ? coupon.released_reservation_ids : [];
+  if (releasedLedger.includes(reservationId)) {
+    await markCompensation(svc, reservationId, "completed", true, "");
+    return { ok: true, compensated: false, state: "completed", reason: "ja_compensada" };
+  }
+  const reservedLedger = Array.isArray(coupon.reserved_reservation_ids) ? coupon.reserved_reservation_ids : null;
+  if (!reservedLedger) {
+    // Cupom anterior ao ledger (legado): não há como provar se ESTA reserva
+    // incrementou o contador. Decrementar seria adivinhar — vai para revisão.
+    await markCompensation(svc, reservationId, "manual_review", false, "Cupom sem ledger de reservas — desfecho do contador não comprovável.");
+    return { ok: false, compensated: false, state: "manual_review", reason: "ledger_ausente" };
+  }
+  if (!reservedLedger.includes(reservationId)) {
+    // Nada foi consumido por esta reserva: nenhum decremento é devido.
+    await markCompensation(svc, reservationId, "not_consumed", false, "");
+    return { ok: true, compensated: false, state: "not_consumed", reason: "nada_consumido" };
+  }
+
+  let updated = 0;
+  try {
+    const res = await svc.entities.Coupon.updateMany(
+      {
+        id: couponId,
+        released_reservation_ids: { $ne: reservationId },
+        reserved_reservation_ids: reservationId,
+        uses_count: { $gt: 0 },
+      },
+      {
+        $inc: { uses_count: -1 },
+        $addToSet: { released_reservation_ids: reservationId },
+        $pull: { reserved_reservation_ids: reservationId },
+      },
+    );
+    updated = res && res.updated ? res.updated : 0;
+  } catch (err: any) {
+    console.error("[couponReservation] compensação do contador falhou:", reservationId, err?.message || err);
+    return { ok: false, compensated: false, state: "pending", reason: `compensacao_indisponivel:${err?.message || err}` };
+  }
+
+  if (updated) {
+    await markCompensation(svc, reservationId, "completed", true, "");
+    return { ok: true, compensated: true, state: "completed", reason: "compensada" };
+  }
+
+  // Zero atualização: pode ser repetição (já devolvido), corrida perdida ou
+  // divergência de saldo. A leitura decide — nunca a resposta do update.
+  let after: any = null;
+  try {
+    after = (await svc.entities.Coupon.filter({ id: couponId }))[0] || null;
+  } catch (err: any) {
+    return { ok: false, compensated: false, state: "pending", reason: `confirmacao_indisponivel:${err?.message || err}` };
+  }
+  const afterReleased = Array.isArray(after?.released_reservation_ids) ? after.released_reservation_ids : [];
+  if (afterReleased.includes(reservationId)) {
+    await markCompensation(svc, reservationId, "completed", true, "");
+    return { ok: true, compensated: false, state: "completed", reason: "ja_compensada" };
+  }
+  const afterReserved = Array.isArray(after?.reserved_reservation_ids) ? after.reserved_reservation_ids : [];
+  if (after && afterReserved.includes(reservationId)) {
+    // O cupom reconhece o consumo mas não devolve (saldo zerado): divergência.
+    await markCompensation(svc, reservationId, "manual_review", false, "Contador do cupom zerado com consumo registrado — revisar manualmente.");
+    return { ok: false, compensated: false, state: "manual_review", reason: "contador_divergente" };
+  }
+  await markCompensation(svc, reservationId, "not_consumed", false, "");
+  return { ok: true, compensated: false, state: "not_consumed", reason: "nada_consumido" };
+}
+
+// Marcador de diagnóstico da compensação. A garantia está no ledger do cupom;
+// falhar aqui não perde nem duplica devolução — a próxima leitura re-deriva.
+async function markCompensation(
+  svc: any,
+  reservationId: string,
+  state: string,
+  decremented: boolean,
+  reviewReason: string,
+): Promise<void> {
+  try {
+    await svc.entities[ENTITY].updateMany(
+      { id: reservationId },
+      {
+        $set: {
+          counter_state: state,
+          counter_decremented: decremented,
+          counter_handled_by: state === "handled_by_order" ? "order" : "reservation",
+          counter_review_reason: reviewReason,
+        },
+      },
+    );
+  } catch { /* diagnóstico: o ledger é a autoridade */ }
 }
 
 /** Encerra a reserva como venda confirmada (uso permanece consumido). */
@@ -314,6 +565,11 @@ export async function reconcileCouponReservations(
   kept: number;
   unavailable: number;
   categories: Record<string, number>;
+  // P2-01 (residual) — varredura de COMPENSAÇÃO do contador.
+  compensationExamined: number;
+  compensated: number;
+  compensationPending: number;
+  manualReview: number;
 }> {
   const categories: Record<string, number> = {
     sem_pedido: 0,
@@ -325,7 +581,18 @@ export async function reconcileCouponReservations(
     pedido_vivo: 0,
     leitura_indisponivel: 0,
   };
-  const result = { examined: 0, released: 0, committed: 0, kept: 0, unavailable: 0, categories };
+  const result = {
+    examined: 0,
+    released: 0,
+    committed: 0,
+    kept: 0,
+    unavailable: 0,
+    categories,
+    compensationExamined: 0,
+    compensated: 0,
+    compensationPending: 0,
+    manualReview: 0,
+  };
 
   let rows: any[] = [];
   try {
@@ -361,6 +628,21 @@ export async function reconcileCouponReservations(
           order = (await svc.entities.Order.filter({ id: row.order_id }))[0] || null;
         } catch (err: any) {
           console.error("[couponReservation] leitura do pedido falhou:", err?.message || err);
+          result.unavailable++;
+          categories.leitura_indisponivel++;
+          continue;
+        }
+      }
+
+      if (!order && row.checkout_token) {
+        // P2-01 (residual) — o vínculo pode não ter sido gravado (crash entre o
+        // create do Order e o attach): procurar pelo token da tentativa antes de
+        // declarar a reserva órfã. Sem isso, uma compra viva com pagamento em
+        // andamento poderia ser liberada como se nenhum pedido existisse.
+        try {
+          order = (await svc.entities.Order.filter({ checkout_token: row.checkout_token }))[0] || null;
+        } catch (err: any) {
+          console.error("[couponReservation] leitura do pedido por token falhou:", err?.message || err);
           result.unavailable++;
           categories.leitura_indisponivel++;
           continue;
@@ -428,7 +710,80 @@ export async function reconcileCouponReservations(
     }
   }
 
+  // P2-01 (residual) — SEGUNDA VARREDURA: COMPENSAÇÃO PENDENTE.
+  // Independe do estado `reserved`: olha reservas JÁ LIBERADAS cuja devolução do
+  // uso ainda não foi confirmada. É exatamente a janela que antes vazava para
+  // sempre (crash entre `released` e o decremento).
+  try {
+    const compensation = await reconcileCouponCounterCompensation(svc, limit);
+    result.compensationExamined = compensation.examined;
+    result.compensated = compensation.compensated;
+    result.compensationPending = compensation.pending;
+    result.manualReview = compensation.manualReview;
+    if (compensation.unavailable > 0) result.unavailable++;
+  } catch (err: any) {
+    console.error("[couponReservation] varredura de compensação falhou:", err?.message || err);
+    result.unavailable++;
+  }
+
   return result;
+}
+
+/**
+ * P2-01 (residual) — VARREDURA DE COMPENSAÇÃO DO CONTADOR.
+ *
+ * Reprocessa reservas LIBERADAS com devolução não confirmada, em qualquer ponto
+ * em que a execução anterior tenha caído (antes/depois do decremento, antes da
+ * marcação). Cada item passa por `compensateCouponReservation`, cujo CAS no
+ * ledger do cupom garante exatamente-uma-vez — dois reconciliadores concorrentes
+ * ou o mesmo item processado N vezes convergem para o mesmo contador.
+ *
+ * Uma reserva cujo desfecho não pode ser provado (cupom ausente, ledger legado,
+ * saldo divergente) fica em `manual_review` e é CONTADA — nunca decrementada por
+ * suposição, nunca escondida.
+ */
+export async function reconcileCouponCounterCompensation(
+  svc: any,
+  limit = 50,
+): Promise<{ examined: number; compensated: number; pending: number; manualReview: number; unavailable: number }> {
+  const out = { examined: 0, compensated: 0, pending: 0, manualReview: 0, unavailable: 0 };
+  let rows: any[] = [];
+  try {
+    rows = await svc.entities[ENTITY].filter(
+      {
+        is_deleted: false,
+        $or: [
+          { state: "released", counter_state: "pending" },
+          {
+            state: "released",
+            counter_state: { $exists: false },
+            counter_reserved: true,
+            counter_decremented: false,
+            counter_handled_by: { $exists: false },
+          },
+        ],
+      },
+      "created_date",
+      Math.max(1, Math.min(Number(limit) || 50, 200)),
+    );
+  } catch (err: any) {
+    console.error("[couponReservation] consulta de compensações pendentes falhou:", err?.message || err);
+    out.unavailable++;
+    return out;
+  }
+  if (!Array.isArray(rows)) {
+    out.unavailable++;
+    return out;
+  }
+
+  for (const row of rows) {
+    out.examined++;
+    const res = await compensateCouponReservation(svc, row.id);
+    if (res.compensated) out.compensated++;
+    if (res.state === "manual_review") out.manualReview++;
+    else if (!res.ok) out.pending++;
+  }
+  return out;
 }
 
 /**
