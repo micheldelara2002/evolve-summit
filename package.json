@@ -31,6 +31,7 @@
     "test:unit:roleintegrity": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/fase3-role-audit-integrity.test.mjs",
     "test:unit:f4": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/f4-stock-reservation.test.mjs tests/unit/f4-checkin-consistency.test.mjs tests/unit/f4-03-conversion-guard.test.mjs tests/unit/f4-04-fulfillment-gate.test.mjs tests/unit/f4-05-reservation-close-failclosed.test.mjs",
     "test:unit:p1": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/p1-01-fulfillment-contract.test.mjs tests/unit/p1-02-ssrf-ip.test.mjs tests/unit/p1-04-role-primitive.test.mjs tests/unit/p1-05-identity-state.test.mjs",
+    "test:unit:p2": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/p2-01-coupon-reservation.test.mjs tests/unit/p2-02-stripe-signature.test.mjs tests/unit/p2-03-person-identity.test.mjs tests/unit/p2-04-quantity.test.mjs tests/unit/p2-06-evaluation-integrity.test.mjs tests/unit/p2-08-payout-reserve-audit.test.mjs",
     "test:unit:csv": "node --test tests/unit/csv-injection.test.mjs",
     "test:unit:access": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/access-audit.test.mjs",
     "test:unit:certaudit": "node --import ./tests/unit/lib/register-stub-loader.mjs --test tests/unit/certificate-audit.test.mjs",

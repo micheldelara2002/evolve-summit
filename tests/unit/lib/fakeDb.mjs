@@ -72,7 +72,7 @@ function applyUpdate(doc, update) {
   }
 }
 
-function collection(rows) {
+export function collection(rows) {
   return {
     async filter(query = {}) {
       return rows.filter((d) => matches(d, query)).map((d) => ({ ...d }));
@@ -94,6 +94,11 @@ function collection(rows) {
       const row = { is_deleted: false, id: `gen_${rows.length + 1}`, ...data };
       rows.push(row);
       return { ...row };
+    },
+    async delete(id) {
+      const index = rows.findIndex((x) => x.id === id);
+      if (index >= 0) rows.splice(index, 1);
+      return { ok: true };
     },
   };
 }
