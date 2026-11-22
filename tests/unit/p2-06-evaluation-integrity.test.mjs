@@ -351,7 +351,10 @@ test("(3) interleaving controlado: dois requests disputam o claim — UMA única
   openFirstGate();
 
   const [ra, rb] = await Promise.all([a, b]);
-  assert.equal(ra.ok && rb.ok, true, "ambos terminam sem erro");
+  // A garantia: NUNCA duas avaliações. Quem perde o claim recebe `claim_busy`
+  // (retryável) — não cria, não sobrescreve e não devolve sucesso falso.
+  assert.equal([ra, rb].filter((r) => r.ok).length, 1, "exatamente uma execução grava");
+  assert.equal([ra, rb].filter((r) => !r.ok && r.reason === "claim_busy").length, 1);
   assert.equal(db.awardEvaluations.length, 1, "NUNCA existem duas avaliações para o mesmo par");
   assert.equal([ra, rb].filter((r) => r.created).length, 1, "apenas uma execução cria");
   assert.equal(db.awardSubmissions[0].evaluation_claims.length, 0, "o claim é devolvido ao final");
@@ -427,7 +430,12 @@ test("(7) gravações concorrentes com score: apenas UMA avaliação pontuável"
     saveEvaluationOnce(db.svc, { submissionId: "sub_1", reviewerUserId: "u_rev", payload: build(20) }),
     saveEvaluationOnce(db.svc, { submissionId: "sub_1", reviewerUserId: "u_rev", payload: build(20) }),
   ]);
-  assert.equal(results.every((r) => r.ok), true);
+  assert.equal(results.some((r) => r.ok), true, "ao menos uma execução conclui");
+  assert.equal(
+    results.filter((r) => !r.ok).every((r) => r.reason === "claim_busy"),
+    true,
+    "as perdedoras recebem claim_busy (retryável), nunca sucesso",
+  );
   const scored = dedupeEvaluationsForScoring(db.awardEvaluations.filter((r) => r.is_deleted !== true));
   assert.equal(scored.length, 1);
   assert.equal(scored.reduce((s, r) => s + r.total_score, 0), 20, "o score não infla");

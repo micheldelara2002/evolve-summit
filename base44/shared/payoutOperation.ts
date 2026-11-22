@@ -109,11 +109,24 @@ async function findOperation(svc: any, idempotencyKey: string): Promise<any | nu
   })[0];
 }
 
-// Transição de estado por CAS: nunca sobrescreve um estado terminal.
-async function transition(svc: any, id: string, patch: Record<string, any>): Promise<boolean> {
+// Transição de estado por CAS: cada passo declara de QUAIS estados pode sair,
+// então um estado terminal nunca é sobrescrito por engano. Os dois passos
+// posteriores à confirmação (aplicar o local e rebaixar para reconciliação
+// quando a confirmação local falha) saem de `provider_confirmed` — sem isso a
+// operação ficava presa em `provider_confirmed` com `local_applied: false`.
+const FROM_UNSETTLED = ["intent_recorded", "reconciliation_required"];
+const FROM_CONFIRMED = ["provider_confirmed"];
+const FROM_ANY_OPEN = ["intent_recorded", "reconciliation_required", "provider_confirmed"];
+
+async function transition(
+  svc: any,
+  id: string,
+  patch: Record<string, any>,
+  fromStates: string[] = FROM_UNSETTLED,
+): Promise<boolean> {
   try {
     const res = await svc.entities[ENTITY].updateMany(
-      { id, state: { $in: ["intent_recorded", "reconciliation_required"] } },
+      { id, state: { $in: fromStates } },
       { $set: { ...patch, result_at: new Date().toISOString() } },
     );
     return !!(res && res.updated);
@@ -254,10 +267,10 @@ export async function runPayoutOperation(
       }
       const applied = await applyLocal(operation);
       if (!applied.applied) {
-        await transition(svc, operation.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" });
+        await transition(svc, operation.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" }, FROM_CONFIRMED);
         return { ok: false, state: "reconciliation_required", operation: { ...operation, state: "reconciliation_required" }, error: "O provedor confirmou a operação, mas o registro local não confirmou a gravação. A reconciliação concluirá.", localApplied: false, replayed: true };
       }
-      await transition(svc, operation.id, { local_applied: true, last_error: "" });
+      await transition(svc, operation.id, { local_applied: true, last_error: "" }, FROM_CONFIRMED);
       return { ok: true, state: "provider_confirmed", operation: { ...operation, local_applied: true }, localApplied: true, replayed: true };
     }
     // intent_recorded / reconciliation_required: retoma pelo caminho comum.
@@ -317,7 +330,16 @@ export async function runPayoutOperation(
       provider_error: "Trilha da intenção indisponível — provedor não foi chamado.",
       settled_by: "request",
     });
-    return { ok: false, state: "provider_failed", operation: { ...operation, state: "provider_failed" }, error: "Não foi possível registrar a trilha desta alteração de repasse. Nada foi alterado — tente novamente em instantes.", localApplied: false, replayed: false };
+    // provider_status é devolvido junto: é o que distingue "trilha indisponível"
+    // (nada foi executado) de uma recusa do provedor no chamador.
+    return {
+      ok: false,
+      state: "provider_failed",
+      operation: { ...operation, state: "provider_failed", provider_status: "audit_unavailable" },
+      error: "Não foi possível registrar a trilha desta alteração de repasse. Nada foi alterado — tente novamente em instantes.",
+      localApplied: false,
+      replayed: false,
+    };
   }
 
   // (4) EFEITO EXTERNO.
@@ -365,7 +387,12 @@ export async function runPayoutOperation(
   }
 
   // (5) CONFIRMADO: registra o desfecho e aplica o lado local.
-  const confirmedOp = { ...operation, provider_reference: outcome.reference, provider_status: outcome.status };
+  const confirmedOp = {
+    ...operation,
+    state: "provider_confirmed",
+    provider_reference: outcome.reference,
+    provider_status: outcome.status,
+  };
   await transition(svc, operation.id, {
     state: "provider_confirmed",
     provider_reference: outcome.reference,
@@ -376,7 +403,7 @@ export async function runPayoutOperation(
 
   const applied = await applyLocal(confirmedOp);
   if (!applied.applied) {
-    await transition(svc, operation.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" });
+    await transition(svc, operation.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" }, FROM_CONFIRMED);
     await writeResultTrail(svc, confirmedOp, "provider_confirmed_local_pendente", { motivo_local: applied.error || "" });
     return {
       ok: false,
@@ -387,7 +414,7 @@ export async function runPayoutOperation(
       replayed: false,
     };
   }
-  await transition(svc, operation.id, { local_applied: true, last_error: "" });
+  await transition(svc, operation.id, { local_applied: true, last_error: "" }, FROM_CONFIRMED);
   const audited = await writeResultTrail(svc, confirmedOp, "provider_confirmed", { local_aplicado: true });
   if (!audited) {
     try { await svc.entities[ENTITY].update(operation.id, { audit_pending: true }); } catch { /* caso pendente já é durável */ }
@@ -456,7 +483,7 @@ export async function reconcilePayoutOperations(
           out.pending++;
           continue;
         }
-        await transition(svc, op.id, { local_applied: true, settled_by: "reconciliation", last_error: "" });
+        await transition(svc, op.id, { local_applied: true, settled_by: "reconciliation", last_error: "" }, FROM_ANY_OPEN);
         await writeResultTrail(svc, op, "provider_confirmed", { local_aplicado: true, reconciliado: true });
         out.confirmed++;
         out.localApplied++;
@@ -503,11 +530,11 @@ export async function reconcilePayoutOperations(
       });
       const applied = await applyLocal(confirmedOp);
       if (!applied.applied) {
-        await transition(svc, op.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" });
+        await transition(svc, op.id, { state: "reconciliation_required", last_error: applied.error || "estado_local_nao_confirmado" }, FROM_CONFIRMED);
         out.pending++;
         continue;
       }
-      await transition(svc, op.id, { local_applied: true, last_error: "" });
+      await transition(svc, op.id, { local_applied: true, last_error: "" }, FROM_CONFIRMED);
       await writeResultTrail(svc, confirmedOp, "provider_confirmed", { local_aplicado: true, reconciliado: true });
       out.confirmed++;
       out.localApplied++;
